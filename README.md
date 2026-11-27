@@ -30,7 +30,7 @@ Open `http://localhost:4173`. Set `PORT` to change the port and `EVERWHERE_DATA`
 4. Ask “What memory is open in Everwhere?” The browser panel shows the last authenticated bridge activity. Try “Switch Everwhere to Remember”, then ask it to preview a recollection and confirm the reviewed change.
 5. Pairing expires after two hours. Create a replacement token and update **Configure** to continue. **Revoke token** immediately removes the existing bridge's access.
 
-The included manifest permits `127.0.0.1`. For a different local hostname or HTTPS deployment, download the server manifest from the browser panel, replace the repository's manifest, and reinstall or reload. The manifest contains the API origin and permissions. Secrets stay in VoiceOS setup fields. `npm run voiceos:manifest` regenerates the default manifest from the canonical tool schemas.
+The included manifest permits the loopback aliases `127.0.0.1`, `localhost`, and `[::1]`. For a different local hostname or HTTPS deployment, download the server manifest from the browser panel, replace the repository's manifest, and reinstall or reload. The manifest contains the API origin and permissions. Secrets stay in VoiceOS setup fields. `npm run voiceos:manifest` regenerates the default manifest from the canonical tool schemas.
 
 Devin previews require an interactive Devin login. Run Everwhere locally for desktop pairing, or host the API at an HTTPS origin reachable by the bridge. Each server has its own projects and pairing tokens.
 

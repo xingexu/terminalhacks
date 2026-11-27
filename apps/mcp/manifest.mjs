@@ -1,9 +1,11 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
+const loopbackHosts = ['127.0.0.1', 'localhost', '[::1]'];
+
 export function integrationManifest(origin = 'http://127.0.0.1:4173') {
   const api = new URL(origin);
-  const loopback = ['127.0.0.1', 'localhost', '[::1]'].includes(api.hostname);
+  const loopback = loopbackHosts.includes(api.hostname);
   if (api.username || api.password || !(api.protocol === 'https:' || (loopback && api.protocol === 'http:'))) {
     throw new Error('Use an HTTPS API origin or loopback HTTP.');
   }
@@ -17,7 +19,7 @@ export function integrationManifest(origin = 'http://127.0.0.1:4173') {
     publisher: { id: 'everwhere', name: 'Everwhere' },
     repository: 'https://github.com/xingexu/terminalhacks',
     runtime: { kind: 'local-mcp', command: 'node', args: ['apps/mcp/index.mjs'] },
-    permissions: [{ kind: 'network', domains: [api.hostname] }],
+    permissions: [{ kind: 'network', domains: loopback ? loopbackHosts : [api.hostname] }],
     auth: { kind: 'apiKey', fields: [{ key: 'EVERWHERE_PAIRING_TOKEN', label: 'Pairing token from Everwhere → VoiceOS', secret: true, required: true }] },
     preferences: [
       { name: 'EVERWHERE_API', title: 'API origin', type: 'text', default: api.origin, description: 'The address of your running Everwhere server.' },

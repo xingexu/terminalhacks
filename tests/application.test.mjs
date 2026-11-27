@@ -191,6 +191,8 @@ test('MCP stdio uses the real API, applies a correction and recollection, and pu
   await request(p + '/pairing/manifest?origin=http://untrusted.example', undefined, { status: 400 });
   const defaultManifest = JSON.parse(await readFile(new URL('../voiceos.integration.json', import.meta.url)));
   assert.deepEqual(defaultManifest, integrationManifest());
+  assert.deepEqual(defaultManifest.permissions[0].domains, ['127.0.0.1', 'localhost', '[::1]']);
+  assert.deepEqual(integrationManifest('https://api.example.com').permissions[0].domains, ['api.example.com']);
   const client = new Client({ name: 'everwhere-integration-test', version: '1.0.0' });
   const transport = new StdioClientTransport({ command: process.execPath,
     args: [fileURLToPath(new URL('../apps/mcp/index.mjs', import.meta.url))],
