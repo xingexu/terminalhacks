@@ -225,7 +225,7 @@ function App() {
     setState(null);
     setItems([]);
     if (id) localStorage.setItem('everwhere-project', id);
-    else history.replaceState(null, '', '/');
+    else history.replaceState(null, '', '/app' + location.search);
   }, []);
   useEffect(() => {
     loadProjects().then(list => {
