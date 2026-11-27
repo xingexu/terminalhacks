@@ -26,7 +26,7 @@ export function Tutorial({ finish, create }: { finish: () => void; create: () =>
     <div className="tutorial-actions">
       <button className="text-button" onClick={step ? () => setStep(step - 1) : finish}>{step ? <><ArrowLeft size={15} /> Back</> : 'Skip tour'}</button>
       {step < steps.length - 1 ? <button className="btn primary" onClick={() => setStep(step + 1)}>Continue <ArrowRight size={16} /></button> :
-        <div className="button-row"><button className="btn" onClick={finish}>Explore sample</button><button className="btn primary" onClick={create}>Create a project <ArrowRight size={16} /></button></div>}
+        <div className="button-row"><button className="btn" onClick={finish}>Open workspace</button><button className="btn primary" onClick={create}>Create a project <ArrowRight size={16} /></button></div>}
     </div>
   </div>;
 }
