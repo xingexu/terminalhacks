@@ -91,8 +91,13 @@ input, textarea, select { background: #121820; color: var(--text); border-color:
 .copy-field { display: flex; gap: 8px; align-items: center; }
 .copy-field input { min-width: 0; width: 100%; font-family: ui-monospace, monospace; font-size: 12px; }
 @media (max-width: 680px) {
+  .hero, .film-stage, .spatial { width: 100%; min-width: 0; }
   .brand { margin-bottom: 0; font-size: 30px; }
   .sidebar { padding-top: 18px; }
+  .sidebar-bottom { display: flex; align-items: center; gap: 6px; }
+  .sidebar-footer { display: flex; align-items: center; margin: 0; gap: 2px; }
+  .sidebar-footer .text-button { font-size: 0; padding: 0; width: 28px; height: 30px; }
+  .sidebar-footer .icon-btn { width: 28px; height: 30px; }
   .main-content { padding-top: 24px; }
   .modal-inner { padding: 20px; }
   .modal-head h2 { font-size: 30px; }
