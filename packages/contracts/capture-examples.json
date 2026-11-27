@@ -1,0 +1,20 @@
+[
+  {
+    "sessionId": "sess-demo",
+    "externalId": "file-1",
+    "source": "selected_file",
+    "kind": "media",
+    "capturedAt": null,
+    "location": null,
+    "mediaId": "media-new"
+  },
+  {
+    "sessionId": "sess-demo",
+    "externalId": "voice-1",
+    "source": "voiceos_text",
+    "kind": "recollection",
+    "capturedAt": "2026-11-27T12:00:00-05:00",
+    "location": null,
+    "text": "We walked to the harbor."
+  }
+]

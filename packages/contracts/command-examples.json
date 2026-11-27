@@ -1,0 +1,84 @@
+[
+  {
+    "requestId": "r0",
+    "expectedRevision": 0,
+    "type": "event.correct",
+    "targetId": "e1",
+    "payload": {
+      "patch": {
+        "placeLabel": "Pier"
+      }
+    },
+    "previewToken": "t0"
+  },
+  {
+    "requestId": "r1",
+    "expectedRevision": 0,
+    "type": "recollection.add",
+    "targetId": "e1",
+    "payload": {
+      "text": "We walked toward the water."
+    },
+    "previewToken": "t1"
+  },
+  {
+    "requestId": "r2",
+    "expectedRevision": 0,
+    "type": "profile.set",
+    "targetId": "e1",
+    "payload": {
+      "preset": "nostalgic"
+    },
+    "previewToken": "t2"
+  },
+  {
+    "requestId": "r3",
+    "expectedRevision": 0,
+    "type": "anchor.add",
+    "targetId": "e1",
+    "payload": {
+      "worldId": "w1",
+      "position": [
+        1,
+        2,
+        3
+      ],
+      "sourceIds": [
+        "m1"
+      ]
+    },
+    "previewToken": "t3"
+  },
+  {
+    "requestId": "r4",
+    "expectedRevision": 0,
+    "type": "artifact.approve",
+    "targetId": "e1",
+    "payload": {
+      "artifactId": "a1",
+      "dependencyHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "previewToken": "t4"
+  },
+  {
+    "requestId": "r5",
+    "expectedRevision": 0,
+    "type": "event.media.link",
+    "targetId": "e1",
+    "payload": {
+      "mediaId": "m2",
+      "relation": "context"
+    },
+    "previewToken": "t5"
+  },
+  {
+    "requestId": "r6",
+    "expectedRevision": 0,
+    "type": "undo",
+    "targetId": "e1",
+    "payload": {
+      "revisionToUndo": 1
+    },
+    "previewToken": "t6"
+  }
+]

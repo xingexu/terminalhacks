@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "sessionId",
+    "externalId",
+    "source",
+    "kind",
+    "capturedAt",
+    "location"
+  ],
+  "properties": {
+    "sessionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "externalId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "source": {
+      "enum": [
+        "selected_file",
+        "voiceos_text",
+        "browser_audio",
+        "native_media",
+        "wearable_import"
+      ]
+    },
+    "kind": {
+      "enum": [
+        "media",
+        "recollection"
+      ]
+    },
+    "capturedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "location": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "lat": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "lon": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        },
+        "accuracyM": {
+          "type": "number",
+          "minimum": 0
+        },
+        "precision": {
+          "enum": [
+            "coarse",
+            "precise"
+          ]
+        }
+      },
+      "required": [
+        "lat",
+        "lon",
+        "accuracyM",
+        "precision"
+      ],
+      "additionalProperties": false
+    },
+    "mediaId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "media"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "mediaId"
+        ],
+        "not": {
+          "required": [
+            "text"
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "text"
+        ],
+        "not": {
+          "required": [
+            "mediaId"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "voiceos_text"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "recollection"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "enum": [
+              "selected_file",
+              "browser_audio",
+              "native_media"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "media"
+          }
+        }
+      }
+    }
+  ]
+}

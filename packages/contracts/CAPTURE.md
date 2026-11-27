@@ -1,0 +1,20 @@
+# Proposed additive capture contract v2.0
+Existing graph command schemas and preview rules remain unchanged. These are INTERNAL proposed endpoints, not VoiceOS or Omi API claims. Owner 8 implements auth and transactions; owner 4 owns types. The reference reducer illustrates inbox policy only, not durable privacy enforcement.
+
+## HTTP surface (all project-scoped)
+- POST /v1/projects/:p/capture/sessions : explicit source grants with purpose, expiry, allowed provider processing and location mode; return server session ID + state. Never start recording merely because server session exists. Client requests platform permission separately.
+- POST /v1/projects/:p/capture/sessions/:s/stop : idempotently transition active→stopped, block new input; keep confirmed memories unless deletion requested.
+- POST /v1/projects/:p/capture/observations : validate `capture-observation.schema.json`, verify actor + session + source grant + uploaded media ownership, server recomputes hashes, normalize received time and source identity. Return stable observation ID + duplicate indicator. Source IDs scoped to actor/project/session/source; same identity + same canonical payload = retry, differing payload = 409. Cap size and reject unsupported inputs.
+- GET /v1/projects/:p/capture/inbox : paginated pending observations + ranked candidate events + match reasons, no raw private content in logs.
+- POST /v1/projects/:p/capture/observations/:o/preview : choose existing event, proposed link/recollection and optional confirmed anchor; return existing preview token bound to observation version and graph revision. Commit via existing command endpoint; atomically consume observation or record partial consumption when multiple commands needed; never mark reviewed before transaction. P0 one observation produces one link or one recollection. Existing anchor panel reads event links; separate anchor.add only when needed.
+- POST /v1/projects/:p/capture/observations/:o/discard : authorized, idempotent; delete unreviewed data/derivatives per policy.
+- POST /v1/projects/:p/capture/grants/:g/revoke : revoke immediately, stop linked active sessions, cancel queued/in-flight affected jobs and revoke access. Separate deletion workflow for previously accepted evidence; user can request removal; policy default removes withdrawn data and dependent assets. Worker attach and signed URL issuance recheck consent. Do not resurrect from undo or late replay.
+
+## Entity rules
+`capture_sessions(id, project_id, actor_id, status, expires_at, stopped_at, grant_version)`; `source_grants(id, project_id, actor_id, source, purpose, allowed, expires_at, version, location_mode)`; `observations(id, session_id, project_id, actor_id, external_id, source, kind, media_id?, text?, captured_at?, location?, payload_hash, received_at, status, version)`; `observation_reviews(observation_id, event_id, revision, actor_id, command_id)`. Server verifies FKs + tenant and actor scopes. Actor, receivedAt, review status and server hash never trusted from client. Restrict text, GPS and raw media from telemetry. Use expiry/retention workers and check authorization on reads. Location coordinates are real-world lat/lon, never scene-local coordinates. Missing timestamp null; no fabricated fallback captured time.
+
+## MCP addition
+`get_capture_inbox` read-only (current paired project, no permission bypass); `preview_capture_link` accepts observationId and eventId, calls preview above; reuse existing `confirm_command`. Explicit browser start/stop only; voice may open capture UI, not silently activate mic. Do not expose raw microphone stream as MCP tool. UI sees pending state over existing SSE, refresh inbox on `capture.changed` and snapshot gap. API event schema addition must be agreed by 4/8 before fan-out.
+
+## Acceptance
+C00–C07 required for V2 full claims. P1 offline/second contributor and P2 device adapter require C08–C10. Contract validation tests cover syntax; authenticated tenant isolation, database atomicity, deletion, browser permissions, provider latency and actual voice invocation require live integration tests. No private information in fixtures.

@@ -1,0 +1,46 @@
+{
+  "projectId": "p_demo",
+  "revision": 0,
+  "visualProfile": "natural",
+  "media": [
+    {
+      "id": "m1",
+      "mime": "image/jpeg",
+      "capturedAt": "2025-07-01T17:00:00Z",
+      "caption": "Fictional harbor photo",
+      "provenance": "original"
+    },
+    {
+      "id": "m2",
+      "mime": "video/mp4",
+      "capturedAt": null,
+      "caption": "Fictional dinner clip",
+      "provenance": "original"
+    }
+  ],
+  "events": [
+    {
+      "id": "e1",
+      "title": "Harbor walk",
+      "startAt": "2025-07-01T17:00:00Z",
+      "placeLabel": "Harbor",
+      "version": 0,
+      "sourceIds": [
+        "m1"
+      ]
+    },
+    {
+      "id": "e2",
+      "title": "Dinner",
+      "startAt": null,
+      "placeLabel": "Waterfront cafe",
+      "version": 0,
+      "sourceIds": [
+        "m2"
+      ]
+    }
+  ],
+  "anchors": [],
+  "recollections": [],
+  "jobs": []
+}
