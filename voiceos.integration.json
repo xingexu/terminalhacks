@@ -1,0 +1,468 @@
+{
+  "schemaVersion": 1,
+  "id": "com.everwhere.memories",
+  "version": "0.2.0",
+  "name": "Everwhere",
+  "summary": "Find memories, revisit places, and review your stories by voice.",
+  "publisher": {
+    "id": "everwhere",
+    "name": "Everwhere"
+  },
+  "repository": "https://github.com/xingexu/terminalhacks",
+  "runtime": {
+    "kind": "local-mcp",
+    "command": "node",
+    "args": [
+      "apps/mcp/index.mjs"
+    ]
+  },
+  "permissions": [
+    {
+      "kind": "network",
+      "domains": [
+        "127.0.0.1"
+      ]
+    }
+  ],
+  "auth": {
+    "kind": "apiKey",
+    "fields": [
+      {
+        "key": "EVERWHERE_PAIRING_TOKEN",
+        "label": "Pairing token from Everwhere → VoiceOS",
+        "secret": true,
+        "required": true
+      }
+    ]
+  },
+  "preferences": [
+    {
+      "name": "EVERWHERE_API",
+      "title": "API origin",
+      "type": "text",
+      "default": "http://127.0.0.1:4173",
+      "description": "The address of your running Everwhere server."
+    },
+    {
+      "name": "EVERWHERE_PROJECT",
+      "title": "Project ID",
+      "type": "text",
+      "required": true,
+      "description": "Copy the project ID from Everwhere → VoiceOS."
+    }
+  ],
+  "tools": [
+    {
+      "name": "get_context",
+      "description": "Read active project, event, revision and pending jobs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "retrieve_media",
+      "description": "Find relevant authorized source media; no mutation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "eventId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "select_event",
+      "description": "Resolve event query or show candidates; selection only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "navigate_anchor",
+      "description": "Move active viewer to confirmed anchor.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "anchorId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "anchorId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "switch_view",
+      "description": "Switch view retaining active event.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "view": {
+            "enum": [
+              "remember",
+              "explore",
+              "watch",
+              "create",
+              "archive"
+            ]
+          }
+        },
+        "required": [
+          "view"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "set_lens",
+      "description": "Switch provenance lens; never bypass approval.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "enum": [
+              "original",
+              "reconstructed",
+              "cinematic",
+              "dream"
+            ]
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_gap_question",
+      "description": "Ask a nonleading question for a selected event.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "eventId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "preview_recollection",
+      "description": "Propose participant account and optional anchor; no write.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "anchorId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "eventId",
+          "text",
+          "expectedRevision"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "preview_correction",
+      "description": "Preview an event patch and dependent changes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "patch": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              "placeLabel": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              "startAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "story": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "minProperties": 1
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "eventId",
+          "patch",
+          "expectedRevision"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "confirm_change",
+      "description": "Commit exact preview for same actor/project/revision.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "previewToken": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "previewToken",
+          "requestId",
+          "expectedRevision"
+        ],
+        "additionalProperties": false
+      },
+      "confirmation": {
+        "schemaVersion": 1,
+        "root": {
+          "type": "card",
+          "title": "Confirm the reviewed change?",
+          "children": [
+            {
+              "type": "text",
+              "text": "Apply the Everwhere preview you just reviewed. Expired or changed previews must be reviewed again."
+            }
+          ],
+          "footer": [
+            {
+              "type": "actions",
+              "items": [
+                {
+                  "label": "Cancel",
+                  "role": "cancel"
+                },
+                {
+                  "label": "Confirm change",
+                  "role": "confirm",
+                  "color": "accent"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "preview_style",
+      "description": "Preview global creative preset; does not overwrite originals.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "preset": {
+            "enum": [
+              "natural",
+              "nostalgic",
+              "documentary",
+              "vivid"
+            ]
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "preset",
+          "expectedRevision"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "preview_undo",
+      "description": "Preview undo latest eligible change as new revision.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "expectedRevision"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "preview_compile",
+      "description": "Estimate cost/inputs for generation; no charge.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "formats": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "film",
+                "photo_album",
+                "video_album",
+                "journal",
+                "world",
+                "walkthrough"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "formats",
+          "expectedRevision"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_job",
+      "description": "Inspect actual job status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "jobId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_capture_inbox",
+      "description": "List pending authorized capture observations in paired project. Read only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "preview_capture_link",
+      "description": "Preview linking one pending observation to an existing event; use confirm_command for commit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "observationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "eventId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "observationId",
+          "eventId"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

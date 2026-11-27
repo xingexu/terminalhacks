@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
-  publicDir: false,
+  publicDir: 'public',
   esbuild: { jsx: 'automatic' },
   build: { target: 'es2022' }
 });

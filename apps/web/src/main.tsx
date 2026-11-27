@@ -8,6 +8,9 @@ import '@fontsource-variable/dm-sans';
 import '@fontsource/instrument-serif/400.css';
 import '@fontsource/instrument-serif/400-italic.css';
 import './style.css';
+import './experience.css';
+import { Tutorial } from './onboarding';
+import { VoicePanel } from './voice';
 import { Capture } from './capture';
 import { Archive, AtlasMark, Create, Explore, Remember, Watch, type ViewActions } from './views';
 import {
@@ -170,31 +173,6 @@ function WorldForm({ state, event, base, done }: { state: Snapshot; event: Memor
   </form>;
 }
 
-function VoicePanel({ base, state }: { base: string; state: Snapshot }) {
-  const [token, setToken] = useState('');
-  const [message, setMessage] = useState('');
-  const [failed, setFailed] = useState(false);
-  async function pair() {
-    setFailed(false);
-    try {
-      const response = await api<{ token: string }>(base + '/pairing', { confirm: true });
-      setToken(response.token);
-      setMessage('Pairing is available for two hours.');
-    } catch (err) { setFailed(true); setMessage((err as Error).message); }
-  }
-  return <div className="form-stack"><p>Use the Everwhere MCP bridge in VoiceOS Agent Mode to choose a memory, navigate, and preview or confirm changes.</p>
-    <p className="muted">The bridge needs your project ID, an Everwhere API origin reachable from VoiceOS, and a project pairing token.</p>
-    <label>Project ID<input readOnly value={state.projectId} onFocus={e => e.target.select()} /></label>
-    {token && <label>Pairing token<input readOnly value={token} autoComplete="off" onFocus={e => e.target.select()} /></label>}
-    {message && <p className={failed ? 'form-error' : 'muted'} role="status">{message}</p>}
-    <div className="button-row"><button className="btn primary" onClick={pair}><AudioLines size={17} /> Create pairing token</button>
-      <button className="btn" onClick={async () => {
-        try { await api(base + '/pairing', undefined, 'DELETE'); setToken(''); setFailed(false); setMessage('Pairing revoked.'); }
-        catch (err) { setFailed(true); setMessage((err as Error).message); }
-      }}>Revoke token</button></div>
-  </div>;
-}
-
 function SettingsPanel({ base, state, reload, deleteProject }: { base: string; state: Snapshot; reload: () => void; deleteProject: () => Promise<void> }) {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
@@ -256,7 +234,8 @@ function App() {
       if (requested && nav.some(item => item.id === view)) earlyRoute.current = view as View;
       const last = localStorage.getItem('everwhere-project');
       chooseProject(requested || list.find(item => item.id === last)?.id || list[0]?.id || '');
-      if (!list.length) setDialog({ kind: 'library' });
+      if (!localStorage.getItem('everwhere-tour-v1') || new URLSearchParams(location.search).has('tour')) setDialog({ kind: 'help' });
+      else if (!list.length) setDialog({ kind: 'library' });
     }).catch(err => setStartupError((err as Error).message)).finally(() => setLoading(false));
   }, [chooseProject, loadProjects]);
 
@@ -301,7 +280,10 @@ function App() {
   }, [notice]);
 
   const show = (kind: Extract<Dialog, { kind: 'library' | 'settings' | 'voice' | 'capture' | 'memory' | 'recollection' | 'correction' | 'help' | 'world' }>['kind']) => setDialog({ kind });
-  const dismiss = () => setDialog(null);
+  const dismiss = () => {
+    if (dialog?.kind === 'help') localStorage.setItem('everwhere-tour-v1', 'done');
+    setDialog(null);
+  };
   const guarded = (work: () => Promise<unknown>) => { void work().catch(err => setNotice((err as Error).message)); };
   const select = (input: Partial<Session>) => guarded(async () => { await api(base + '/session', input); await refresh(); });
   const preview = async (type: string, payload: Record<string, unknown>, target = current?.id) => {
@@ -337,13 +319,12 @@ function App() {
   const sectionTitles: Record<Dialog['kind'], string> = {
     library: 'My universe', settings: 'Project settings', voice: 'Connect VoiceOS', capture: 'Capture memory',
     memory: 'New memory', recollection: 'Add a recollection', correction: 'Correct memory',
-    help: 'About Everwhere', source: 'Source evidence', confirm: 'Review change', world: 'Import 3D scene'
+    help: 'Welcome to Everwhere', source: 'Source evidence', confirm: 'Review change', world: 'Import 3D scene'
   };
   return <div className="app-frame">
     <a className="skip-link" href="#experience">Skip to experience</a>
     <aside className="sidebar" aria-label="Workspace">
-      <button className="brand" onClick={() => show('library')} aria-label="Everwhere project library"><span className="brand-mark"><AtlasMark size={25} /></span><span>everwhere<span className="brand-period">.</span></span></button>
-      <div className="workspace-label eyebrow">WORKSPACE</div>
+      <a className="brand" href="/" aria-label="Everwhere home">Everwhere</a>
       <button className="workspace-project" onClick={() => show('library')}><span className="project-icon"><Images size={17} /></span><span><strong>{state?.title || 'My universe'}</strong><small>Memory project</small></span><ChevronDown size={15} /></button>
       <div className="nav-groups">
         <nav aria-label="Experience"><span className="nav-label eyebrow">EXPERIENCE</span>{nav.slice(0, 4).map(({ id, name, icon: Icon }) =>
@@ -357,7 +338,7 @@ function App() {
       </div>
       <div className="sidebar-bottom">
         <button className="voice-card" onClick={() => show('voice')} disabled={!state}><span className="voice-icon"><AudioLines size={21} /></span><span><strong>VoiceOS</strong><small>Pair voice controls</small></span><ArrowRight size={15} /></button>
-        <div className="sidebar-footer"><button className="text-button" onClick={() => show('settings')} disabled={!state}><Settings size={15} /> Settings</button><button className="icon-btn" onClick={() => show('help')} aria-label="About Everwhere" title="About Everwhere"><CircleHelp size={17} /></button></div>
+        <div className="sidebar-footer"><button className="text-button" onClick={() => show('settings')} disabled={!state}><Settings size={15} /> Settings</button><button className="icon-btn" onClick={() => show('help')} aria-label="Open tutorial" title="Open tutorial"><CircleHelp size={17} /></button></div>
       </div>
     </aside>
     <main className="main" id="experience">
@@ -395,9 +376,7 @@ function App() {
         <div className="library-list">{projects.map(item => <button className="workspace-project" key={item.id} onClick={() => { if (item.id !== project) chooseProject(item.id); dismiss(); }}>
           <span className="project-icon"><Images size={17} /></span><span><strong>{item.title}</strong><small>{item.demo ? 'Sample project' : 'Private project'}</small></span><ChevronRight size={17} /></button>)}</div>
         <NameForm handle={async title => { const created = await api<Project>('/projects', { title }); await loadProjects(); chooseProject(created.id); dismiss(); }} /></>}
-      {dialog.kind === 'help' && <div className="form-stack"><p>Everwhere brings photos, clips, and your own accounts into a private memory atlas.</p>
-        <p className="muted">Use Explore to open a photo trail, Watch to render a film, Create to curate source albums, and Remember to keep the stories around them.</p>
-        <button className="btn self-start" onClick={dismiss}>Back to Everwhere</button></div>}
+      {dialog.kind === 'help' && <Tutorial finish={dismiss} create={() => { localStorage.setItem('everwhere-tour-v1', 'done'); show('library'); }} />}
       {hasMedia && state && dialog.kind === 'settings' && <SettingsPanel state={state} base={base} reload={() => void refresh().catch(() => {})} deleteProject={async () => {
         await api(base, { confirm: true }, 'DELETE'); const list = await loadProjects(); chooseProject(list[0]?.id || ''); dismiss();
       }} />}

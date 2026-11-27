@@ -1,6 +1,6 @@
 # Everwhere
 
-Everwhere is a private memory app for turning selected photos, clips, and recollections into an explorable timeline, albums, journals, and films. This build implements the private web workflow from the V2 handoff. The first visit opens an illustrated Dolomites project with fictional copy and labeled, generated imagery. Choose **My universe → New project** to start with an empty project.
+Everwhere is a private memory app for turning selected photos, clips, and recollections into an explorable timeline, albums, journals, and films. This build implements the private web workflow from the V2 handoff. The landing page opens into a short first-use tutorial, which can be replayed with the sidebar help button. Choose **Create a project** to begin, or explore an illustrated Dolomites sample with fictional copy and labeled, generated imagery.
 
 ## Run locally
 
@@ -24,7 +24,17 @@ Open `http://localhost:4173`. Set `PORT` to change the port and `EVERWHERE_DATA`
 
 ## VoiceOS
 
-Open **Connect VoiceOS** and create a time-limited pairing token. In the VoiceOS MCP integration, launch Node with the absolute path to `apps/mcp/index.mjs` as its argument and supply `EVERWHERE_API`, `EVERWHERE_PROJECT`, and `EVERWHERE_PAIRING_TOKEN` through the integration environment. The API origin must be reachable from the bridge process. Use HTTPS for a remote origin or HTTP on loopback. Revoke the pairing from Everwhere when finished. The local SDK test exercises the bridge over stdio. The release gate for real VoiceOS Agent Mode requires a separate run. [VoiceOS MCP guide](https://www.voiceos.com/guide/build-mcp-integration)
+1. On the Mac running VoiceOS, clone this repository and complete **Run locally** above. Keep the API running. Open its local address in your browser, then **VoiceOS** in the sidebar.
+2. In VoiceOS, choose **Settings → Agent Mode → Integrations → Install from folder** and select this repository folder. It contains `voiceos.integration.json`. Node must be available to VoiceOS. If your shell-only Node installation is unavailable to the desktop app, set `runtime.command` in the manifest to the absolute Node executable path and reload.
+3. In the integration's **Configure** form, set **API origin** to the running server address and copy the **Project ID** from Everwhere. Create a pairing token in Everwhere and paste it into the secure **Pairing token** field. Save.
+4. Ask “What memory is open in Everwhere?” The browser panel shows the last authenticated bridge activity. Try “Switch Everwhere to Remember”, then ask it to preview a recollection and confirm the reviewed change.
+5. Pairing expires after two hours. Create a replacement token and update **Configure** to continue. **Revoke token** immediately removes the existing bridge's access.
+
+The included manifest permits `127.0.0.1`. For a different local hostname or HTTPS deployment, download the server manifest from the browser panel, replace the repository's manifest, and reinstall or reload. The manifest contains the API origin and permissions. Secrets stay in VoiceOS setup fields. `npm run voiceos:manifest` regenerates the default manifest from the canonical tool schemas.
+
+Devin previews require an interactive Devin login. Run Everwhere locally for desktop pairing, or host the API at an HTTPS origin reachable by the bridge. Each server has its own projects and pairing tokens.
+
+The integration uses standard MCP over stdio, native result cards, and confirmation before committing reviewed changes. The test suite verifies the real MCP handshake, manifest/tool parity, pairing status, revocation, and live browser events. Authenticated VoiceOS Agent Mode on macOS remains a separate verification step. [VoiceOS installation guide](https://docs.voiceos.com/integrations/distribution) · [Manifest reference](https://docs.voiceos.com/integrations/reference/manifest)
 
 ## Verify
 

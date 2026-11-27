@@ -22,6 +22,9 @@ export function createStore(dir) {
       token TEXT PRIMARY KEY, actor TEXT NOT NULL, project TEXT NOT NULL, expires INTEGER NOT NULL
     );
   `);
+  if (!db.prepare('PRAGMA table_info(pairings)').all().some(column => column.name === 'last_seen')) {
+    db.exec('ALTER TABLE pairings ADD COLUMN last_seen INTEGER');
+  }
   const updates = new EventEmitter();
   updates.setMaxListeners(0);
   const generateToken = () => randomBytes(32).toString('base64url');
@@ -48,7 +51,7 @@ export function createStore(dir) {
       const token = generateToken();
       const expires = Date.now() + 2 * 3600_000;
       db.prepare('DELETE FROM pairings WHERE actor = ? AND project = ?').run(actor, project);
-      db.prepare('INSERT INTO pairings VALUES (?, ?, ?, ?)').run(digest(token), actor, project, expires);
+      db.prepare('INSERT INTO pairings (token, actor, project, expires) VALUES (?, ?, ?, ?)').run(digest(token), actor, project, expires);
       return { token, expires: new Date(expires).toISOString() };
     },
     pairing(token) {
@@ -58,6 +61,14 @@ export function createStore(dir) {
     },
     revokePair(actor, project) {
       db.prepare('DELETE FROM pairings WHERE actor = ? AND project = ?').run(actor, project);
+    },
+    pairingStatus(actor, project) {
+      store.read(actor, project);
+      const row = db.prepare('SELECT expires, last_seen FROM pairings WHERE actor = ? AND project = ?').get(actor, project);
+      return { active: Boolean(row && row.expires > Date.now()), expires: row?.expires ?? null, lastSeen: row?.last_seen ?? null };
+    },
+    touchPair(token) {
+      db.prepare('UPDATE pairings SET last_seen = ? WHERE token = ? AND expires > ?').run(Date.now(), digest(token), Date.now());
     },
     create(actor, title, demo = false) {
       const id = uid();
