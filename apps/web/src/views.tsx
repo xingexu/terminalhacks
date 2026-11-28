@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import {
   ArrowDownToLine, ArrowLeft, ArrowRight, AudioLines, BookOpen, Box, Camera, Check, ChevronLeft, ChevronRight, CircleHelp,
   Clapperboard, Compass, Eye, Film, Image, LocateFixed, Map, MapPin, Maximize, Pause, Play, Plus, Search, Sparkles, X
@@ -9,6 +9,8 @@ import {
 } from './model';
 
 const Spatial = lazy(() => import('./spatial'));
+const WalkableAlbum = lazy(() => import('./album'));
+import { orderedPhotos } from './album-layout';
 
 export type ViewActions = {
   select: (input: { eventId?: string; anchorId?: string; view?: View }) => void;
@@ -76,21 +78,20 @@ export function Timeline({ state, event, actions }: { state: Snapshot; event?: M
 
 export function Explore({ state, event, actions }: { state: Snapshot; event?: Memory; actions: ViewActions }) {
   const [entered, setEntered] = useState(false);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
   const [showStory, setShowStory] = useState(false);
   const [spatial, setSpatial] = useState<string | null>(null);
-  const hero = useRef<HTMLDivElement>(null);
   const activeEvent = event?.id;
   const selectedAnchor = state.anchors.find(item => item.id === state.session.anchorId);
   const world = state.worlds.find(item => item.eventId === activeEvent && item.approved && state.session.lens === 'all' &&
     item.sourceIds.every(id => event?.sourceIds.includes(id)));
   useEffect(() => { setSpatial(selectedAnchor?.worldId === world?.id && world ? world.id : null); }, [world?.id, selectedAnchor?.worldId]);
-  useEffect(() => { setPan({ x: 0, y: 0 }); setShowStory(false); }, [activeEvent, state.session.anchorId]);
+  useEffect(() => { setEntered(false); setShowStory(false); }, [activeEvent, state.session.lens]);
   if (!event) return <Empty icon={<Compass size={33} />} title="Start with a place you remember">
     <p>Give a moment a name, then add the photos and stories you want to keep.</p>
     <button className="btn primary" onClick={actions.openMemory}><Plus size={17} /> Add a memory</button>
   </Empty>;
   const media = sourcesFor(state, event.sourceIds).filter(isVisual);
+  const photos = orderedPhotos(media);
   const anchors = state.anchors.filter(anchor => anchor.eventId === event.id && anchor.worldId === 'trail-' + event.id && anchor.sourceIds.some(id => media.some(source => source.id === id)));
   const anchor = anchors.find(item => item.id === state.session.anchorId) ?? anchors[0];
   const active = sourcesFor(state, anchor?.sourceIds ?? []).find(isVisual) ?? media[0];
@@ -104,14 +105,17 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
       if (neighbor) actions.select({ eventId: neighbor.id });
     }
   };
-  function openTrail() {
+  function openAlbum() {
     setEntered(true);
     setShowStory(false);
-    hero.current?.focus();
   }
   const pendingWorld = state.worlds.find(item => item.eventId === event.id && !item.approved &&
     item.sourceIds.every(id => event.sourceIds.includes(id)));
   return <>
+    {entered && photos.length > 0 && <Suspense fallback={<div className="notice" role="status">Opening immersive album…</div>}>
+      <WalkableAlbum key={state.projectId + event.id + state.session.lens + photos.map(photo => photo.id).join(',')}
+        state={state} photos={photos} title={event.title} onClose={() => setEntered(false)} />
+    </Suspense>}
     {spatial && world?.id === spatial ? <div className="spatial-frame">
       <Suspense fallback={<div className="spatial-state">Loading 3D viewer…</div>}>
         <Spatial url={'/v1/projects/' + state.projectId + '/worlds/' + spatial + '/scene.spz'}
@@ -123,33 +127,16 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
           <button className="btn compact" key={item.id} onClick={() => actions.select({ anchorId: item.id })}><MapPin size={14} />{item.title}</button>)}
         {selectedAnchor?.worldId === spatial && <button className="btn compact" onClick={actions.openRecollection}><BookOpen size={15} /> Add a recollection here</button>}
       </div>
-    </div> : <div className={'hero grade-' + state.visualProfile + (entered ? ' is-entered' : '') + (active ? '' : ' hero-empty')} ref={hero} tabIndex={-1}
-      onKeyDown={e => {
-        if (!entered || (e.target !== hero.current && e.key !== 'Escape')) return;
-        const key = e.key.toLowerCase();
-        if (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'w', 'a', 's', 'd'].includes(key)) e.preventDefault();
-        if (key === 'escape') setEntered(false);
-        if (key === 'arrowleft' || key === 'a') next(-1);
-        if (key === 'arrowright' || key === 'd') next(1);
-        if (key === 'arrowup' || key === 'w') setPan(point => ({ ...point, y: Math.min(12, point.y + 3) }));
-        if (key === 'arrowdown' || key === 's') setPan(point => ({ ...point, y: Math.max(-12, point.y - 3) }));
-      }}
-      onPointerMove={e => {
-        if (!entered || e.pointerType === 'touch' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-        const box = e.currentTarget.getBoundingClientRect();
-        setPan({ x: ((e.clientX - box.left) / box.width - 0.5) * -14, y: ((e.clientY - box.top) / box.height - 0.5) * -12 });
-      }}>
-      {active && <img className="hero-img" key={active.id} src={sourceURL(state.projectId, active.id, '?variant=thumb')} alt={active.caption}
-        style={entered ? { '--pan-x': pan.x + 'px', '--pan-y': pan.y + 'px' } as CSSProperties : undefined} />}
+    </div> : <div className={'hero grade-' + state.visualProfile + (active ? '' : ' hero-empty')}>
+      {active && <img className="hero-img" key={active.id} src={sourceURL(state.projectId, active.id, '?variant=thumb')} alt={active.caption} />}
       <div className="hero-shade" />
-      <div className="hero-top"><div className="hero-badges"><span className="glass-pill"><Compass size={14} /> Photo trail</span>
+      <div className="hero-top"><div className="hero-badges"><span className="glass-pill"><Compass size={14} /> {photos.length} {photos.length === 1 ? 'photo' : 'photos'} to explore</span>
         {active?.provenance === 'imagined' && <span className="scene-sample">Imagined demo</span>}</div>
         <div className="hero-top-actions">
           {active && <button className="glass-icon" aria-label="View source media" title="View source media" onClick={() => actions.openSource(active)}><Eye size={17} /></button>}
-          <button className="glass-icon" aria-label={entered ? 'Exit photo trail' : 'Enter photo trail'} title={entered ? 'Exit photo trail' : 'Enter photo trail'} onClick={() => entered ? setEntered(false) : active && openTrail()} disabled={!active}>{entered ? <X size={18} /> : <Maximize size={16} />}</button>
+          <button className="glass-icon" aria-label="Enter immersive album" title="Enter immersive album" onClick={openAlbum} disabled={!photos.length}><Maximize size={16} /></button>
         </div>
       </div>
-      {entered && active && <button className="hotspot" aria-label={'Open evidence at ' + (anchor?.title || event.title)} onClick={() => setShowStory(!showStory)}><MapPin size={18} /></button>}
       {showStory && <aside className="hotspot-panel"><div className="panel-title"><strong>{anchor?.title || event.title}</strong><button className="icon-btn" onClick={() => setShowStory(false)} aria-label="Close waypoint"><X size={16} /></button></div>
         <p>{event.story || 'Add a recollection about this waypoint.'}</p>
         {accounts.map(item => <blockquote key={item.id}>{item.text}</blockquote>)}
@@ -160,17 +147,18 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
       <div className="hero-bottom">
         <div className="hero-content">
           <h2>{event.title}</h2>
-          <div className="hero-location"><MapPin size={15} /> {event.placeLabel}{entered && anchor && <><span className="dot-separator" /> {anchor.title}</>}</div>
-          {active && !entered && <button className="btn hero-cta" onClick={openTrail}><Compass size={17} /> Enter memory <ArrowRight size={16} /></button>}
-          {active && entered && <div className="button-row entered-actions"><button className="btn hero-cta" onClick={() => setShowStory(!showStory)}><BookOpen size={16} /> Waypoint story</button>
-            <button className="glass-icon" aria-label="Place a waypoint here" title="Place a waypoint here" onClick={() => actions.addWaypoint([pan.x / 10, pan.y / 10, 0], active.id)}><Plus size={17} /></button></div>}
-          {!active && <button className="btn hero-cta" onClick={actions.openCapture}><Camera size={16} /> Add a source</button>}
+          <div className="hero-location"><MapPin size={15} /> {event.placeLabel}{anchor && <><span className="dot-separator" /> {anchor.title}</>}</div>
+          <div className="button-row">
+            {photos.length > 0 ? <button className="btn hero-cta" onClick={openAlbum}><Compass size={17} /> Enter memory <ArrowRight size={16} /></button> :
+              <button className="btn hero-cta" onClick={actions.openCapture}><Camera size={16} /> Add photos</button>}
+            {active && <button className="glass-icon" aria-label="Waypoint story" onClick={() => setShowStory(!showStory)}><BookOpen size={17} /></button>}
+          </div>
         </div>
         <div className="hero-controls">
-          {entered && <div className="waypoint-list">{anchors.map(a => <button className={'waypoint' + (a.id === anchor?.id ? ' selected' : '')} key={a.id} onClick={() => actions.select({ anchorId: a.id })}><MapPin size={12} />{a.title}</button>)}</div>}
-          <div className="hero-controls-row">{entered && <span>↑ ↓ Pan</span>}
-            <button className="glass-icon" onClick={() => next(-1)} disabled={index === 0 && (!entered || anchors[0]?.id === anchor?.id)} aria-label="Previous waypoint or memory"><ChevronLeft size={19} /></button>
-            <button className="glass-icon" onClick={() => next(1)} disabled={index >= state.events.length - 1 && (!entered || anchors.at(-1)?.id === anchor?.id)} aria-label="Next waypoint or memory"><ChevronRight size={19} /></button>
+          <div className="waypoint-list">{anchors.map(a => <button className={'waypoint' + (a.id === anchor?.id ? ' selected' : '')} key={a.id} onClick={() => actions.select({ anchorId: a.id })}><MapPin size={12} />{a.title}</button>)}</div>
+          <div className="hero-controls-row">
+            <button className="glass-icon" onClick={() => next(-1)} disabled={index === 0 && (!anchors.length || anchors[0]?.id === anchor?.id)} aria-label="Previous waypoint or memory"><ChevronLeft size={19} /></button>
+            <button className="glass-icon" onClick={() => next(1)} disabled={index >= state.events.length - 1 && (!anchors.length || anchors.at(-1)?.id === anchor?.id)} aria-label="Next waypoint or memory"><ChevronRight size={19} /></button>
           </div>
         </div>
       </div>
@@ -227,6 +215,46 @@ const profiles: { id: Profile; name: string; description: string }[] = [
   { id: 'vivid', name: 'Vivid', description: 'Stronger color and contrast' }
 ];
 
+function PhotoAlbum({ state, event, actions }: { state: Snapshot; event?: Memory; actions: ViewActions }) {
+  const [scope, setScope] = useState<'memory' | 'project'>('memory');
+  const [excluded, setExcluded] = useState<string[]>([]);
+  const [entered, setEntered] = useState(false);
+  const sourceIds = scope === 'memory' ? event?.sourceIds || [] : [...new Set(state.events.flatMap(memory => memory.sourceIds))];
+  const photos = orderedPhotos(sourcesFor(state, sourceIds));
+  const selected = photos.filter(photo => !excluded.includes(photo.id));
+  const title = scope === 'project' ? state.title : event?.title || 'Photo album';
+  useEffect(() => { setExcluded([]); setEntered(false); }, [scope]);
+  return <section className="photo-album">
+    <div className="album-toolbar">
+      <label>Include <select aria-label="Album scope" value={scope} onChange={e => setScope(e.target.value as 'memory' | 'project')}>
+        <option value="memory">This memory</option><option value="project">Whole project</option>
+      </select></label>
+      {photos.length > 0 && <button className="text-button" onClick={() => setExcluded(selected.length === photos.length ? photos.map(photo => photo.id) : [])}>
+        {selected.length === photos.length ? 'Deselect all' : 'Select all'}</button>}
+    </div>
+    {photos.length ? <>
+      <div className="album-launch">
+        <div><span className="eyebrow">Immersive photo album</span><h3>{title}</h3><p>{selected.length} photos selected · Ordered by capture date</p></div>
+        <button className="btn primary" disabled={!selected.length} onClick={() => setEntered(true)}><Compass size={18} /> Enter album <ArrowRight size={16} /></button>
+      </div>
+      <p className="album-instruction">Choose photos for your walk. Open a photo to view its original source.</p>
+      <div className="media-grid">{photos.map(photo => <div className={'media-card album-card' + (excluded.includes(photo.id) ? ' excluded' : '')} key={photo.id}>
+        <button className="album-source" onClick={() => actions.openSource(photo)} aria-label={'View ' + photo.caption}>
+          <div className="media-image"><Thumb project={state.projectId} source={photo} /></div>
+          <div className="media-meta"><strong>{photo.caption}</strong><span>{photo.provenance === 'imagined' ? 'Imagined demo' : 'Original'} · {displayDate(photo.capturedAt, true)}</span></div>
+        </button>
+        <button className="album-check" aria-label={'Include ' + photo.caption} aria-pressed={!excluded.includes(photo.id)}
+          onClick={() => setExcluded(previous => previous.includes(photo.id) ? previous.filter(id => id !== photo.id) : [...previous, photo.id])}>
+          {!excluded.includes(photo.id) && <Check size={16} />}
+        </button>
+      </div>)}</div>
+    </> : <Empty icon={<Image size={29} />} title="Your album starts with a photo"><p>Add photos in Capture, then review and confirm their memory links.</p><button className="btn" onClick={actions.openCapture}>Add photos</button></Empty>}
+    {entered && selected.length > 0 && <Suspense fallback={<div className="notice" role="status">Opening immersive album…</div>}>
+      <WalkableAlbum key={state.projectId + state.session.lens + selected.map(photo => photo.id).join(',')} state={state} photos={selected} title={title} onClose={() => setEntered(false)} />
+    </Suspense>}
+  </section>;
+}
+
 export function Create({ state, event, actions }: { state: Snapshot; event?: Memory; actions: ViewActions }) {
   const [tab, setTab] = useState<'photos' | 'clips' | 'journal'>('photos');
   const [compare, setCompare] = useState(false);
@@ -243,7 +271,7 @@ export function Create({ state, event, actions }: { state: Snapshot; event?: Mem
       <button className={tab === 'journal' ? 'selected' : ''} aria-pressed={tab === 'journal'} onClick={() => setTab('journal')}><BookOpen size={16} /> Journal</button></div>
       <button className="btn compact" aria-pressed={compare} onClick={() => setCompare(!compare)}><Eye size={15} /> {compare ? 'Show grade' : 'Compare ungraded'}</button>
     </div>
-    {tab === 'journal' ? event ? <article className="journal">
+    {tab === 'photos' ? <PhotoAlbum key={state.projectId + event?.id + state.session.lens} state={state} event={event} actions={actions} /> : tab === 'journal' ? event ? <article className="journal">
       <span className="eyebrow">{displayDate(event.startAt)} · {event.placeLabel}</span><h2>{event.title}</h2>
       {event.story && <p>{event.story}</p>}
       {rec.map(item => <blockquote key={item.id}>{item.text}<cite>{item.contributor} · Recollection</cite></blockquote>)}
@@ -251,7 +279,7 @@ export function Create({ state, event, actions }: { state: Snapshot; event?: Mem
       <div className="button-row"><button className="btn" onClick={actions.openRecollection}><Plus size={16} /> Add recollection</button><button className="btn" onClick={actions.openCorrection}>Correct memory</button></div>
     </article> : <Empty icon={<BookOpen size={30} />} title="No journal entries yet" /> :
       media.length ? <MediaGrid state={state} sources={media} open={actions.openSource} /> :
-        <Empty icon={tab === 'photos' ? <Image size={29} /> : <Film size={29} />} title={tab === 'photos' ? 'No photos in this view' : 'No videos in this view'}>
+        <Empty icon={<Film size={29} />} title="No videos in this view">
           <p>Select an item from your camera roll and review it in Capture.</p><button className="btn" onClick={actions.openCapture}>Add a source</button>
         </Empty>}
     <div className="section-heading"><h2>Appearance</h2></div>

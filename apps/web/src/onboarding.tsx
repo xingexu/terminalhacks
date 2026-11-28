@@ -5,7 +5,7 @@ import { VoiceShortcut } from './voice';
 const steps = [
   { title: 'Keep the moment.', text: 'Start a private project, then use Capture to add selected photos, clips, or a voice note.', icon: Camera, image: 'lake', caption: 'Photos · clips · voice notes' },
   { title: 'Give it a place.', text: 'Create a memory with a title, place, and date. In the capture inbox, choose the memory, preview the link, and confirm it.', icon: Check, image: 'desert', caption: 'Capture → review → confirm' },
-  { title: 'Come back to it.', text: 'Explore your photo trail in Memories. Keep recollections in Stories, curate an album in Studio, or render a film in Films.', icon: Compass, image: 'ocean', caption: 'Your memories, connected' },
+  { title: 'Come back to it.', text: 'In Studio, choose photos and select Enter album. Walk with WASD or the on-screen arrows, drag to look, and open nearby photos with E. Keep recollections in Stories or render a film in Films.', icon: Compass, image: 'ocean', caption: 'Your memories, connected' },
   { title: 'Your memories, by voice.', text: 'Open the VoiceOS app from Applications on your Mac. Go to Apps → Custom → Everwhere to check your connection.', icon: AudioLines, image: 'stars', caption: '“What memory is open in Everwhere?”' }
 ];
 
