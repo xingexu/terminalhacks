@@ -27,13 +27,6 @@
   window.addEventListener('blur', resetTilt);
   reducedMotion.addEventListener('change', resetTilt);
 
-  tryLink.addEventListener('pointermove', ({ clientX, clientY, pointerType }) => {
-    if (pointerType === 'touch' || reducedMotion.matches) return;
-    const { left, top } = tryLink.getBoundingClientRect();
-    tryLink.style.setProperty('--glint-x', `${clientX - left}px`);
-    tryLink.style.setProperty('--glint-y', `${clientY - top}px`);
-  });
-
   const photoCanvas = background.querySelector('.ascii-photo');
   const context = photoCanvas.getContext('2d');
   const trailCanvas = background.querySelector('.ascii-trail');

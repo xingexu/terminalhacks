@@ -72,11 +72,11 @@ body.landing-active > .account-dialog {
   height: 44px;
   border: 1px solid #edf3fa50;
   border-radius: 50%;
-  background: #141820ec;
+
   color: #f3f5f8;
   cursor: pointer;
 }
-:where(.landing-layer) .account-nav a:hover, :where(.landing-layer) .account-nav .account-control .account-trigger:hover { background: var(--surface-raised); }
+
 :where(.landing-layer) .account-nav :is(a, button):focus-visible, body.landing-active > .account-dialog :is(input, button):focus-visible {
   outline: 2px solid #c5d9fb;
   outline-offset: 3px;
@@ -84,8 +84,27 @@ body.landing-active > .account-dialog {
 body.landing-active > .account-dialog :is(button, input) { font-family: inherit; }
 body.landing-active > .account-dialog button:enabled { cursor: pointer; }
 :where(body.landing-active > .account-dialog) p { margin-block: 0; }
-:where(.landing-layer) .landing-footer { position: absolute; bottom: max(12px, env(safe-area-inset-bottom)); left: 0; right: 0; display: flex; justify-content: center; gap: clamp(14px, 4vw, 28px); padding-inline: 12px; font: 12px "Everwhere Landing Mono", monospace; }
-:where(.landing-layer) .landing-footer a { display: inline-flex; align-items: center; min-height: 44px; color: #dce5ef; text-decoration: none; text-shadow: 0 1px 6px #000; }
+:where(.landing-layer) .landing-footer {
+  position: absolute;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  width: max-content;
+  padding-inline: 5px;
+  border-radius: 24px;
+  background: rgb(12 16 21 / 92%);
+  font: 14px "Everwhere Landing Mono", monospace;
+}
+:where(.landing-layer) .landing-footer a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding-inline: 12px;
+  color: white;
+  text-decoration: none;
+  border-radius: inherit;
+}
 :where(.landing-layer) .landing-footer a:hover { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
 :where(.landing-layer) .landing-footer a:focus-visible { outline: 2px solid #c5d9fb; outline-offset: 6px; }
 
@@ -244,67 +263,40 @@ body.landing-active > .account-dialog button:enabled { cursor: pointer; }
   min-width: 158px;
   min-height: 56px;
   padding: 12px 27px;
-  overflow: hidden;
-  border: 1px solid rgb(231 244 255 / 35%);
   border-radius: 999px;
-  background:
-    linear-gradient(165deg, #effbff48, #c9e2ff07 39%, #a9c7ff04 63%, #b4dcff3d),
-    rgb(28 40 58 / 20%);
-  -webkit-backdrop-filter: blur(7px) saturate(205%) brightness(145%);
-  backdrop-filter: blur(7px) saturate(205%) brightness(145%);
-  box-shadow: inset 0 1px 2px #ffffffc4, inset 0 -1px 5px #d2efff63,
-    inset 0 0 13px #cde9ff24, 0 9px 30px #020815a6;
-  color: #fff;
+}
+
+.landing-layer :is(.try-link, #landing-account > a, #landing-account .account-trigger) {
+  background: transparent;
+  border: 1px solid rgb(255 255 255 / 75%);
+  color: white;
+  box-shadow: none;
   font-size: 15px;
   font-weight: 600;
-  text-shadow: 0 1px 3px #000, 0 0 12px #020611c9;
   text-decoration: none;
-  transition: border-color .2s ease, box-shadow .2s ease;
 }
 
-:where(.landing-layer) .try-link::before,
-:where(.landing-layer) .try-link::after {
-  position: absolute;
-  z-index: -1;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  content: "";
-  transition: opacity .2s ease;
+.landing-layer #landing-account > a,
+.landing-layer #landing-account .account-control .account-trigger {
+  border: 2px solid white;
+  box-shadow: inset 0 0 0 1.5px #12161c, 0 0 0 1.5px #12161c;
 }
 
-:where(.landing-layer) .try-link::before {
-  background: radial-gradient(97px 58px at var(--glint-x, 24%) var(--glint-y, 0%),
-    #fff9, #e2f1ff46 31%, #a3d1ff16 63%, transparent);
-  opacity: .68;
+#landing-account :is(.account-trigger, a) > svg {
+  width: 22px;
+  height: 22px;
+  stroke-width: 2.4;
+  filter: drop-shadow(1px 0 0 #101318) drop-shadow(-1px 0 0 #101318)
+    drop-shadow(0 1px 0 #101318) drop-shadow(0 -1px 0 #101318);
 }
 
-:where(.landing-layer) .try-link::after {
-  padding: 2px;
-  background: conic-gradient(from 215deg, #9bcaff4d, #bceaffb3, transparent 28%,
-    #fff 43%, #f3e7fff2, transparent 66%, #b8dfffca 82%, #9bcaff4d);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  opacity: .72;
+.landing-layer :is(.try-link, #landing-account > a, #landing-account .account-trigger):hover {
+  border-color: white;
 }
 
-:where(.landing-layer) .try-link:hover,
-:where(.landing-layer) .try-link:focus-visible {
-  border-color: #edfaff9c;
-  box-shadow: inset 0 1px 2px #fff, inset 0 -1px 6px #d3efff9e,
-    inset 0 0 17px #ddf0ff39, 0 8px 26px #a0ceff38;
-}
-
-:where(.landing-layer) .try-link:hover::before,
-:where(.landing-layer) .try-link:hover::after,
-:where(.landing-layer) .try-link:focus-visible::before,
-:where(.landing-layer) .try-link:focus-visible::after { opacity: 1; }
-
-:where(.landing-layer) .try-link:focus-visible {
-  outline: 2px solid #c5d9fb;
-  outline-offset: 5px;
+.landing-layer :is(.try-link, #landing-account > a, #landing-account .account-trigger):focus-visible {
+  outline: 2px solid white;
+  outline-offset: 4px;
 }
 
 @media (max-height: 720px) {
@@ -340,10 +332,7 @@ body.landing-active > .account-dialog button:enabled { cursor: pointer; }
   :where(.landing-layer) .is-tilted .wordmark-object,
   :where(.landing-layer) .wordmark h1,
   :where(.landing-layer) .wordmark-layer,
-  :where(.landing-layer) .is-tilted .wordmark-layer,
-  :where(.landing-layer) .try-link,
-  :where(.landing-layer) .try-link::before,
-  :where(.landing-layer) .try-link::after { transition: none; }
+  :where(.landing-layer) .is-tilted .wordmark-layer { transition: none; }
 
   :where(.landing-layer) .wordmark-object { transform: none; }
   :where(.landing-layer) .is-tilted .wordmark-layer { opacity: 0; }
