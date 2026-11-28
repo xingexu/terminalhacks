@@ -239,8 +239,7 @@ function App() {
       if (requested && nav.some(item => item.id === view)) earlyRoute.current = view as View;
       const last = localStorage.getItem('everwhere-project');
       chooseProject(requested || list.find(item => item.id === last)?.id || list[0]?.id || '');
-      if (!localStorage.getItem('everwhere-tour-v1') || new URLSearchParams(location.search).has('tour')) setDialog({ kind: 'help' });
-      else if (!list.length) setDialog({ kind: 'library' });
+      setDialog({ kind: 'help' });
     }).catch(err => setStartupError((err as Error).message)).finally(() => setLoading(false));
   }, [chooseProject, loadProjects]);
 
@@ -286,7 +285,6 @@ function App() {
 
   const show = (kind: Extract<Dialog, { kind: 'library' | 'settings' | 'voice' | 'capture' | 'memory' | 'recollection' | 'correction' | 'help' | 'world' }>['kind']) => setDialog({ kind });
   const dismiss = () => {
-    if (dialog?.kind === 'help') localStorage.setItem('everwhere-tour-v1', 'done');
     setDialog(null);
   };
   const guarded = (work: () => Promise<unknown>) => { void work().catch(err => setNotice((err as Error).message)); };
@@ -377,8 +375,8 @@ function App() {
           <span className="project-icon"><Images size={17} /></span><span><strong>{item.title}</strong><small>{item.demo ? 'Sample project' : 'Private project'}</small></span><ChevronRight size={17} /></button>)}</div>
         <NameForm handle={async title => { const created = await api<Project>('/projects', { title }); await loadProjects(); chooseProject(created.id); dismiss(); }} /></>}
       {dialog.kind === 'help' && <Tutorial finish={dismiss} canConnectVoice={!!state}
-        connectVoice={() => { localStorage.setItem('everwhere-tour-v1', 'done'); show('voice'); }}
-        create={() => { localStorage.setItem('everwhere-tour-v1', 'done'); show('library'); }} />}
+        connectVoice={() => show('voice')}
+        create={() => show('library')} />}
       {hasMedia && state && dialog.kind === 'settings' && <SettingsPanel state={state} base={base} reload={() => void refresh().catch(() => {})} deleteProject={async () => {
         await api(base, { confirm: true }, 'DELETE'); const list = await loadProjects(); chooseProject(list[0]?.id || ''); dismiss();
       }} />}
