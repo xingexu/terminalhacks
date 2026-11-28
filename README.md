@@ -28,6 +28,8 @@ EVERWHERE_DATA="$PWD/.data/terminal-hacks-demo" PORT=4173 npm start
 
 Open the prepared [Mont-Tremblant memory](http://127.0.0.1:4173/p/193a740f-5e50-47d9-bddd-c9e9f7599dd3/explore). A fresh data directory or browser profile will not contain its data or access cookie.
 
+The website uses one menu bar with **Explore, Remember, Watch and Create**. Camera capture and VoiceOS remain in that bar. Project settings are under the project switcher.
+
 ## Demo flow
 
 1. **Capture and review:** choose a photo or open the computer camera. Camera permission and source consent are explicit; captures wait in the inbox until reviewed.

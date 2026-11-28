@@ -14,7 +14,7 @@ import { integrationManifest } from '../mcp/manifest.mjs';
 import {
   assertCapture, capturePreview, cleanMedia, commitCommand, createEvent, createFilmWorker, gapQuestion, getSnapshot,
   inbox, navigateAnchor, observe, previewCommand, previewFilm, queueFilm, resolveEvent, revokeCapture, startCapture, updateSession,
-  acknowledgeCameraAction, acknowledgeMovement, defaultWalkableWorld, movementSession, navigationGuide, queueCameraAction, queueMovement, walkableWorlds
+  acknowledgeCameraAction, acknowledgeMovement, defaultWalkableWorld, movementSession, navigationGuide, normalizeSessionView, queueCameraAction, queueMovement, walkableWorlds
 } from './service.mjs';
 import { ingest, removeMedia } from '../../packages/media/local.mjs';
 import { normalizeAttribution, worldCredits } from '../../packages/media/attribution.mjs';
@@ -102,7 +102,8 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
   const scope = req => ({ actor: auth(req, req.params.p).actor, project: req.params.p });
   const read = (req, fn) => {
     const { actor, project } = scope(req);
-    const state = store.read(actor, project);
+    let state = store.read(actor, project);
+    if (normalizeSessionView(state)) state = store.update(actor, project, 'session.changed', normalizeSessionView).state;
     return { ok: true, revision: state.revision, data: fn(state, actor, project) };
   };
   const update = (req, kind, fn) => {

@@ -2,17 +2,17 @@
 
 ## Current execution status — November 28, 2026
 
-**This section supersedes the historical milestones and status below.** The active one-hour goal is **11:51:38–12:51:38 America/Toronto**, with the event's separate 4 p.m. cutoff. The selected experience is the approved **Google Maps JavaScript Street View** route through the Mont-Tremblant village and Le Shack interior. Panorama-position transitions are accepted; the rejected photo-box/continuous-mesh experiment is not the demo. Google/photographer attribution stays visible. See [current run and rehearsal instructions](DEMO.md).
+**This section supersedes the historical milestones and status below.** The original one-hour goal window was **11:51:38–12:51:38 America/Toronto**, with the event's separate 4 p.m. cutoff. The selected experience is the approved **Google Maps JavaScript Street View** route through the Mont-Tremblant village and Le Shack interior. Panorama-position transitions are accepted; the rejected photo-box/continuous-mesh experiment is not the demo. Google/photographer attribution stays visible. See [current run and rehearsal instructions](DEMO.md).
 
 | Current gate | Status and evidence |
 |---|---|
-| S01 — Local checks | **PASS:** integration lead verified 186 tests, typecheck and production build. This is local validation, not deployment. |
+| S01 — Local checks | **PASS:** integration lead verified 187 tests, typecheck and production build. This is local validation, not deployment. |
 | S02 — Real route | **PASS:** real browser exterior/interior, keyboard turn and provider-panorama hop; linked-source inspection and authored stop/heading save/reopen verified by lead. |
 | S03 — Native movement | **PARTIAL:** user confirmed a native spoken turn worked after watching the correct tab. Broad native “walk around Le Shack” navigation remains **NOT VERIFIED**. Backend support and browser-only tests are not its substitute. |
 | S04 — Camera | **PARTIAL:** real 640×480 camera preview opened with a browser receipt. No physical photo was captured. Five [synthetic lifecycle checks](DEMO.md) passed, covering denial, retry, cleanup, late permission and owner takeover; these do not establish hardware capture or native speech. |
 | S05 — Reviewed memory input | **NOT VERIFIED LIVE:** native camera capture plus one reviewed spoken recollection/correction, remain required. Existing automated capture/review tests do not pass this gate. |
-| S06 — Responsive presentation | **PASS:** lead verified 390px controls and retained provider credits. |
-| S07 — Companion film | **PASS:** [final film](DEMO.md), 60s, 1920×1080, 30fps H.264; deliberately silent AAC and seven caption cues. Lead verified decode and sampled frames. Generated concepts and actual app recording are labeled distinctly; no native VoiceOS audio is implied. See [film QA](DEMO.md). |
+| S06 — Responsive presentation | **PASS:** lead verified 320px/390px menu, capture and VoiceOS access, plus 390px walkthrough controls and retained provider credits. |
+| S07 — Companion film | **EARLIER REFERENCE CUT ONLY:** [final film](DEMO.md), 60s, 1920×1080, 30fps H.264; deliberately silent AAC and seven caption cues. Lead verified decode and sampled frames. Generated concepts and actual app recording are labeled distinctly; no native VoiceOS audio is implied. It predates the newly merged website and latest nine-scene brief; the revised narrated/music cut is not complete. See [film QA](DEMO.md). |
 | S08 — Complete rehearsal | **NOT VERIFIED:** finish the live native/camera/write sequence and timed five-minute rehearsal. A passing subset is not end-to-end completion. |
 | S09 — Handoff/submission | Runnable data is ignored `repo/.data/terminal-hacks-demo` on port4173; original temporary backup is preserved. Implementation `9da115f` is verified on GitHub; PR #5 is open against main. Deployment, merge and submission remain unverified. |
 

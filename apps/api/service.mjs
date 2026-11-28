@@ -57,7 +57,15 @@ export function defaultWalkableWorld(state) {
     : available.find(world => world.id === state.session.activeWorldId);
 }
 
+// Cached clients may still send the two retired workspace tabs.
+export function normalizeSessionView(state) {
+  if (!['universe', 'archive'].includes(state.session.view)) return false;
+  state.session.view = 'explore';
+  return true;
+}
+
 export function movementSession(state) {
+  normalizeSessionView(state);
   const session = { ...state.session };
   const available = new Set(walkableWorlds(state).map(world => world.id));
   if (session.movement && !available.has(session.movement.worldId)) delete session.movement;
@@ -281,6 +289,7 @@ export function updateSession(state, input) {
   if (input.cameraViewerId === null && input.viewerId !== state.session.cameraViewerId) return state.session;
   const { eventId, view, lens, anchorId } = input;
   const previous = { ...state.session };
+  normalizeSessionView({ session: previous });
   if (eventId !== undefined) {
     check(eventById(state, eventId), 404, 'EVENT_NOT_FOUND', 'That memory is unavailable.');
     if (eventId !== state.session.eventId) state.session.anchorId = state.anchors.find(item => item.eventId === eventId)?.id ?? null;
@@ -289,6 +298,7 @@ export function updateSession(state, input) {
   if (view !== undefined) {
     check(views.includes(view), 400, 'INVALID_MODE', 'Choose an available view.');
     state.session.view = view;
+    normalizeSessionView(state);
   }
   if (lens !== undefined) {
     check(['all', 'originals'].includes(lens), 400, 'INVALID_LENS', 'Choose an available source filter.');
@@ -314,6 +324,7 @@ export function updateSession(state, input) {
     } else check(anchor.sourceIds.length > 0, 404, 'ANCHOR_NOT_FOUND', 'That waypoint is unavailable.');
     Object.assign(state.session, { anchorId, eventId: anchor.eventId });
   }
+  normalizeSessionView(state);
   const activeAnchor = state.anchors.find(item => item.id === state.session.anchorId);
   const activeWorld = state.worlds?.find(item => item.id === activeAnchor?.worldId);
   if (activeWorld?.format === 'tour' && (!activeWorld.approved || activeWorld.revoked || activeWorld.status !== 'ready' || state.session.lens !== 'all')) {

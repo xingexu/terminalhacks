@@ -2,13 +2,17 @@
 
 ## Current build (November 28, 2026)
 
-**Latest execution checkpoint — November 28, 2026.** This status supersedes the earlier GLB/procedural milestones in the historical documents. The integration lead verified **186 passing tests, typecheck and production build**; real browser panorama movement, source inspection, saved stop/heading reopening and the 390px layout passed. The user confirmed a native spoken turn worked. A real **640×480 camera preview opened with a browser receipt**, and a newly uploaded public sample photo was reviewed and attached to the same memory. Five synthetic camera lifecycle checks passed; these are not hardware or native-speech capture proof.
+**Latest execution checkpoint — November 28, 2026.** This status supersedes the earlier GLB/procedural milestones in the historical documents. The integration lead verified **187 passing tests, typecheck and production build**; real browser panorama movement, source inspection, saved stop/heading reopening and the 390px layout passed. The user confirmed a native spoken turn worked. A real **640×480 camera preview opened with a browser receipt**, and a newly uploaded public sample photo was reviewed and attached to the same memory. Five synthetic camera lifecycle checks passed; these are not hardware or native-speech capture proof.
 
-**Still pending:** native broad “walk around Le Shack” navigation, native physical-photo capture, a reviewed spoken recollection/correction, and the complete timed rehearsal. Do not report the whole end-to-end goal as verified until those steps are observed. The finished companion film is linked below.
+**Still pending:** native broad “walk around Le Shack” navigation, native physical-photo capture, a reviewed spoken recollection/correction, and the complete timed rehearsal. Do not report the whole end-to-end goal as verified until those steps are observed. An earlier companion film is linked below; it predates the new website and current video brief.
 
-The active one-hour sprint runs **11:51:38–12:51:38 America/Toronto**. The live experience uses Google Maps JavaScript Street View. Navigation arrows are disabled with supported controls; Google and photographer attribution remain visible. This replaces the rejected photo-box walking experiment. Panorama-to-panorama movement is accepted; this is not a continuous 3D reconstruction.
+The original one-hour sprint window was **11:51:38–12:51:38 America/Toronto**; native rehearsal gates remain open. The live experience uses Google Maps JavaScript Street View. Navigation arrows are disabled with supported controls; Google and photographer attribution remain visible. This replaces the rejected photo-box walking experiment. Panorama-to-panorama movement is accepted; this is not a continuous 3D reconstruction.
 
 The prepared memory is **Winter in Mont-Tremblant**. Its reviewed route has three stops: **Village terrace → Le Shack entrance → Inside Le Shack**, with return routes. Le Shack’s own published virtual tour supplies the real interior coverage. Reference images and public place context are not evidence of the user’s trip or its date.
+
+### Integrated website
+
+The team’s streamlined website from `origin/main` (`130ec1f`) is integrated with the existing API, capture/review and Street View/VoiceOS paths. Its single menu exposes **Explore, Remember, Watch and Create**; project settings live in the project switcher. Cached `universe` and `archive` requests resolve to Explore on both API and browser paths. Reload preserves the chosen source lens. The older Higgsfield generation UI was not restored.
 
 ### Run locally
 
@@ -38,11 +42,11 @@ VoiceOS runs the absolute Node command pointing at `apps/mcp/index.mjs`. The pri
 - User confirmed native spoken turn worked after correcting the tab they were watching.
 - Real 640×480 browser camera preview and its receipt passed. A new credited public photo was uploaded, reviewed and saved. Five synthetic permission/retry/cleanup/late-resolution/ownership checks passed separately.
 - Broader native natural-language navigation, physical-photo capture/review, and a reviewed spoken write remain separate rehearsal gates until observed.
-- Integration lead verified 186 passing tests, typecheck and production build. These checks do not establish native speech or physical-photo capture.
+- Integration lead verified 187 passing tests, typecheck and production build. These checks do not establish native speech or physical-photo capture.
 
 ### Sixty-second companion presentation
 
-The companion video is produced separately and is not part of this repository. On the prepared Mac, the finished file is `../research/everwhere/companion-film/everwhere-companion-60s.mp4` relative to this repository. Open it with:
+The earlier companion video is produced separately and is not part of this repository. It is a reference cut, not completion of the team’s latest nine-scene brief; it uses the previous UI and has no narration/music. The current brief requests skiing plus two still-unselected examples and a collaboration sequence. Record real working UI; label any generated or unsupported capability as a concept. On the prepared Mac, the finished file is `../research/everwhere/companion-film/everwhere-companion-60s.mp4` relative to this repository. Open it with:
 
 ```sh
 open "../research/everwhere/companion-film/everwhere-companion-60s.mp4"
@@ -68,3 +72,7 @@ The previously recorded official rules and schedule specify a working web app, a
 ### Final integration check — November28,12:40 Toronto
 
 The real browser accepted a new Ccheck7 public-reference photo with credits, previewed and confirmed its memory link, retained it after reload, rejected generic/ambiguous place descriptions, and opened Le Shack entrance from the supplied description. A clearly labeled demo note was previewed and confirmed through actual MCP; this was a tool-driven check, not native speech. Native Fable5.2 reviewed the merged viewer/camera lifecycle and found no blocking regression. The latest team UI is retained while the old external video-generation API pipeline is removed.
+
+### Website integration verification
+
+All four menu views, project settings, capture inputs, ambiguous/unknown place errors, entrance/interior/return, 320px and 390px layouts, source-lens persistence and recovery in all four views passed in actual Playwright-driven Chrome. Keyboard movement changed a real provider panorama and preserved the authored stop/heading on reopen. Direct paired MCP turn/forward/back/stop returned matching browser completion receipts; these were not spoken commands. Native Claude reviewed the merge; both findings (filter recovery and first-write legacy navigation preservation) are fixed and checked. Full suite: 187 tests; typecheck/build pass.

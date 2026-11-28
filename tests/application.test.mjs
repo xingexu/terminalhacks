@@ -168,13 +168,45 @@ test('revision conflicts, exact replay, independent story accounts, undo, and du
     await request(p + '/session', { view, eventId: 'e-lake' });
     const fresh = await snap();
     assert.equal(fresh.session.eventId, 'e-lake');
-    assert.equal(fresh.session.view, view);
+    assert.equal(fresh.session.view, view === 'archive' ? 'explore' : view);
     assert.equal(fresh.events[0].placeLabel, 'A lakeside pier');
   }
   assert.deepEqual((await snap()).media, original);
   await request(p + '/commands', await propose(ctx, 'undo', 'e-lake', { revisionToUndo: 3 }));
   assert.equal((await snap()).recollections.length, 1);
   assert.equal((await snap()).revision, 4);
+});
+
+test('retired views normalize consistently without changing lens or accepting unknown modes', async t => {
+  const { dir, p, demo, request, snap } = await setup(t);
+  const db = new DatabaseSync(join(dir, 'everwhere.sqlite'));
+  t.after(() => db.close());
+  const readState = () => JSON.parse(db.prepare('SELECT state FROM projects WHERE id = ?').get(demo.id).state);
+  const { token } = await request(p + '/pairing', { confirm: true });
+  const voice = (name, body, status = 200) => request(p + '/voice/' + name, body,
+    { cookie: '', headers: { Authorization: 'Bearer ' + token }, status });
+  for (const alias of ['universe', 'archive']) {
+    const legacy = readState();
+    legacy.session.view = alias;
+    legacy.session.lens = 'originals';
+    legacy.session.anchorNavigationId = 'legacy-navigation';
+    db.prepare('UPDATE projects SET state = ? WHERE id = ?').run(JSON.stringify(legacy), demo.id);
+    assert.equal((await voice('switch_view', { view: alias })).anchorNavigationId, 'legacy-navigation');
+    db.prepare('UPDATE projects SET state = ? WHERE id = ?').run(JSON.stringify(legacy), demo.id);
+    const actual = alias === 'universe' ? (await snap()).session : await voice('get_context', {});
+    assert.equal(actual.view, 'explore');
+    assert.equal(actual.lens, 'originals');
+    assert.equal(readState().session.view, 'explore');
+    assert.equal(readState().session.lens, 'originals');
+    const selected = await voice('switch_view', { view: alias });
+    assert.equal(selected.view, 'explore');
+    assert.equal(selected.lens, 'originals');
+    assert.equal((await snap()).session.view, 'explore');
+  }
+  const before = readState();
+  assert.equal((await request(p + '/session', { view: 'unknown' }, { status: 400 })).code, 'INVALID_MODE');
+  assert.equal((await voice('switch_view', { view: 'unknown' }, 400)).code, 'INVALID_TOOL_INPUT');
+  assert.deepEqual(readState(), before);
 });
 
 test('MCP stdio exposes tools before setup and rejects missing or unsafe configuration without API access', async t => {
@@ -255,8 +287,8 @@ test('MCP stdio uses the real API, applies a correction and recollection, and pu
     await request(p + '/session', { cameraViewerId: null, viewerId: 'mcp-camera-test' });
     assert.ok(tools.tools.find(tool => tool.name === 'switch_view').inputSchema.properties.view.enum.includes('universe'));
     await voice('switch_view', { view: 'universe' });
-    assert.equal((await snap()).session.view, 'universe');
-    assert.equal((await voice('get_context')).data.view, 'universe');
+    assert.equal((await snap()).session.view, 'explore');
+    assert.equal((await voice('get_context')).data.view, 'explore');
     await voice('navigate_anchor', { anchorId: 'a-boats' });
     const navigation = (await snap()).session;
     assert.equal(navigation.view, 'explore');
@@ -271,6 +303,8 @@ test('MCP stdio uses the real API, applies a correction and recollection, and pu
     assert.equal((await snap()).session.view, 'explore');
     assert.equal((await snap()).session.anchorNavigationId, repeatedNavigationId);
     await voice('switch_view', { view: 'universe' });
+    assert.equal((await snap()).session.anchorNavigationId, repeatedNavigationId);
+    await voice('switch_view', { view: 'remember' });
     assert.equal((await snap()).session.anchorNavigationId, null);
     await voice('switch_view', { view: 'explore' });
     assert.ok((await request(p + '/pairing')).lastSeen > 0);
