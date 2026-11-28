@@ -25,9 +25,8 @@
   from { clip-path: inset(0 0 100% 0); }
   to { clip-path: inset(0 0 0 0); }
 }
-.hero-img:not(.hero-reveal), .universe-cover-img, .film-preview > img:not(.film-reveal) { transition: opacity 320ms ease, filter 420ms ease; }
-.universe-feature-media, .hero, .film-stage { background: #0c0c0c; }
-.universe-feature-media { display: grid; place-items: center; }
+.hero-img:not(.hero-reveal), .film-preview > img:not(.film-reveal) { transition: opacity 320ms ease, filter 420ms ease; }
+.hero, .film-stage { background: #0c0c0c; }
 .lens-notice { margin-bottom: 22px; }
 /* A storyboard that is playing, or a finished film, shows the photograph itself. */
 .view-watch:is(.is-film-ready, .is-storyboard-playing) .film-preview > .ascii-image { opacity: 0; animation: none; transition: opacity 320ms ease; }
@@ -41,7 +40,7 @@
 .tutorial-image::after { background: linear-gradient(transparent 35%, #0a0a0ae6); }
 
 /* Drawings, spinner and the brand mark. */
-.ascii-art, .ascii-map, .ascii-spinner { font-family: var(--mono); font-weight: 400; font-variant-ligatures: none; }
+.ascii-art, .ascii-spinner { font-family: var(--mono); font-weight: 400; font-variant-ligatures: none; }
 .ascii-art {
   display: inline-block;
   margin: 0;
@@ -62,19 +61,17 @@
 .thumb-empty .ascii-art { font-size: 8px; line-height: 1.05; color: var(--quiet); }
 
 /* Labels, dates and counts are set in the landing page's monospace. */
-.eyebrow, .private-label, .project-details, .universe-meta, .hero-location, .glass-pill, .scene-sample,
-.universe-media-label, .timeline-date, .timeline-place, .media-meta span, .film-caption span,
-.section-heading > .muted, .result-row > span, .inbox-title span, .album-launch p, .album-instruction,
-.album-toolbar label, .tutorial-step, .tutorial-image > span, .pending-count, .map-caption, .waypoint,
-.hero-controls-row > span, .app-frame kbd, .grade-card small {
+.eyebrow, .project-details, .hero-location, .glass-pill, .scene-sample, .timeline-date, .timeline-place,
+.media-meta span, .film-caption span, .section-heading > .muted, .result-row > span, .inbox-title span,
+.album-launch p, .album-instruction, .album-toolbar label, .tutorial-step, .tutorial-image > span, .pending-count,
+.waypoint, .hero-controls-row > span, .app-frame kbd, .grade-card small {
   font-family: var(--mono);
   font-weight: 400;
 }
 .eyebrow { letter-spacing: .09em; font-size: .68rem; }
 .project-kicker { letter-spacing: .09em; }
 .project-kicker::before { content: '//'; color: var(--quiet); }
-.project-details, .universe-meta, .hero-location { font-size: .76rem; }
-.universe-feature-copy .universe-meta { max-width: none; }
+.project-details, .hero-location { font-size: .76rem; }
 .timeline-date { letter-spacing: .02em; }
 .timeline-place { font-size: .68rem; }
 .glass-pill { font-size: .72rem; }
@@ -90,7 +87,7 @@
 
 /* Boxes are drawn the way a terminal draws them: dashed rules with a + at each corner. */
 .surface, .empty, .journal, .album-launch { position: relative; border-style: dashed; border-color: #3e3e3b; }
-:is(.surface, .empty, .journal, .album-launch, .universe-feature, .map-canvas)::before {
+:is(.surface, .empty, .journal, .album-launch)::before {
   --tick: #8a8881;
   content: '';
   position: absolute;
@@ -108,66 +105,10 @@
     linear-gradient(var(--tick), var(--tick)) right 4px bottom 0 / 1px 9px;
   background-repeat: no-repeat;
 }
-.universe-feature, .map-canvas { position: relative; }
-.map-canvas { overflow: visible; }
 .page-section { border-top-style: dashed; border-top-color: #3e3e3b; }
 .story-prompt { background: var(--rail); }
-
-/* The switch reads as a bracketed character. */
-.switch-track, .lens-active .switch-track {
-  width: auto;
-  height: auto;
-  flex: none;
-  border-radius: 0;
-  background: none;
-  font: 400 .8rem/1 var(--mono);
-  white-space: pre;
-}
-.switch-track i { display: none; }
-.switch-track::before { content: '[ ]'; color: var(--quiet); }
-.lens-active .switch-track::before { content: '[x]'; color: var(--text); }
 .active-dot { width: auto; height: auto; top: 8px; right: 9px; border-radius: 0; background: none; font: 400 .68rem/1 var(--mono); color: var(--text); }
 .active-dot::before { content: '[*]'; }
-
-/* The archive map is a character grid; its stops are bracketed numbers. */
-.map-canvas { background: #0f0f0f; }
-.ascii-map {
-  position: absolute;
-  inset: 0;
-  margin: 0;
-  overflow: hidden;
-  font-size: 12px;
-  line-height: 16px;
-  letter-spacing: 0;
-  color: #77756f;
-  white-space: pre;
-  user-select: none;
-}
-.map-point {
-  width: 44px;
-  height: 44px;
-  border: 0;
-  border-radius: 50%;
-  background: none;
-  font: 400 .82rem var(--mono);
-  color: var(--text);
-}
-.map-point > span {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  margin: auto;
-  border: 1px solid var(--line-strong);
-  border-radius: 50%;
-  background: #0f0f0f;
-}
-.map-point.selected { background: none; }
-.map-point.selected > span { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
-.map-point:hover > span { border-color: var(--text); }
-.map-north { font: 400 .76rem var(--mono); color: var(--text-muted); gap: 4px; background: #0f0f0f; padding: 0 4px; }
-.map-caption { color: var(--text-muted); font-size: .72rem; display: flex; flex-wrap: wrap; gap: 4px 18px; justify-content: space-between; }
-.map-legend .btn > span { font-family: var(--mono); font-weight: 400; }
 
 /* Tutorial steps count in characters. */
 .tutorial-count { font-family: var(--mono); letter-spacing: .04em; white-space: pre; }
@@ -181,7 +122,6 @@
 @media (max-width: 600px) {
   .glass-pill, .scene-sample { font-size: .64rem; }
   .ascii-art { font-size: .66rem; }
-  .ascii-map { font-size: 10px; line-height: 14px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ascii-image[data-state="ready"] { animation: none; }

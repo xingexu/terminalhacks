@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
-  Archive as ArchiveIcon, ArrowDownToLine, ArrowRight, AudioLines, BookOpen, Box, Camera, ChevronDown, ChevronRight,
-  CircleHelp, Compass, Feather, Film, Fingerprint, Globe, Images, LayoutGrid, LockKeyhole, MapPin, Mic, Plus, Settings, Users, X
+  ArrowDownToLine, ArrowRight, AudioLines, BookOpen, Box, Camera, ChevronDown, ChevronRight,
+  CircleHelp, Compass, Feather, Film, Fingerprint, Images, LockKeyhole, MapPin, Mic, Plus, Settings, X
 } from 'lucide-react';
 import '@fontsource-variable/dm-sans';
 import '@fontsource/instrument-serif/400.css';
@@ -14,31 +14,19 @@ import { Tutorial } from './onboarding';
 import { VoicePanel } from './voice';
 import { Capture } from './capture';
 import { GenerationForm } from './generation';
-import { Archive, Create, Empty, Explore, Remember, Timeline, Watch, type ViewActions } from './views';
-import { art, AsciiArt, AsciiImage, AsciiSpinner } from './ascii';
-import { updateScenePointer } from './scene';
+import { Create, Explore, Remember, Watch, type ViewActions } from './views';
+import { art, AsciiArt, AsciiSpinner } from './ascii';
 import {
-  api, displayDate, isVisual, localDateTime, sourcesFor, sourceURL, type Command, type Lens, type Memory, type Observation, type Project, type Proposal,
+  api, displayDate, isVisual, localDateTime, sourceURL, type Command, type Memory, type Observation, type Project, type Proposal,
   type Session, type Snapshot, type Source, type View
 } from './model';
 
 const nav = [
-  { id: 'universe', name: 'Universe', icon: LayoutGrid },
-  { id: 'remember', name: 'Remember', icon: BookOpen },
   { id: 'explore', name: 'Explore', icon: Compass },
+  { id: 'remember', name: 'Remember', icon: BookOpen },
   { id: 'watch', name: 'Watch', icon: Film },
-  { id: 'create', name: 'Create', icon: Feather },
-  { id: 'archive', name: 'Archive', icon: ArchiveIcon }
+  { id: 'create', name: 'Create', icon: Feather }
 ] as const;
-
-// The menu bar's top-level sections. Only "mine" has a backend in this build.
-const sections = [
-  { id: 'mine', name: 'My memories', icon: Images },
-  { id: 'shared', name: 'Shared memories', icon: Users },
-  { id: 'community', name: 'Community', icon: Globe }
-] as const;
-type Section = typeof sections[number]['id'];
-const sectionFromHash = (): Section => sections.find(item => item.id !== 'mine' && '#' + item.id === location.hash)?.id ?? 'mine';
 
 type Dialog =
   { kind: 'library' | 'settings' | 'voice' | 'capture' | 'memory' | 'recollection' | 'correction' | 'help' | 'world' } |
@@ -69,45 +57,6 @@ function Modal({ title, onClose, children, wide = false }: { title: string; onCl
   </dialog>;
 }
 
-function SectionPage({ title, drawing, heading, back, children }: { title: string; drawing: string; heading: string; back: () => void; children: ReactNode }) {
-  return <div className="main-content section-page">
-    <div className="project-head"><div><p className="eyebrow project-kicker">Not available yet</p><h1>{title}</h1></div></div>
-    <Empty icon={<AsciiArt art={drawing} />} title={heading}>{children}
-      <button className="btn" onClick={back}><Images size={16} /> Back to my memories</button></Empty>
-  </div>;
-}
-
-function Universe({ state, event, actions }: { state: Snapshot; event?: Memory; actions: ViewActions }) {
-  if (!event) return <Empty icon={<AsciiArt art={art.universe} />} title="Start with one memory">
-    <p>Give a moment a name, then collect the photos, clips, or stories that bring it back.</p>
-    <button className="btn primary" onClick={actions.openMemory}><Plus size={17} /> Create a memory</button>
-  </Empty>;
-  const source = sourcesFor(state, event.sourceIds).find(isVisual);
-  const cover = source && sourceURL(state.projectId, source.id, '?variant=thumb');
-  return <div className="universe">
-    <section className="universe-feature" aria-labelledby="featured-memory">
-      <div className="universe-feature-media" onPointerMove={cover ? updateScenePointer : undefined}>
-        {cover ? <>
-          <AsciiImage key={cover} src={cover} />
-          <img className="universe-cover-img" src={cover} alt={source?.caption ?? ''} />
-          <img className="hero-reveal" src={cover} alt="" aria-hidden="true" />
-        </> : <AsciiArt art={art.photo} />}
-        {source?.provenance === 'imagined' && <span className="universe-media-label">Illustrated sample</span>}
-      </div>
-      <div className="universe-feature-copy">
-        <h2 id="featured-memory">{event.title}</h2>
-        <p className="universe-meta"><MapPin size={15} aria-hidden="true" /> {event.placeLabel}{event.startAt && <> · {displayDate(event.startAt)}</>}</p>
-        {event.story && <p className="universe-description">{event.story}</p>}
-        <div className="universe-actions">
-          <button className="btn primary" onClick={() => actions.select({ eventId: event.id, view: 'explore' })}><Compass size={17} /> Open memory</button>
-          <button className="btn" onClick={actions.openMemory}><Plus size={16} /> New memory</button>
-        </div>
-      </div>
-    </section>
-    <div className="universe-collections"><Timeline state={state} event={event} actions={actions} /></div>
-  </div>;
-}
-
 function EventForm({ event, name, onSubmit }: { event?: Memory; name: string; onSubmit: (body: Record<string, unknown>) => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -118,12 +67,9 @@ function EventForm({ event, name, onSubmit }: { event?: Memory; name: string; on
     const place = String(form.get('place') || '').trim();
     const date = String(form.get('date') || '');
     const story = String(form.get('story') || '').trim();
-    const lat = String(form.get('lat') || '');
-    const lon = String(form.get('lon') || '');
     setBusy(true);
     setError('');
     try {
-      if (!event && Boolean(lat) !== Boolean(lon)) throw new Error('Enter both latitude and longitude.');
       const originalClock = localDateTime(event?.startAt);
       const startAt = date === originalClock && event ? event.startAt : date ? new Date(date).toISOString() : null;
       if (event) {
@@ -132,7 +78,7 @@ function EventForm({ event, name, onSubmit }: { event?: Memory; name: string; on
         if (!Object.keys(patch).length) throw new Error('Change a field before previewing the correction.');
         await onSubmit({ patch });
       } else {
-        await onSubmit({ title, placeLabel: place || undefined, startAt, gps: lat && lon ? [Number(lat), Number(lon)] : null });
+        await onSubmit({ title, placeLabel: place || undefined, startAt, gps: null });
       }
     } catch (err) { setError((err as Error).message); }
     finally { setBusy(false); }
@@ -141,9 +87,7 @@ function EventForm({ event, name, onSubmit }: { event?: Memory; name: string; on
     <label>Memory title<input name="title" required maxLength={180} defaultValue={event?.title} placeholder="A moment worth remembering" /></label>
     <div className="form-columns"><label>Place<input name="place" maxLength={180} defaultValue={event?.placeLabel} placeholder="Unknown location" /></label>
       <label>Date and time<input type="datetime-local" name="date" defaultValue={localDateTime(event?.startAt)} /></label></div>
-    {event ? <label>Story<textarea name="story" rows={4} maxLength={4000} defaultValue={event.story} /></label> :
-      <details><summary>Optional map location</summary><div className="form-columns"><label>Latitude<input name="lat" type="number" step="any" min="-90" max="90" /></label>
-        <label>Longitude<input name="lon" type="number" step="any" min="-180" max="180" /></label></div></details>}
+    {event && <label>Story<textarea name="story" rows={4} maxLength={4000} defaultValue={event.story} /></label>}
     {error && <p className="form-error" role="alert">{error}</p>}
     <button className="btn primary self-start" disabled={busy}>{name} <ArrowRight size={16} /></button>
   </form>;
@@ -271,12 +215,10 @@ function App() {
   const [items, setItems] = useState<Observation[]>([]);
   const [notice, setNotice] = useState('');
   const [startupError, setStartupError] = useState('');
-  const [map, setMap] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [section, setSection] = useState<Section>(sectionFromHash);
   const ref = useRef('');
   const earlyRoute = useRef<View | null>(null);
-  const tabs = useRef<HTMLDivElement>(null);
+  const tabs = useRef<HTMLElement>(null);
   const base = '/projects/' + project;
   const current = state?.events.find(item => item.id === state.session.eventId) ?? state?.events[0];
 
@@ -325,7 +267,7 @@ function App() {
       try {
         const view = earlyRoute.current;
         earlyRoute.current = null;
-        if (view) await api(base + '/session', { view });
+        await api(base + '/session', { lens: 'all', ...(view && { view }) });
         await refresh();
       } catch (err) { if (!cancelled) setStartupError((err as Error).message); }
     };
@@ -339,17 +281,13 @@ function App() {
   }, [project, base, refresh]);
 
   useEffect(() => {
-    if (section !== 'mine') {
-      history.replaceState(null, '', '/app#' + section);
-      document.title = 'Everwhere · ' + sections.find(item => item.id === section)!.name;
-      return;
-    }
     if (!state || state.projectId !== project) return;
-    const target = '/p/' + project + '/' + state.session.view;
-    if (location.pathname !== target || location.hash) history.replaceState(null, '', target);
+    // Sessions saved before Universe and Archive were removed fall back to Explore.
+    const target = '/p/' + project + '/' + (nav.find(item => item.id === state.session.view) ?? nav[0]).id;
+    if (location.pathname !== target) history.replaceState(null, '', target);
     document.title = 'Everwhere · ' + state.title;
-  }, [project, state, section]);
-  // On a phone the view tabs scroll sideways; keep the current one in sight without moving the page.
+  }, [project, state]);
+  // On a phone the menu scrolls sideways; keep the current one in sight without moving the page.
   const activeView = state?.session.view;
   useEffect(() => {
     const bar = tabs.current;
@@ -357,7 +295,7 @@ function App() {
     if (!bar || !active) return;
     if (active.offsetLeft < bar.scrollLeft) bar.scrollLeft = active.offsetLeft - 8;
     else if (active.offsetLeft + active.offsetWidth > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = active.offsetLeft + active.offsetWidth - bar.clientWidth + 8;
-  }, [activeView, section]);
+  }, [activeView]);
   useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(''), 5500);
@@ -370,13 +308,7 @@ function App() {
   };
   const guarded = (work: () => Promise<unknown>) => { void work().catch(err => setNotice((err as Error).message)); };
   const select = (input: Partial<Session>) => guarded(async () => { await api(base + '/session', input); await refresh(); });
-  const openUniverse = () => select({ view: 'universe' });
-  const openSection = (next: Section) => {
-    setSection(next);
-    window.scrollTo(0, 0);
-  };
   const openView = (view: View) => {
-    setMap(false);
     select({ view });
     window.scrollTo(0, 0);
   };
@@ -390,8 +322,6 @@ function App() {
     select,
     openSource: source => setDialog({ kind: 'source', source }),
     openCapture: () => show('capture'),
-    openVoice: () => show('voice'),
-    openMap: () => { setMap(true); select({ view: 'archive' }); },
     openMemory: () => show('memory'),
     openCorrection: () => show('correction'),
     openRecollection: () => show('recollection'),
@@ -402,15 +332,12 @@ function App() {
     }),
     approve: job => guarded(() => preview('artifact.approve', { artifactId: job.id, dependencyHash: job.inputHash })),
     setGrade: preset => guarded(() => preview('profile.set', { preset })),
-    openSettings: () => show('settings'),
     openWorld: () => show('world'),
-    openGeneration: () => { if (current) setDialog({ kind: 'generate', eventId: current.id }); },
-    undo: () => { if (state?.undo) guarded(() => preview('undo', { revisionToUndo: state.undo!.revision }, state.undo!.targetId)); }
+    openGeneration: () => { if (current) setDialog({ kind: 'generate', eventId: current.id }); }
   };
 
   const currentNav = nav.find(item => item.id === state?.session.view) ?? nav[0];
   const screen = currentNav.id;
-  const universe = screen === 'universe';
   const currentAnchor = state?.anchors.find(item => item.id === state.session.anchorId && item.eventId === current?.id);
   const hasMedia = state && !!project;
   const captureOpen = dialog?.kind === 'capture' || (dialog?.kind === 'confirm' && !!dialog.fromCapture);
@@ -427,29 +354,18 @@ function App() {
   return <div className="app-frame">
     <a className="skip-link" href="#experience">Skip to experience</a>
     <header className="menubar">
-      <a className="brand" href="/" aria-label="Everwhere home"><span className="brand-mark"><AsciiArt art={art.mark} /></span><span>everwhere<span className="brand-period">.</span></span></a>
-      <nav className="menu" aria-label="Sections">{sections.map(({ id, name, icon: Icon }) =>
-        <button key={id} className={section === id ? 'active' : ''} aria-current={section === id ? 'page' : undefined} onClick={() => openSection(id)}><Icon size={17} />{name}</button>)}</nav>
+      <a className="brand" href="/" aria-label="Everwhere home"><span className="brand-mark"><AsciiArt art={art.mark} /></span><span className="brand-name">everwhere<span className="brand-period">.</span></span></a>
+      <button className="workspace-project" onClick={() => show('library')} aria-label={'Switch project, current project ' + (state?.title || 'Projects')}><span className="project-icon"><Images size={17} /></span><strong>{state?.title || 'Projects'}</strong><ChevronDown size={15} /></button>
+      <nav className="menu" aria-label="Views" ref={tabs}>{nav.map(({ id, name, icon: Icon }) =>
+        <button key={id} className={screen === id ? 'active' : ''} aria-current={screen === id ? 'page' : undefined}
+          onClick={() => openView(id)} disabled={!state}><Icon size={17} />{name}</button>)}</nav>
       <div className="menu-actions">
-        {section === 'mine' && <span className="private-label"><LockKeyhole size={14} /> Private</span>}
         <button className="btn compact subtle menu-voice" onClick={() => show('voice')} disabled={!state} aria-label="Connect VoiceOS"><AudioLines size={16} /> <span>VoiceOS</span></button>
-        <button className="btn top-capture" onClick={() => { setSection('mine'); state ? show('capture') : show('library'); }}><Camera size={17} /> <span>{state ? <>Capture<span className="capture-word"> memory</span></> : 'Projects'}</span>{items.length > 0 && <span className="pending-count" aria-label={items.length + ' pending sources'}>{items.length}</span>}</button>
+        <button className="btn top-capture" onClick={() => state ? show('capture') : show('library')}><Camera size={17} /> <span>{state ? <>Capture<span className="capture-word"> memory</span></> : 'Projects'}</span>{items.length > 0 && <span className="pending-count" aria-label={items.length + ' pending sources'}>{items.length}</span>}</button>
         <button className="icon-btn" onClick={() => show('help')} aria-label="Open tutorial" title="Open tutorial"><CircleHelp size={18} /></button>
       </div>
     </header>
-    <main className={'main screen-' + (section === 'mine' ? screen : section)} id="experience" tabIndex={-1}>
-      {section === 'shared' && <SectionPage title="Shared memories" drawing={art.shared} heading="Nothing is shared in this build" back={() => openSection('mine')}>
-        <p>Every Everwhere project is private to this browser. Sharing is not built yet; this is where memories other people invite you into would appear.</p></SectionPage>}
-      {section === 'community' && <SectionPage title="Community" drawing={art.community} heading="Community is not built yet" back={() => openSection('mine')}>
-        <p>This is where collections people choose to publish would appear. Nothing leaves your private projects today.</p></SectionPage>}
-      {section === 'mine' && <nav className="subbar" aria-label="My memories">
-        <button className="workspace-project" onClick={() => show('library')} aria-label={'Switch project, current project ' + (state?.title || 'Projects')}><span className="project-icon"><Images size={17} /></span><span><strong>{state?.title || 'Memory projects'}</strong><small>{state?.demo ? 'Illustrated sample' : 'Private project'}</small></span><ChevronDown size={15} /></button>
-        <div className="view-tabs" ref={tabs}>{nav.map(({ id, name, icon: Icon }) =>
-          <button key={id} className={screen === id ? 'active' : ''} aria-current={screen === id ? 'page' : undefined}
-            onClick={() => id === 'universe' ? openUniverse() : openView(id)} disabled={!state}><Icon size={17} />{name}</button>)}</div>
-        <button className="icon-btn" onClick={() => show('settings')} disabled={!state} aria-label="Project settings" title="Project settings"><Settings size={18} /></button>
-      </nav>}
-      {section === 'mine' && <>
+    <main className={'main screen-' + screen} id="experience" tabIndex={-1}>
       {startupError && <div className="notice main-notice" role="alert">{startupError}<button className="btn compact" onClick={() => location.reload()}>Retry</button></div>}
       {!startupError && (loading || (!state && project)) && <div className="load-state" role="status"><AsciiSpinner /> Opening your universe…</div>}
       {!loading && !state && !project && <div className="load-state"><AsciiArt art={art.universe} /><h1>Every life is a world.</h1><button className="btn primary" onClick={() => show('library')}><Plus size={17} /> Create a project</button></div>}
@@ -461,27 +377,22 @@ function App() {
             {current && <span><MapPin size={14} />{state.demo ? 'The Italian Alps' : current.placeLabel}</span>}
             {!!state.events.length && <><span className="dot-separator" /><span>{state.events.length} {state.events.length === 1 ? 'memory' : 'memories'}</span></>}
           </div></div>
-          <button className={'btn lens-toggle' + (state.session.lens === 'originals' ? ' lens-active' : '')}
-            aria-pressed={state.session.lens === 'originals'} onClick={() => select({ lens: (state.session.lens === 'originals' ? 'all' : 'originals') as Lens })}>
-            <Fingerprint size={16} /><span>Originals only</span><span className="switch-track"><i /></span></button>
         </div>
         {lensHidesAll && <div className="notice lens-notice" role="status"><Fingerprint size={18} /><div><strong>Originals only is on</strong>
           <p>{hiddenByLens} {hiddenByLens === 1 ? 'picture in this memory is illustrated or imagined, so it is' : 'pictures in this memory are illustrated or imagined, so they are'} hidden.</p></div>
           <button className="btn compact" onClick={() => select({ lens: 'all' })}>Show all pictures</button></div>}
-        {screen === 'universe' && <Universe state={state} event={current} actions={actions} />}
         {screen === 'explore' && <Explore state={state} event={current} actions={actions} />}
         {screen === 'watch' && <Watch state={state} event={current} actions={actions} />}
         {screen === 'create' && <Create state={state} event={current} actions={actions} />}
         {screen === 'remember' && <Remember state={state} event={current} actions={actions} />}
-        {screen === 'archive' && <Archive state={state} event={current} actions={actions} initialMap={map} />}
       </div>}
-      </>}
     </main>
     {notice && <aside className="toast" role="status">{notice}<button className="icon-btn" onClick={() => setNotice('')} aria-label="Dismiss message"><X size={17} /></button></aside>}
     {dialog && <Modal key={captureOpen ? 'capture' : dialog.kind} title={sectionTitles[dialog.kind]} onClose={dismiss} wide={captureOpen || dialog.kind === 'source'}>
       {dialog.kind === 'library' && <><p className="muted">Open a project or start a private collection.</p>
         <div className="library-list">{projects.map(item => <button className="workspace-project" key={item.id} onClick={() => { if (item.id !== project) chooseProject(item.id); dismiss(); }}>
           <span className="project-icon"><Images size={17} /></span><span><strong>{item.title}</strong><small>{item.demo ? 'Sample project' : 'Private project'}</small></span><ChevronRight size={17} /></button>)}</div>
+        {state && <button className="btn compact subtle self-start library-settings" onClick={() => show('settings')}><Settings size={15} /> Settings for {state.title}</button>}
         <NameForm handle={async title => { const created = await api<Project>('/projects', { title }); await loadProjects(); chooseProject(created.id); dismiss(); }} /></>}
       {dialog.kind === 'help' && <Tutorial finish={dismiss} canConnectVoice={!!state}
         connectVoice={() => show('voice')}
