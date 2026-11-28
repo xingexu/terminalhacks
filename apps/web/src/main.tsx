@@ -10,7 +10,7 @@ import '@fontsource/instrument-serif/400-italic.css';
 import './style.css';
 import './experience.css';
 import './ascii.css';
-import { Tutorial } from './onboarding';
+import { Tour, Welcome, type TourAction } from './onboarding';
 import { VoicePanel } from './voice';
 import { Capture } from './capture';
 import { GenerationForm } from './generation';
@@ -216,6 +216,7 @@ function App() {
   const [notice, setNotice] = useState('');
   const [startupError, setStartupError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [tour, setTour] = useState<number | null>(null);
   const ref = useRef('');
   const earlyRoute = useRef<View | null>(null);
   const tabs = useRef<HTMLElement>(null);
@@ -339,6 +340,14 @@ function App() {
     openGeneration: () => { if (current) setDialog({ kind: 'generate', eventId: current.id }); }
   };
 
+  // The tour's buttons press the same controls the user would.
+  const runTour = (action: TourAction) => {
+    if (action === 'library' || !state) show('library');
+    else if (action === 'film') actions.render();
+    else if (action === 'generate') current ? actions.openGeneration() : show('memory');
+    else if (action === 'recollection') show(current ? 'recollection' : 'memory');
+    else show(action);
+  };
   const currentNav = nav.find(item => item.id === state?.session.view) ?? nav[0];
   const screen = currentNav.id;
   const currentAnchor = state?.anchors.find(item => item.id === state.session.anchorId && item.eventId === current?.id);
@@ -389,6 +398,7 @@ function App() {
         {screen === 'remember' && <Remember state={state} event={current} actions={actions} />}
       </div>}
     </main>
+    {tour !== null && <Tour step={tour} setStep={setTour} close={() => setTour(null)} view={screen} paused={!!dialog} ready={!!state} go={openView} run={runTour} />}
     {notice && <aside className="toast" role="status">{notice}<button className="icon-btn" onClick={() => setNotice('')} aria-label="Dismiss message"><X size={17} /></button></aside>}
     {dialog && <Modal key={captureOpen ? 'capture' : dialog.kind} title={sectionTitles[dialog.kind]} onClose={dismiss} wide={captureOpen || dialog.kind === 'source'}>
       {dialog.kind === 'library' && <><p className="muted">Open a project or start a private collection.</p>
@@ -396,9 +406,7 @@ function App() {
           <span className="project-icon"><Images size={17} /></span><span><strong>{item.title}</strong><small>{item.demo ? 'Sample project' : 'Private project'}</small></span><ChevronRight size={17} /></button>)}</div>
         {state && <button className="btn compact subtle self-start library-settings" onClick={() => show('settings')}><Settings size={15} /> Settings for {state.title}</button>}
         <NameForm handle={async title => { const created = await api<Project>('/projects', { title }); await loadProjects(); chooseProject(created.id); dismiss(); }} /></>}
-      {dialog.kind === 'help' && <Tutorial finish={dismiss} canConnectVoice={!!state}
-        connectVoice={() => show('voice')}
-        create={() => show('library')} />}
+      {dialog.kind === 'help' && <Welcome start={() => { dismiss(); setTour(0); }} skip={dismiss} />}
       {hasMedia && state && dialog.kind === 'settings' && <SettingsPanel state={state} base={base} reload={() => void refresh().catch(() => {})} deleteProject={async () => {
         await api(base, { confirm: true }, 'DELETE'); const list = await loadProjects(); chooseProject(list[0]?.id || ''); dismiss();
       }} />}

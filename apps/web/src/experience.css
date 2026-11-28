@@ -79,3 +79,18 @@ kbd { display: inline-block; font: 11px ui-monospace, monospace; color: var(--te
   .tutorial-copy h3 { font-size: 36px; }
   .tutorial-actions, .tutorial-actions .button-row { flex-wrap: wrap; gap: 8px; }
 }
+
+/* Guided tour: a coach card in the corner, and a pulse on the control it is describing. */
+.tutorial-outline { margin: 0 0 20px; padding: 0; list-style: none; counter-reset: step; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 18px; font-size: .82rem; color: var(--text-muted); }
+.tutorial-outline li { counter-increment: step; display: flex; gap: 9px; }
+.tutorial-outline li::before { content: counter(step, decimal-leading-zero); font-family: var(--mono); color: var(--quiet); }
+.tour { position: fixed; right: 22px; bottom: 22px; z-index: 6; width: min(400px, calc(100vw - 28px)); display: grid; gap: 10px; padding: 16px 18px 18px; background: #1b1b1bf7; border: 1px solid var(--line-strong); border-radius: var(--card); box-shadow: 0 18px 60px #000a; animation: view-in 260ms ease both; }
+.tour[hidden] { display: none; }
+.tour-head { display: flex; align-items: center; justify-content: space-between; color: var(--text-muted); font-size: .74rem; margin: -6px -8px -6px 0; }
+.tour h3 { font: 1.9rem/1.02 var(--display); letter-spacing: -.015em; }
+.tour p { color: var(--text-muted); font-size: .88rem; line-height: 1.55; }
+.tour .tour-note { font-size: .78rem; padding-left: 11px; border-left: 1px solid var(--line-strong); }
+.tour-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
+.tour-actions .text-button { color: var(--text-muted); font-size: .82rem; }
+.tour-target { outline: 2px solid #fffefa !important; outline-offset: 5px; animation: tour-pulse 1.5s ease-in-out infinite; }
+@keyframes tour-pulse { 0%, 100% { box-shadow: 0 0 0 0 #fffefa66; } 50% { box-shadow: 0 0 0 14px #fffefa00; } }
