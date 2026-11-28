@@ -2,30 +2,34 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNod
 import { createRoot } from 'react-dom/client';
 import {
   Archive as ArchiveIcon, ArrowDownToLine, ArrowRight, AudioLines, BookOpen, Box, Camera, ChevronDown, ChevronRight,
-  CircleHelp, Compass, Feather, Film, Fingerprint, Images, LockKeyhole, MapPin, Mic, Plus, Settings, X
+  CircleHelp, Compass, Feather, Film, Fingerprint, Images, LayoutGrid, LockKeyhole, MapPin, Mic, Plus, Settings, X
 } from 'lucide-react';
 import '@fontsource-variable/dm-sans';
 import '@fontsource/instrument-serif/400.css';
 import '@fontsource/instrument-serif/400-italic.css';
 import './style.css';
 import './experience.css';
+import './ascii.css';
 import { Tutorial } from './onboarding';
 import { VoicePanel } from './voice';
 import { Generation } from './generation';
 import { Capture } from './capture';
+import { art, AsciiArt, AsciiImage, AsciiSpinner } from './ascii';
+import { updateScenePointer } from './scene';
 import { ackCamera, ackFailed, claimCameraAction, isOwnCameraAction, useCameraViewer } from './camera-action';
-import { Archive, AtlasMark, Create, Explore, NarrationPreview, Remember, Watch, type ViewActions } from './views';
+import { Archive, AtlasMark, Create, Empty, Explore, NarrationPreview, Remember, Timeline, Watch, type ViewActions } from './views';
 import {
-  api, ApiError, displayDate, localDateTime, sourceURL, storyboardBasis, type Command, type Lens, type Memory, type Observation, type Project, type Proposal,
-  type Session, type Snapshot, type View
+  api, ApiError, displayDate, isVisual, localDateTime, sourcesFor, sourceURL, storyboardBasis, type Command, type Lens, type Memory, type Observation, type Project, type Proposal,
+  type Session, type Snapshot, type Source, type View
 } from './model';
 
 const nav = [
-  { id: 'explore', name: 'Memories', icon: Compass },
-  { id: 'watch', name: 'Films', icon: Film },
-  { id: 'create', name: 'Studio', icon: Feather },
-  { id: 'remember', name: 'Stories', icon: BookOpen },
-  { id: 'archive', name: 'Library', icon: ArchiveIcon }
+  { id: 'universe', name: 'Universe', icon: LayoutGrid },
+  { id: 'remember', name: 'Remember', icon: BookOpen },
+  { id: 'explore', name: 'Explore', icon: Compass },
+  { id: 'watch', name: 'Watch', icon: Film },
+  { id: 'create', name: 'Create', icon: Feather },
+  { id: 'archive', name: 'Archive', icon: ArchiveIcon }
 ] as const;
 
 type Dialog =
@@ -54,6 +58,37 @@ function Modal({ title, onClose, children, wide = false }: { title: string; onCl
     <div className="modal-inner"><div className="modal-head"><h2 id="dialog-title" tabIndex={-1}>{title}</h2>
       <button className="icon-btn" onClick={onClose} aria-label="Close dialog"><X size={21} /></button></div>{children}</div>
   </dialog>;
+}
+
+function Universe({ state, event, actions }: { state: Snapshot; event?: Memory; actions: ViewActions }) {
+  if (!event) return <Empty icon={<AsciiArt art={art.universe} />} title="Start with one memory">
+    <p>Give a moment a name, then collect the photos, clips, or stories that bring it back.</p>
+    <button className="btn primary" onClick={actions.openMemory}><Plus size={17} /> Create a memory</button>
+  </Empty>;
+  const source = sourcesFor(state, event.sourceIds).find(isVisual);
+  const cover = source && sourceURL(state.projectId, source.id, '?variant=thumb');
+  return <div className="universe">
+    <section className="universe-feature" aria-labelledby="featured-memory">
+      <div className="universe-feature-media" onPointerMove={cover ? updateScenePointer : undefined}>
+        {cover ? <>
+          <AsciiImage key={cover} src={cover} />
+          <img className="universe-cover-img" src={cover} alt={source?.caption ?? ''} />
+          <img className="hero-reveal" src={cover} alt="" aria-hidden="true" />
+        </> : <AsciiArt art={art.photo} />}
+        {source?.provenance === 'imagined' && <span className="universe-media-label">Illustrated sample</span>}
+      </div>
+      <div className="universe-feature-copy">
+        <h2 id="featured-memory">{event.title}</h2>
+        <p className="universe-meta"><MapPin size={15} aria-hidden="true" /> {event.placeLabel}{event.startAt && <> · {displayDate(event.startAt)}</>}</p>
+        {event.story && <p className="universe-description">{event.story}</p>}
+        <div className="universe-actions">
+          <button className="btn primary" onClick={() => actions.select({ eventId: event.id, view: 'explore' })}><Compass size={17} /> Open memory</button>
+          <button className="btn" onClick={actions.openMemory}><Plus size={16} /> New memory</button>
+        </div>
+      </div>
+    </section>
+    <div className="universe-collections"><Timeline state={state} event={event} actions={actions} /></div>
+  </div>;
 }
 
 function EventForm({ event, name, onSubmit }: { event?: Memory; name: string; onSubmit: (body: Record<string, unknown>) => Promise<void> }) {
@@ -262,9 +297,9 @@ function SettingsPanel({ base, state, reload, deleteProject }: { base: string; s
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const perform = async (task: () => Promise<unknown>) => {
+  const perform = async (task: () => Promise<unknown>, after = reload) => {
     setBusy(true); setError('');
-    try { await task(); reload(); setConfirm(''); } catch (err) { setError((err as Error).message); }
+    try { await task(); after(); setConfirm(''); } catch (err) { setError((err as Error).message); }
     finally { setBusy(false); }
   };
   return <div className="form-stack"><div className="notice"><LockKeyhole size={20} /><div><strong>Private project</strong><p>Project access is tied to this browser session. Photos and conversations stay on the Everwhere server. Only an opted-in place query and rounded coordinates are sent to Wikipedia.</p></div></div>
@@ -278,7 +313,7 @@ function SettingsPanel({ base, state, reload, deleteProject }: { base: string; s
     </div>)}
     <hr />
     {confirm === 'delete' ? <div className="form-stack"><p>Delete this project, its private sources, and all hosted exports?</p>
-      <button className="btn danger self-start" disabled={busy} onClick={() => perform(deleteProject)}>Permanently delete project</button></div> :
+      <button className="btn danger self-start" disabled={busy} onClick={() => perform(deleteProject, () => {})}>Permanently delete project</button></div> :
       <button className="btn danger self-start" onClick={() => setConfirm('delete')}>Delete project</button>}
     {error && <p className="form-error" role="alert">{error}</p>}
   </div>;
@@ -448,6 +483,12 @@ function App() {
     try { await api(base + '/session', input); await refresh(); return true; }
     catch (err) { setNotice((err as Error).message); return false; }
   };
+  const openUniverse = () => select({ view: 'universe' });
+  const openView = (view: View) => {
+    setMap(false);
+    select({ view });
+    window.scrollTo(0, 0);
+  };
   const preview = async (type: string, payload: Record<string, unknown>, target = current?.id) => {
     if (!state || !target) throw new Error('Select a memory to continue.');
     const context = activeContext.current;
@@ -463,6 +504,7 @@ function App() {
     select,
     openSource: source => setDialog({ kind: 'source', sourceId: source.id }),
     openCapture: () => show('capture'),
+    openVoice: () => show('voice'),
     openMap: () => { setMap(true); select({ view: 'archive' }); },
     openMemory: () => show('memory'),
     openCorrection: () => show('correction'),
@@ -485,9 +527,15 @@ function App() {
   };
 
   const currentNav = nav.find(item => item.id === state?.session.view) ?? nav[0];
+  const screen = currentNav.id;
+  const universe = screen === 'universe';
   const currentAnchor = state?.anchors.find(item => item.id === state.session.anchorId && item.eventId === current?.id);
   const hasMedia = state && !!project;
   const captureOpen = dialog?.kind === 'capture' || (dialog?.kind === 'confirm' && !!dialog.fromCapture);
+  // "Originals only" can empty a memory whose pictures are all illustrated; say so instead of showing blank frames.
+  const memoryPictures = state && current ? state.media.filter(item => current.sourceIds.includes(item.id) && isVisual(item)) : [];
+  const hiddenByLens = state?.session.lens === 'originals' ? memoryPictures.filter(item => item.provenance !== 'original').length : 0;
+  const lensHidesAll = hiddenByLens > 0 && hiddenByLens === memoryPictures.length;
   const dateLabel = state?.demo && state.events.length ? 'October 12–14, 2024' : current?.startAt ? displayDate(current.startAt) : '';
   const sectionTitles: Record<Dialog['kind'], string> = {
     library: 'Projects', settings: 'Project settings', voice: 'Connect VoiceOS', capture: 'Capture memory',
@@ -497,31 +545,37 @@ function App() {
   return <div className="app-frame">
     <a className="skip-link" href="#experience">Skip to experience</a>
     <aside className="sidebar" aria-label="Workspace">
-      <a className="brand" href="/" aria-label="Everwhere home">Everwhere</a>
-      <button className="workspace-project" onClick={() => show('library')}><span className="project-icon"><Images size={17} /></span><span><strong>{state?.title || 'Projects'}</strong><small>{state?.demo ? 'Sample project' : 'Private collection'}</small></span><ChevronDown size={15} /></button>
+      <a className="brand" href="/" aria-label="Everwhere home"><span className="brand-mark"><AsciiArt art={art.mark} /></span><span>everwhere<span className="brand-period">.</span></span></a>
+      <button className="workspace-project" onClick={() => show('library')} aria-label={'Switch project, current project ' + (state?.title || 'Projects')}><span className="project-icon"><Images size={17} /></span><span><strong>{state?.title || 'Memory projects'}</strong><small>{state?.demo ? 'Illustrated sample' : 'Private project'}</small></span><ChevronDown size={15} /></button>
       <div className="nav-groups">
-        <nav aria-label="Main navigation">{nav.map(({ id, name, icon: Icon }) =>
-          <button key={id} className={currentNav.id === id ? 'active' : ''} aria-current={currentNav.id === id ? 'page' : undefined}
-            onClick={() => { setMap(false); select({ view: id }); }} disabled={!state}><Icon size={19} />{name}{currentNav.id === id && <ChevronRight size={15} className="nav-caret" />}</button>)}</nav>
+        <nav aria-label="Experience">
+          <button className={universe ? 'active' : ''} aria-current={universe ? 'page' : undefined} onClick={openUniverse} disabled={!state}><LayoutGrid size={18} />Universe</button>
+          {nav.slice(1, 5).map(({ id, name, icon: Icon }) => <button key={id} className={screen === id ? 'active' : ''} aria-current={screen === id ? 'page' : undefined}
+            onClick={() => openView(id)} disabled={!state}><Icon size={18} />{name}</button>)}
+        </nav>
       </div>
       <div className="sidebar-bottom">
-        <button className="voice-card" onClick={() => show('voice')} disabled={!state} aria-label="Connect VoiceOS"><span className="voice-icon"><AudioLines size={21} /></span><span><strong>VoiceOS</strong><small>Setup & voice controls</small></span><ArrowRight size={15} /></button>
-        <div className="sidebar-footer"><button className="text-button" onClick={() => show('settings')} disabled={!state} aria-label="Project settings"><Settings size={18} /> Settings</button><button className="icon-btn" onClick={() => show('help')} aria-label="Open tutorial" title="Open tutorial"><CircleHelp size={20} /></button></div>
+        <button className="voice-card" onClick={() => show('voice')} disabled={!state} aria-label="Connect VoiceOS"><span className="voice-icon"><AudioLines size={21} /></span><span><strong>VoiceOS</strong><small>Setup & voice controls</small></span></button>
+        <nav className="nav-utilities" aria-label="Project tools">
+          <button className="text-button" aria-current={screen === 'archive' ? 'page' : undefined} onClick={() => openView('archive')} disabled={!state}><ArchiveIcon size={16} /> Archive</button>
+          <button className="text-button" onClick={() => show('settings')} disabled={!state}><Settings size={16} /> Settings</button>
+          <button className="icon-btn" onClick={() => show('help')} aria-label="Open tutorial" title="Open tutorial"><CircleHelp size={17} /></button>
+        </nav>
       </div>
     </aside>
-    <main className="main" id="experience">
+    <main className={'main screen-' + screen} id="experience" tabIndex={-1}>
       <header className="topbar">
-        <div className="breadcrumbs"><button onClick={() => show('library')}>Projects</button><ChevronRight size={14} /><span>{currentNav.name}</span></div>
+        <div className="breadcrumbs"><button onClick={state ? openUniverse : () => show('library')}>My universe</button><ChevronRight size={14} /><button className="breadcrumb-project" onClick={() => show('library')} aria-label="Switch memory project">{state?.title || 'Projects'}</button></div>
         <div className="top-actions"><span className="private-label"><LockKeyhole size={14} /> Private</span>
-          <button className="btn top-capture" onClick={() => state ? show('capture') : show('library')}><Plus size={17} /> <span>{state ? 'Capture' : 'New project'}</span>{!!items.length && <span className="pending-count" aria-label={items.length + ' sources awaiting review'}>{items.length}</span>}</button></div>
+          <button className="btn top-capture" onClick={() => state ? show('capture') : show('library')}><Camera size={17} /> <span>{state ? 'Capture memory' : 'Projects'}</span>{items.length > 0 && <span className="pending-count" aria-label={items.length + ' pending sources'}>{items.length}</span>}</button></div>
       </header>
       {startupError && <div className="notice main-notice" role="alert">{startupError}<button className="btn compact" onClick={() => location.reload()}>Retry</button></div>}
       {syncError && !startupError && <div className="notice main-notice" role="alert">{syncError}<button className="btn compact" onClick={() => guarded(refresh)}>Retry</button></div>}
-      {loading && <div className="load-state" role="status"><AtlasMark size={38} /> Opening your memories…</div>}
-      {!loading && !state && !project && <div className="load-state"><Images size={42} /><h1>Your memories start here.</h1><button className="btn primary" onClick={() => show('library')}><Plus size={17} /> Create a project</button></div>}
+      {!startupError && (loading || (!state && project)) && <div className="load-state" role="status"><AsciiSpinner /> Opening your universe…</div>}
+      {!loading && !state && !project && <div className="load-state"><AsciiArt art={art.universe} /><h1>Every life is a world.</h1><button className="btn primary" onClick={() => show('library')}><Plus size={17} /> Create a project</button></div>}
       {state && <div className="main-content">
         <div className="project-head"><div>
-          {state.demo && <span className="sample-label">Sample project</span>}
+          {state.demo && <p className="eyebrow project-kicker">Illustrated sample</p>}
           <h1>{state.title}</h1>
           <div className="project-details">{dateLabel && <span>{dateLabel}</span>}{dateLabel && current && <span className="dot-separator" />}
             {current && <span><MapPin size={14} />{state.demo ? 'The Italian Alps' : current.placeLabel}</span>}
@@ -531,11 +585,15 @@ function App() {
             aria-pressed={state.session.lens === 'originals'} onClick={() => select({ lens: (state.session.lens === 'originals' ? 'all' : 'originals') as Lens })}>
             <Fingerprint size={16} /><span>Originals only</span><span className="switch-track"><i /></span></button>
         </div>
-        {currentNav.id === 'explore' && <Explore state={state} event={current} actions={actions} />}
-        {currentNav.id === 'watch' && <Watch state={state} event={current} actions={actions} />}
-        {currentNav.id === 'create' && <Create state={state} event={current} actions={actions} />}
-        {currentNav.id === 'remember' && <Remember state={state} event={current} actions={actions} />}
-        {currentNav.id === 'archive' && <Archive state={state} event={current} actions={actions} initialMap={map} />}
+        {lensHidesAll && <div className="notice lens-notice" role="status"><Fingerprint size={18} /><div><strong>Originals only is on</strong>
+          <p>{hiddenByLens} {hiddenByLens === 1 ? 'picture in this memory is illustrated or imagined, so it is' : 'pictures in this memory are illustrated or imagined, so they are'} hidden.</p></div>
+          <button className="btn compact" onClick={() => select({ lens: 'all' })}>Show all pictures</button></div>}
+        {screen === 'universe' && <Universe state={state} event={current} actions={actions} />}
+        {screen === 'explore' && <Explore state={state} event={current} actions={actions} />}
+        {screen === 'watch' && <Watch state={state} event={current} actions={actions} />}
+        {screen === 'create' && <Create state={state} event={current} actions={actions} />}
+        {screen === 'remember' && <Remember state={state} event={current} actions={actions} />}
+        {screen === 'archive' && <Archive state={state} event={current} actions={actions} initialMap={map} />}
       </div>}
     </main>
     {notice && <aside className="toast" role="status">{notice}<button className="icon-btn" onClick={() => setNotice('')} aria-label="Dismiss message"><X size={17} /></button></aside>}

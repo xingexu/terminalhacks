@@ -11,7 +11,7 @@ export const validateObservation = ajv.compile(schema('capture-observation'));
 export const uid = () => randomUUID();
 export const now = () => new Date().toISOString();
 export const profiles = ['natural', 'nostalgic', 'documentary', 'vivid'];
-export const views = ['explore', 'watch', 'create', 'remember', 'archive'];
+export const views = ['universe', 'explore', 'watch', 'create', 'remember', 'archive'];
 
 export class Problem extends Error {
   constructor(status, code, message, details = {}) {

@@ -136,13 +136,13 @@ export default function Scan({ url, projectId, eventId, worldId, revision, prove
       recorder?.interrupt();
       const floor = collision.rayIntersect(new Ray(point.clone().add(new Vector3(0, 0.3, 0)), new Vector3(0, -1, 0)));
       if (!floor || floor.distance > 0.5 || floor.triangle.getNormal(normal).y < 0.55) {
-        setNotice('This saved position has no safe floor. Choose a clear floor surface.'); return;
+        setNotice('This saved position has no safe floor. Choose a clear floor surface.'); return false;
       }
       const candidate = new Walker(collision, point.clone().add(new Vector3(0, 0.03, 0)), walkSpeed);
       const overlap = collision.capsuleIntersect(candidate.capsule);
       if (overlap && overlap.depth > 0.05) {
         setNotice('There is not enough standing room here. Choose an open floor area.');
-        return;
+        return false;
       }
       walker = candidate;
       yaw = camera.rotation.y;
@@ -151,6 +151,7 @@ export default function Scan({ url, projectId, eventId, worldId, revision, prove
       setMode('walk');
       setNotice('WASD to walk · Drag to look · Shift to sprint · Space to jump');
       element.focus();
+      return true;
     }
     function selectFloor(point: Vector2) {
       pick.setFromCamera(point, camera);
@@ -324,6 +325,18 @@ export default function Scan({ url, projectId, eventId, worldId, revision, prove
           camera.rotation.set(0, Number.isFinite(metadata.spawnYaw) ? metadata.spawnYaw : 0, 0);
           place(new Vector3(...spawn).add(new Vector3(0, -1.6, 0)));
           if (photoSet && walker) setNotice('WASD to walk · drag to look · VoiceOS can walk, turn and stop.');
+        } else if (!position) {
+          const entryCamera = gltf.scene.getObjectByProperty('isPerspectiveCamera', true);
+          if (entryCamera) {
+            const eye = entryCamera.getWorldPosition(new Vector3());
+            const orientation = camera.quaternion.clone();
+            entryCamera.getWorldQuaternion(camera.quaternion);
+            const entryPitch = camera.rotation.x;
+            if (sceneBounds.containsPoint(eye) && place(eye.add(new Vector3(0, -1.6, 0)))) {
+              pitch = Math.max(-1.2, Math.min(1.2, entryPitch));
+              recorder.manifest.spawn = camera.position.toArray();
+            } else camera.quaternion.copy(orientation);
+          }
         }
       } catch (error) {
         if (active) { setNotice((error as Error).message); setPhase('error'); }

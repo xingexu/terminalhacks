@@ -268,7 +268,7 @@ export function createEvent(state, input) {
     startAt: input.startAt || null, gps: input.gps ?? null, sourceIds: [], version: 0, story: ''
   };
   state.events.push(event);
-  state.session = { ...state.session, eventId: event.id, anchorId: null };
+  state.session = { ...state.session, eventId: event.id, anchorId: null, anchorNavigationId: null };
   delete state.session.movement;
   delete state.session.movementReceipt;
   appendChange(state, 'Created ' + event.title, event.id);
@@ -280,6 +280,7 @@ export function updateSession(state, input) {
   if (input.activeWorldId === null && input.viewerId !== state.session.activeViewerId) return state.session;
   if (input.cameraViewerId === null && input.viewerId !== state.session.cameraViewerId) return state.session;
   const { eventId, view, lens, anchorId } = input;
+  const previous = { ...state.session };
   if (eventId !== undefined) {
     check(eventById(state, eventId), 404, 'EVENT_NOT_FOUND', 'That memory is unavailable.');
     if (eventId !== state.session.eventId) state.session.anchorId = state.anchors.find(item => item.eventId === eventId)?.id ?? null;
@@ -385,6 +386,10 @@ export function updateSession(state, input) {
   }
   if (state.session.movement && !available.has(state.session.movement.worldId)) delete state.session.movement;
   if (state.session.movementReceipt && !available.has(state.session.movementReceipt.worldId)) delete state.session.movementReceipt;
+  if (anchorId !== undefined) state.session.anchorNavigationId = uid();
+  else if (state.session.eventId !== previous.eventId || state.session.view !== previous.view || state.session.lens !== previous.lens) {
+    state.session.anchorNavigationId = null;
+  }
   return state.session;
 }
 

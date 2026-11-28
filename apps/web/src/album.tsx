@@ -66,7 +66,7 @@ export default function WalkableAlbum({ state, photos, title, onClose, onWaypoin
     const anchor = state.anchors.find(item => item.id === state.session.anchorId && item.worldId === 'trail-' + item.eventId);
     const index = photos.findIndex(photo => anchor?.sourceIds.includes(photo.id));
     if (index >= 0) controls.current?.visit(index, anchor?.position);
-  }, [state.session.anchorId, photoKey]);
+  }, [state.session.anchorId, state.session.anchorNavigationId, photoKey]);
 
   useEffect(() => {
     controls.current?.pause(Boolean(inspected || help));

@@ -1,6 +1,6 @@
 import type { SceneManifest } from './gameplay/contracts';
 
-export type View = 'explore' | 'watch' | 'create' | 'remember' | 'archive';
+export type View = 'universe' | 'explore' | 'watch' | 'create' | 'remember' | 'archive';
 export type Lens = 'all' | 'originals';
 export type Profile = 'natural' | 'nostalgic' | 'documentary' | 'vivid';
 export type Project = { id: string; title: string; demo: boolean };
@@ -51,7 +51,7 @@ export type WorldPreview = {
   diff: { label: string; text: string };
 };
 export type Movement = { id: string; worldId: string; viewerId?: string; direction: 'forward' | 'backward' | 'left' | 'right' | 'turn_left' | 'turn_right' | 'stop'; durationSeconds: number; degrees: number; issuedAt: string; expiresAt: string };
-export type Session = { eventId: string | null; anchorId: string | null; view: View; lens: Lens; movement?: Movement;
+export type Session = { anchorNavigationId?: string | null; eventId: string | null; anchorId: string | null; view: View; lens: Lens; movement?: Movement;
   cameraViewerId?: string | null; cameraReceipt?: unknown;
   cameraAction?: { id: string; action: 'open' | 'capture' | 'close'; viewerId: string; eventId: string; issuedAt: string; expiresAt: string };
   activeWorldId?: string | null; activeViewerId?: string; streetViewPlace?: { worldId: string; nodeId: string; heading: number } };
