@@ -56,17 +56,18 @@ function MediaGrid({ state, sources, open }: { state: Snapshot; sources: Source[
 
 export function Timeline({ state, event, actions }: { state: Snapshot; event?: Memory; actions: ViewActions }) {
   return <section className="timeline">
-    <div className="section-heading"><div><span className="eyebrow">THE PLACES YOU KEEP</span><h2>Journey timeline</h2></div>
-      <button className="btn compact subtle" onClick={actions.openMap}><Map size={15} /> View map <ArrowRight size={13} /></button></div>
+    <div className="section-heading"><h2>Memories</h2><div className="button-row">
+      <button className="btn compact subtle" onClick={actions.openMap}><Map size={15} /> Map</button>
+      <button className="btn compact" onClick={actions.openMemory}><Plus size={15} /> New memory</button></div></div>
     {state.events.length ? <div className="timeline-grid">
-      {state.events.map((memory, index) => {
+      {state.events.map(memory => {
         const source = sourcesFor(state, memory.sourceIds).find(isVisual);
         const active = memory.id === event?.id;
         return <button key={memory.id} className={'timeline-card' + (active ? ' active' : '')} onClick={() => actions.select({ eventId: memory.id })} aria-current={active ? 'step' : undefined}>
           <Thumb project={state.projectId} source={source} />
           <span className="timeline-copy"><span className="timeline-date">{displayDate(memory.startAt, true)}</span><strong>{memory.title}</strong>
             <span className="timeline-place">{memory.placeLabel}</span></span>
-          {active ? <span className="active-dot" /> : <span className="timeline-index">{String(index + 1).padStart(2, '0')}</span>}
+          {active && <span className="active-dot" />}
         </button>;
       })}
     </div> : <button className="btn" onClick={actions.openMemory}><Plus size={16} /> Add your first memory</button>}
@@ -157,7 +158,7 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
           <button className="btn compact" onClick={actions.openRecollection}><Plus size={14} /> Add recollection</button>
         </div></aside>}
       <div className="hero-bottom">
-        <div className="hero-content"><span className="eyebrow hero-label"><span /> MEMORY {String(index + 1).padStart(2, '0')} / {String(state.events.length).padStart(2, '0')}</span>
+        <div className="hero-content">
           <h2>{event.title}</h2>
           <div className="hero-location"><MapPin size={15} /> {event.placeLabel}{entered && anchor && <><span className="dot-separator" /> {anchor.title}</>}</div>
           {active && !entered && <button className="btn hero-cta" onClick={openTrail}><Compass size={17} /> Enter memory <ArrowRight size={16} /></button>}
@@ -167,7 +168,7 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
         </div>
         <div className="hero-controls">
           {entered && <div className="waypoint-list">{anchors.map(a => <button className={'waypoint' + (a.id === anchor?.id ? ' selected' : '')} key={a.id} onClick={() => actions.select({ anchorId: a.id })}><MapPin size={12} />{a.title}</button>)}</div>}
-          <div className="hero-controls-row"><span>{entered ? '↑ ↓  Pan' : 'JOURNEY'}</span>
+          <div className="hero-controls-row">{entered && <span>↑ ↓ Pan</span>}
             <button className="glass-icon" onClick={() => next(-1)} disabled={index === 0 && (!entered || anchors[0]?.id === anchor?.id)} aria-label="Previous waypoint or memory"><ChevronLeft size={19} /></button>
             <button className="glass-icon" onClick={() => next(1)} disabled={index >= state.events.length - 1 && (!entered || anchors.at(-1)?.id === anchor?.id)} aria-label="Next waypoint or memory"><ChevronRight size={19} /></button>
           </div>
@@ -198,7 +199,7 @@ export function Watch({ state, event, actions }: { state: Snapshot; event?: Memo
   const current = jobs.find(item => ['queued', 'running', 'ready'].includes(item.status));
   const showVideo = current?.status === 'ready' && current.approved;
   return <div className={'view-stack grade-' + state.visualProfile}>
-    <div className="section-heading page-section"><div><span className="eyebrow">THE SCREENING ROOM</span><h2>Films from your memories</h2></div>
+    <div className="section-heading page-section"><h2>Films from your memories</h2>
       <button className="btn primary" onClick={actions.render} disabled={!media.length || ['queued', 'running', 'ready'].includes(current?.status || '')}><Clapperboard size={17} /> Render MP4</button></div>
     {showVideo && current ? <div className="film-stage"><video controls playsInline preload="metadata" src={artifactURL(state.projectId, current.id)} poster={source && sourceURL(state.projectId, source.id, '?variant=thumb')}>
       <track default kind="captions" label="English captions" srcLang="en" src={artifactURL(state.projectId, current.id, 'captions')} />
@@ -234,7 +235,7 @@ export function Create({ state, event, actions }: { state: Snapshot; event?: Mem
   const first = items.find(source => source.mime.startsWith('image/'));
   const rec = state.recollections.filter(item => item.eventId === event?.id);
   return <div className={'view-stack grade-' + (compare ? 'natural' : state.visualProfile)}>
-    <div className="section-heading page-section"><div><span className="eyebrow">THE STUDIO</span><h2>Make it yours</h2></div>
+    <div className="section-heading page-section"><h2>Make it yours</h2>
       <button className="btn" onClick={actions.openCapture}><Plus size={17} /> Add media</button></div>
     <div className="studio-toolbar"><div className="tab-set" aria-label="Studio views">
       <button className={tab === 'photos' ? 'selected' : ''} aria-pressed={tab === 'photos'} onClick={() => setTab('photos')}><Image size={16} /> Photo album</button>
@@ -253,7 +254,7 @@ export function Create({ state, event, actions }: { state: Snapshot; event?: Mem
         <Empty icon={tab === 'photos' ? <Image size={29} /> : <Film size={29} />} title={tab === 'photos' ? 'No photos in this view' : 'No videos in this view'}>
           <p>Select an item from your camera roll and review it in Capture.</p><button className="btn" onClick={actions.openCapture}>Add a source</button>
         </Empty>}
-    <div className="section-heading"><h2>Visual DNA</h2><span className="muted">One grade across your experience</span></div>
+    <div className="section-heading"><h2>Appearance</h2></div>
     <div className="grade-grid">{profiles.map(profile => <button className={'grade-card grade-' + profile.id + (state.visualProfile === profile.id ? ' selected' : '')}
       key={profile.id} onClick={() => state.visualProfile !== profile.id && actions.setGrade(profile.id)} aria-pressed={state.visualProfile === profile.id} disabled={!event}>
       <Thumb project={state.projectId} source={first} /><span><strong>{profile.name}</strong><small>{profile.description}</small></span>
@@ -282,7 +283,7 @@ export function Remember({ state, event, actions }: { state: Snapshot; event?: M
     catch (err) { setError(String((err as Error).message)); }
   };
   return <div className="view-stack">
-    <div className="section-heading page-section"><div><span className="eyebrow">THE STORYROOM</span><h2>What do you remember?</h2></div>
+    <div className="section-heading page-section"><h2>Stories</h2>
       <button className="btn primary" onClick={actions.openRecollection} disabled={!event}><Plus size={16} /> Add a recollection</button></div>
     <form className="search-bar" onSubmit={search}><Search size={19} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search places, captions, and linked memories" aria-label="Search your memories" required /><button className="btn compact" type="submit">Search</button></form>
     {error && <div className="notice" role="alert">{error}</div>}
@@ -338,7 +339,7 @@ export function Archive({ state, event, actions, initialMap = false }: { state: 
   useEffect(() => { if (initialMap) setTab('map'); }, [initialMap]);
   const sources = state.media.filter(item => allowed(item, state.session.lens) && isVisual(item));
   return <div className="view-stack">
-    <div className="section-heading page-section"><div><span className="eyebrow">YOUR COLLECTION</span><h2>The memory archive</h2></div>
+    <div className="section-heading page-section"><h2>Library</h2>
       <button className="btn" onClick={actions.openSettings}>Project settings</button></div>
     <div className="tab-set" aria-label="Archive views">{[['revisions', 'Revisions'], ['map', 'Map'], ['sources', 'Sources']].map(([key, label]) =>
       <button key={key} className={key === tab ? 'selected' : ''} aria-pressed={key === tab} onClick={() => setTab(key)}>{label}</button>)}</div>

@@ -140,7 +140,7 @@ export function Capture({ state, base, items, reload, preview, addMemory }: Capt
     {progress && <p className="muted" role="status">{progress}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     {!!failures.length && <ul className="form-error">{failures.map((item, i) => <li key={i}>{item}</li>)}</ul>}
-    <div className="inbox-title"><h3>Review inbox</h3><span>{items.length} pending</span></div>
+    <div className="inbox-title"><h3>Review inbox</h3><span>{items.length} pending</span><button className="text-button" onClick={addMemory}>New memory</button></div>
     {!state.events.length && <p className="empty-inbox">Create a memory before linking a source. <button className="text-button" onClick={addMemory}>Add a memory</button></p>}
     {!items.length && <p className="empty-inbox">New photos, videos, and voice notes will appear here.</p>}
     {items.map(item => <InboxItem key={item.id} item={item} state={state} base={base} refresh={reload} preview={preview} />)}

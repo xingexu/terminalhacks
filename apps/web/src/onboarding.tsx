@@ -4,8 +4,8 @@ import { ArrowLeft, ArrowRight, AudioLines, Camera, Check, Compass } from 'lucid
 const steps = [
   { title: 'Keep the moment.', text: 'Start a private project, then use Capture to add selected photos, clips, or a voice note.', icon: Camera, image: 'lake', caption: 'Photos · clips · voice notes' },
   { title: 'Give it a place.', text: 'Create a memory with a title, place, and date. In the capture inbox, choose the memory, preview the link, and confirm it.', icon: Check, image: 'desert', caption: 'Capture → review → confirm' },
-  { title: 'Come back to it.', text: 'Explore your photo trail. Keep stories in Remember, curate an album in Create, or render a film in Watch.', icon: Compass, image: 'ocean', caption: 'Your memories, connected' },
-  { title: 'Say what you remember.', text: 'Open VoiceOS in the sidebar for installation and pairing. Once connected, ask it to find a memory or preview a recollection.', icon: AudioLines, image: 'stars', caption: '“Show me the lake memory.”' }
+  { title: 'Come back to it.', text: 'Explore your photo trail in Memories. Keep recollections in Stories, curate an album in Studio, or render a film in Films.', icon: Compass, image: 'ocean', caption: 'Your memories, connected' },
+  { title: 'Say what you remember.', text: 'Open VoiceOS for installation and pairing. Once connected, ask it to find a memory or preview a recollection.', icon: AudioLines, image: 'stars', caption: '“Show me the lake memory.”' }
 ];
 
 export function Tutorial({ finish, create }: { finish: () => void; create: () => void }) {

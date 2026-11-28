@@ -1,8 +1,10 @@
 # Visual references
 
-The landing page adapts the user's PhotoGit site, including its Canvas 2D ASCII photographs, pointer light trail, Instrument Serif wordmark, and glass entry button. The original code is in the PhotoGit repository's `site` directory. The workspace uses restrained cool neutrals and the same serif family. [PhotoGit reference](https://photogit-three.vercel.app/)
+The landing page presents a small collection of overlapping photographic prints. Its natural colors and paper surfaces introduce Everwhere's photos, places, and stories. It reuses the licensed landscape photographs selected for the earlier PhotoGit-inspired design. [PhotoGit reference](https://photogit-three.vercel.app/)
 
-The implementation uses the existing Canvas renderer. Three.js AsciiEffect and ASCII Studio were researched as rendering and design tools. [AsciiEffect documentation](https://threejs.org/docs/pages/AsciiEffect.html) · [ASCII Studio](https://asciicn.dev/docs)
+The workspace uses system typography, adaptive light and dark surfaces, a desktop sidebar, and five labeled bottom tabs on narrow screens. Capture is the primary toolbar action. Buttons and mobile segmented controls have a minimum 44 CSS-pixel target height. Source provenance and review confirmation remain visible alongside the content. The Apple Human Interface Guidelines informed the layout, hierarchy, sidebar, tabs, and control sizes. [Layout](https://developer.apple.com/design/human-interface-guidelines/layout) · [Sidebars](https://developer.apple.com/design/human-interface-guidelines/sidebars) · [Tab bars](https://developer.apple.com/design/human-interface-guidelines/tab-bars) · [Buttons](https://developer.apple.com/design/human-interface-guidelines/buttons)
+
+The web labels map to the established route and MCP view identifiers as follows. Memories uses `explore`, Films uses `watch`, Studio uses `create`, Stories uses `remember`, and Library uses `archive`.
 
 The landing photographs are downloaded copies of Unsplash photographs, reused from PhotoGit under the Unsplash license. The in-app sample project retains its source provenance in the evidence view.
 
