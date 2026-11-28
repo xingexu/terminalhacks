@@ -23,10 +23,6 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; isolation: isolate; }
-.landing-footer { position: absolute; bottom: max(24px, env(safe-area-inset-bottom)); left: 0; right: 0; display: flex; justify-content: center; gap: 28px; font: 11px "Space Mono", monospace; }
-.landing-footer a { color: #dce5ef; text-decoration: none; text-shadow: 0 1px 6px #000; }
-.landing-footer a:hover { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
-.landing-footer a:focus-visible { outline: 2px solid #c5d9fb; outline-offset: 6px; }
 
 .ascii-background {
   position: fixed;
@@ -283,17 +279,8 @@ body { margin: 0; isolation: isolate; }
   .is-tilted .wordmark-layer { opacity: 0; }
 }
 
-.burst {
-  margin: 0 0 clamp(8px, 2.4svh, 22px);
-  color: #fff;
-  display: inline-block;
-  padding: 14px 20px;
-  border-radius: 50%;
-  background: radial-gradient(closest-side, #101318f2, #101318b3 62%, transparent);
-  font: clamp(24px, 2.7vw, 36px)/1 "Space Mono", ui-monospace, monospace;
-  text-shadow: 0 0 14px #ffffffb3, 0 2px 8px #000;
-  animation: burst-in 900ms cubic-bezier(.2, .8, .2, 1) both, burst-pulse 3.6s ease-in-out 900ms infinite;
-}
-@keyframes burst-in { from { opacity: 0; transform: scale(.4) rotate(-40deg); } }
-@keyframes burst-pulse { 50% { opacity: .55; transform: scale(.92); } }
-@media (prefers-reduced-motion: reduce) { .burst { animation: none; } }
+/* Leaving for the workspace: the words lift away while the characters scatter. */
+.preview > div { transition: opacity 900ms ease, transform 1400ms cubic-bezier(.2, .7, .2, 1), filter 900ms ease; }
+.is-leaving .preview > div { opacity: 0; transform: scale(1.06); filter: blur(6px); pointer-events: none; }
+.ascii-background::after { transition: opacity 900ms ease; }
+.is-leaving .ascii-background::after { opacity: 0; }
