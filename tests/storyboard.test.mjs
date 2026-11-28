@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import sharp from 'sharp';
 import { createMemory, digest, eventDependencies, generationDependencies } from '../packages/runtime/memory.mjs';
 import { renderFilm } from '../packages/media/local.mjs';
 import { createStore } from '../apps/api/store.mjs';
@@ -239,6 +240,74 @@ test('withdrawing a source removes its reviewed caption from pending and retaine
   assert.equal(getSnapshot('project', state).storyboards[eventId].sourceIds.includes('a'), false);
   assert.equal(state.worlds[0].revoked, true);
   assert.throws(() => queueFilm(state, film.input, actor), error => error.code === 'EVIDENCE_REVOKED');
+});
+
+test('film uses original image pixels with EXIF orientation and leaves sources unchanged', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'everwhere-film-original-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const state = fixture();
+  state.visualProfile = 'natural';
+  const source = state.media.find(item => item.id === 'a');
+  source.storage = join(dir, 'original.jpg');
+  source.thumb = join(dir, 'thumbnail.jpg');
+  state.events[0].sourceIds = [source.id];
+  const quadrants = Buffer.from('<svg width="2160" height="3840" xmlns="http://www.w3.org/2000/svg">'
+    + '<path fill="#ff0000" d="M0 0h1080v1920H0z"/><path fill="#0000ff" d="M1080 0h1080v1920H1080z"/>'
+    + '<path fill="#00ff00" d="M0 1920h1080v1920H0z"/><path fill="#ffff00" d="M1080 1920h1080v1920H1080z"/></svg>');
+  await sharp(quadrants).withMetadata({ orientation: 6 }).jpeg({ quality: 100, chromaSubsampling: '4:4:4' }).toFile(source.storage);
+  await sharp({ create: { width: 1440, height: 810, channels: 3, background: '#ff00ff' } }).jpeg().toFile(source.thumb);
+  const original = await readFile(source.storage);
+  const result = await renderFilm(eventDependencies(state, eventId, 'all'), dir, 'original-cut', dir);
+  const firstFrame = execFileSync('ffmpeg', ['-v', 'error', '-i', result.output, '-frames:v', '1', '-f', 'image2pipe', '-vcodec', 'png', 'pipe:1']);
+  const { data, info } = await sharp(firstFrame).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  assert.deepEqual([info.width, info.height, info.channels], [1920, 1080, 3]);
+  for (const [x, y, expected] of [
+    [480, 270, [0, 255, 0]], [1440, 270, [255, 0, 0]],
+    [480, 810, [255, 255, 0]], [1440, 810, [0, 0, 255]]
+  ]) {
+    const pixel = Array.from(data.subarray((y * info.width + x) * 3, (y * info.width + x) * 3 + 3));
+    assert.ok(pixel.every((value, channel) => Math.abs(value - expected[channel]) < 40),
+      `Oriented original at ${x},${y}: expected ${expected}, received ${pixel}`);
+  }
+  assert.deepEqual(await readFile(source.storage), original);
+  assert.equal((await readdir(dir)).includes('original-cut-work'), false);
+});
+
+test('film composites translucent images against black without revealing hidden RGB', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'everwhere-film-alpha-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const state = fixture();
+  state.visualProfile = 'natural';
+  const source = state.media.find(item => item.id === 'a');
+  Object.assign(source, { mime: 'image/png', storage: join(dir, 'alpha.png'), thumb: join(dir, 'alpha-thumb.jpg') });
+  state.events[0].sourceIds = [source.id];
+  const pixels = Buffer.alloc(64 * 36 * 4);
+  for (let offset = 0; offset < pixels.length; offset += 4) {
+    pixels.set(offset % (64 * 4) < 32 * 4 ? [255, 0, 0, 128] : [0, 255, 0, 0], offset);
+  }
+  await sharp(pixels, { raw: { width: 64, height: 36, channels: 4 } }).png().toFile(source.storage);
+  await sharp(source.storage).jpeg().toFile(source.thumb);
+  const manifest = eventDependencies(state, eventId, 'all');
+  manifest.storyboard.frames[0].seconds = manifest.storyboard.durationSeconds = 4;
+  const result = await renderFilm(manifest, dir, 'alpha-cut', dir);
+  const firstFrame = execFileSync('ffmpeg', ['-v', 'error', '-i', result.output, '-frames:v', '1', '-f', 'image2pipe', '-vcodec', 'png', 'pipe:1']);
+  const { data, info } = await sharp(firstFrame).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  for (const [x, expected] of [[480, [128, 0, 0]], [1440, [0, 0, 0]]]) {
+    const start = (540 * info.width + x) * info.channels;
+    const pixel = Array.from(data.subarray(start, start + 3));
+    assert.ok(pixel.every((value, channel) => Math.abs(value - expected[channel]) < 20),
+      `Black-composited source at ${x}: expected ${expected}, received ${pixel}`);
+  }
+});
+
+test('film rejects a missing original image and cleans its work directory', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'everwhere-film-missing-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const state = fixture();
+  state.events[0].sourceIds = ['a'];
+  delete state.media.find(item => item.id === 'a').storage;
+  await assert.rejects(renderFilm(eventDependencies(state, eventId, 'all'), dir, 'missing-original', dir));
+  assert.deepEqual(await readdir(dir), []);
 });
 
 test('the actual film captions and duration follow the reviewed eight-frame cut', async t => {

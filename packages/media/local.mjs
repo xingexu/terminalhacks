@@ -121,9 +121,17 @@ export async function renderFilm(manifest, outputDir, outputId, demoDir) {
       if (!item || !Number.isFinite(segmentSeconds) || segmentSeconds < 4 || segmentSeconds > 30) throw new Error('The reviewed storyboard is invalid.');
       const name = 'clip-' + index + '.mp4';
       const image = item.mime.startsWith('image/');
-      const input = item.demoFile ? join(demoDir, item.demoFile) : (image ? item.thumb : item.storage);
+      let input = item.demoFile ? join(demoDir, item.demoFile) : item.storage;
+      if (typeof input !== 'string' || !input) throw new Error('The reviewed source file is unavailable.');
+      if (image) {
+        const prepared = join(working, 'image-' + index + '.png');
+        // Preserve original detail and orientation, with room for the 10% camera zoom.
+        await sharp(input, { limitInputPixels: 50_000_000 }).rotate()
+          .resize(2112, 1188, { fit: 'cover' }).flatten({ background: '#000000' }).png().toFile(prepared);
+        input = prepared;
+      }
       const crop = 'scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1';
-      const framing = image ? crop + ",zoompan=z='min(zoom+0.00065,1.10)':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=" + (segmentSeconds * 24) + ':s=1920x1080:fps=24' :
+      const framing = image ? "zoompan=z='min(zoom+0.00065,1.10)':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=" + (segmentSeconds * 24) + ':s=1920x1080:fps=24,setsar=1' :
         crop + ',fps=24,tpad=stop_mode=clone:stop_duration=' + segmentSeconds;
       await runFfmpeg(['-protocol_whitelist', 'file,pipe', '-filter_threads', '2', '-i', input, '-an', '-vf',
         framing + ',' + profileFilters[manifest.profile] + ',format=yuv420p', '-t', String(segmentSeconds),
