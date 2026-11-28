@@ -15,13 +15,13 @@ import { visionReady } from './scene-plan.mjs';
 import { integrationManifest } from '../mcp/manifest.mjs';
 import {
   assertCapture, capturePreview, cleanMedia, commitCommand, createEvent, createFilmWorker, gapQuestion, getSnapshot,
-  inbox, observe, previewCommand, previewFilm, queueFilm, resolveEvent, revokeCapture, startCapture, updateSession
-} from './service.mjs';
+  inbox, observe, previewCommand, previewFilm, queueFilm, resolveEvent, revokeCapture, startCapture, updateSession, linkLibraryPhotos } from './service.mjs';
 import { ingest, removeMedia } from '../../packages/media/local.mjs';
+import { createPhotoLibrary, findEvent } from '../../packages/media/photos.mjs';
 import { storeSplat } from '../../packages/media/splat.mjs';
 import { storeMesh } from '../../packages/media/mesh.mjs';
 import { sceneContext } from '../../packages/runtime/scene.mjs';
-import { appendChange, digest, eventById, mediaById, rank, requireCondition as check, uid } from '../../packages/runtime/memory.mjs';
+import { appendChange, digest, eventById, lensAllows, mediaById, rank, requireCondition as check, uid } from '../../packages/runtime/memory.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const demoDir = join(root, 'apps/web/public/media');
@@ -58,7 +58,7 @@ async function streamFile(request, reply, path, mime) {
     .header('Content-Length', end - start + 1).send(createReadStream(path, { start, end }));
 }
 
-export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA || join(root, '.data')), serveWeb = true } = {}) {
+export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA || join(root, '.data')), serveWeb = true, photoLibrary = createPhotoLibrary() } = {}) {
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 });
   const store = createStore(dataDir);
   const film = createFilmWorker(store, dataDir, demoDir);
@@ -305,6 +305,49 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     }
   });
 
+  // Photo library: the person turns access on in the browser; after that VoiceOS can list events and pull their photos.
+  const libraryAllowed = req => read(req, state => state.photoLibrary?.allowed === true).data;
+  const pullEvent = async (req, name) => {
+    const { project } = scope(req);
+    check(libraryAllowed(req), 403, 'PHOTO_LIBRARY_OFF', 'Photo library access is off. Turn it on in Everwhere under VoiceOS first.');
+    const events = await photoLibrary.events();
+    const match = findEvent(events, name);
+    check(match, 404, 'EVENT_NOT_FOUND', events.length ? 'No single event matches that. Your events are: ' + events.slice(0, 8).map(item => item.name).join(', ') + '.' : 'Your photo library has no events with photos.');
+    const items = [];
+    for (const file of await photoLibrary.photos(match, 24)) {
+      try { items.push(await ingest(file.buffer, { name: file.name, audio: false, keepLocation: false, dir: join(dataDir, 'projects', project) })); }
+      catch { /* Skip files that are not readable pictures. */ }
+    }
+    let unused = items;
+    try {
+      check(items.length, 422, 'EVENT_EMPTY', 'No readable photos were found in ' + match.name + '.');
+      const result = update(req, 'revision.committed', (state, actor) => linkLibraryPhotos(state, actor, { title: match.name, items }));
+      ({ unused } = result.data);
+      return { ok: true, revision: result.revision, data: { ...result.data, unused: undefined } };
+    } finally {
+      await Promise.all(unused.map(removeMedia));
+    }
+  };
+  const libraryStatus = async req => {
+    const allowed = libraryAllowed(req);
+    if (!allowed) return { ok: true, data: { allowed, source: photoLibrary.kind, events: [] } };
+    try { return { ok: true, data: { allowed, source: photoLibrary.kind, events: await photoLibrary.events() } }; }
+    catch (error) { return { ok: true, data: { allowed, source: photoLibrary.kind, events: [], problem: error.status ? error.message : 'The photo library could not be read.' } }; }
+  };
+  app.get(projectPath + '/photo-library', async req => {
+    check(!req.headers.authorization, 403, 'PHOTO_LIBRARY_REQUIRES_BROWSER', 'Check photo library access from the browser.');
+    return libraryStatus(req);
+  });
+  app.post(projectPath + '/photo-library/access', async req => {
+    check(!req.headers.authorization && typeof req.body?.allow === 'boolean', 403, 'PHOTO_LIBRARY_REQUIRES_BROWSER', 'Change photo library access from the browser.');
+    update(req, null, state => { state.photoLibrary = { allowed: req.body.allow, at: new Date().toISOString() }; return null; });
+    return libraryStatus(req);
+  });
+  app.post(projectPath + '/photo-library/pull', async req => {
+    check(!req.headers.authorization && typeof req.body?.event === 'string', 400, 'EVENT_REQUIRED', 'Choose an event to pull photos from.');
+    return pullEvent(req, req.body.event);
+  });
+
   app.get(projectPath + '/sources/:id', async (req, reply) => {
     const { actor, project } = scope(req);
     const state = store.read(actor, project);
@@ -430,6 +473,21 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
         const job = getSnapshot(id, state).jobs.find(item => item.id === input.jobId);
         check(job, 404, 'JOB_NOT_FOUND', 'This render is unavailable.');
         return job;
+      });
+      case 'list_photo_events': {
+        check(libraryAllowed(req), 403, 'PHOTO_LIBRARY_OFF', 'Photo library access is off. Turn it on in Everwhere under VoiceOS first.');
+        const events = await photoLibrary.events();
+        return { ok: true, data: { events: events.map(({ name, count }) => ({ name, photos: count })), title: events.length + (events.length === 1 ? ' event' : ' events') + ' in your photo library' } };
+      }
+      case 'pull_event_photos': return pullEvent(req, input.event);
+      case 'open_immersive_album': return update(req, 'session.changed', state => {
+        const event = eventById(state, state.session.eventId);
+        const photos = (event?.sourceIds ?? []).map(id => mediaById(state, id))
+          .filter(item => item && !item.pending && item.mime.startsWith('image/') && lensAllows(item, state.session.lens));
+        check(photos.length, 409, 'NO_PHOTOS', 'This memory has no photos to walk through yet. Pull photos from an event first.');
+        updateSession(state, { view: 'explore' });
+        state.session.albumRequest = { id: uid(), at: new Date().toISOString() };
+        return { event: event.title, photos: photos.length, title: 'Opening ' + event.title };
       });
       case 'get_capture_inbox': return read(req, inbox);
       case 'preview_capture_link': return update(req, null, (state, actor) =>

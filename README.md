@@ -67,6 +67,16 @@ Devin previews require an interactive Devin login. Run Everwhere locally for des
 
 The integration uses standard MCP over stdio, native result cards, and confirmation before committing reviewed changes. The test suite verifies the real MCP handshake, manifest/tool parity, pairing status, revocation, and live browser events. Authenticated VoiceOS Agent Mode on macOS remains a separate verification step. [VoiceOS installation guide](https://docs.voiceos.com/integrations/distribution) · [Manifest reference](https://docs.voiceos.com/integrations/reference/manifest)
 
+### Photo library
+
+Everwhere can build a memory from an album in the Photos app on the Mac that runs the server. Each album is treated as one event.
+
+1. In Everwhere, open **VoiceOS** and choose **Allow photo library access**. macOS then asks whether the app running Everwhere (usually Terminal) may control Photos.
+2. Say "Pull the photos from Cottage Weekend" to VoiceOS, or use **Pull photos** beside the event. Up to 24 photos are copied into a memory named after the event.
+3. Say "Open the walk" to enter the immersive album.
+
+To use a folder instead of the Photos app, start the server with `EVERWHERE_PHOTO_LIBRARY=/path/to/folder`, where each subfolder is one event.
+
 ## Verify
 
 ```sh
