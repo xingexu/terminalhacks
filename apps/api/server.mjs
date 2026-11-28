@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import Ajv from 'ajv';
 import formats from 'ajv-formats';
 import { createStore } from './store.mjs';
+import { integrationManifest } from '../mcp/manifest.mjs';
 import {
   assertCapture, capturePreview, cleanMedia, commitCommand, createEvent, createFilmWorker, gapQuestion, getSnapshot,
   inbox, observe, previewCommand, previewFilm, queueFilm, resolveEvent, revokeCapture, startCapture, updateSession
@@ -20,6 +21,7 @@ import { appendChange, digest, eventById, mediaById, rank, requireCondition as c
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const demoDir = join(root, 'apps/web/public/media');
 const buildDir = join(root, 'apps/web/dist');
+const landingDir = join(buildDir, 'landing');
 const projectPath = '/v1/projects/:p';
 const ajv = new Ajv({ strict: false });
 formats(ajv);
@@ -173,6 +175,19 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     const { actor, project } = scope(req);
     return { ok: true, data: store.pair(actor, project) };
   });
+  app.get(projectPath + '/pairing', async req => {
+    check(!req.headers.authorization, 403, 'PAIRING_REQUIRES_BROWSER', 'Check pairing status from the browser.');
+    const { actor, project } = scope(req);
+    return { ok: true, data: store.pairingStatus(actor, project) };
+  });
+  app.get(projectPath + '/pairing/manifest', async (req, reply) => {
+    check(!req.headers.authorization, 403, 'PAIRING_REQUIRES_BROWSER', 'Download the manifest from the browser.');
+    scope(req);
+    let manifest;
+    try { manifest = integrationManifest(req.query.origin); }
+    catch { check(false, 400, 'INVALID_API_ORIGIN', 'Use an HTTPS API origin or loopback HTTP.'); }
+    return reply.header('Content-Disposition', 'attachment; filename="voiceos.integration.json"').send(manifest);
+  });
   app.delete(projectPath + '/pairing', async req => {
     check(!req.headers.authorization, 403, 'PAIRING_REQUIRES_BROWSER', 'Revoke a pairing token from the browser.');
     const { actor, project } = scope(req);
@@ -302,6 +317,8 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     const input = req.body ?? {};
     const tool = req.params.tool;
     check(toolValidation.get(tool)?.(input), 400, 'INVALID_TOOL_INPUT', 'This voice action requires valid input.');
+    scope(req);
+    store.touchPair(/^Bearer (\S+)$/i.exec(req.headers.authorization)[1]);
     const active = state => input.eventId || state.session.eventId;
     const prepare = (type, payload) => update(req, null, (state, actor) => previewCommand(state, {
       type, targetId: active(state), payload: payload(state), expectedRevision: input.expectedRevision
@@ -359,7 +376,9 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
   if (serveWeb && existsSync(buildDir)) {
     await app.register(staticFiles, { root: buildDir, wildcard: false, serve: false });
     app.get('/assets/*', (req, reply) => reply.sendFile('assets/' + req.params['*']));
-    app.get('/', (req, reply) => reply.sendFile('index.html'));
+    app.get('/', (req, reply) => reply.sendFile('index.html', landingDir));
+    app.get('/landing/*', (req, reply) => reply.sendFile(req.params['*'], landingDir));
+    app.get('/app', (req, reply) => reply.sendFile('index.html'));
     app.get('/p/:id/:view', (req, reply) => reply.sendFile('index.html'));
   }
   return app;

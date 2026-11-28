@@ -13,6 +13,9 @@ import sharp from 'sharp';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { createApp } from '../apps/api/server.mjs';
+import { integrationManifest } from '../apps/mcp/manifest.mjs';
+import { DatabaseSync } from 'node:sqlite';
+import { createStore } from '../apps/api/store.mjs';
 
 async function setup(t) {
   const dir = await mkdtemp(join(tmpdir(), 'everwhere-test-'));
@@ -177,6 +180,19 @@ test('MCP stdio uses the real API, applies a correction and recollection, and pu
   const ctx = await setup(t);
   const { p, request, root, cookie, demo, snap } = ctx;
   const { token } = await request(p + '/pairing', { confirm: true });
+  assert.deepEqual(await request(p + '/pairing'), { active: true, expires: (await request(p + '/pairing')).expires, lastSeen: null });
+  const stranger = await ctx.browser();
+  await request(p + '/pairing', undefined, { cookie: stranger.cookie, status: 404 });
+  const manifestResponse = await fetch(root + p + '/pairing/manifest?origin=' + encodeURIComponent(root), { headers: { Cookie: cookie } });
+  assert.match(manifestResponse.headers.get('content-disposition'), /attachment/);
+  const manifest = await manifestResponse.json();
+  assert.deepEqual(manifest, integrationManifest(root));
+  assert.equal(JSON.stringify(manifest).includes(token), false);
+  await request(p + '/pairing/manifest?origin=http://untrusted.example', undefined, { status: 400 });
+  const defaultManifest = JSON.parse(await readFile(new URL('../voiceos.integration.json', import.meta.url)));
+  assert.deepEqual(defaultManifest, integrationManifest());
+  assert.deepEqual(defaultManifest.permissions[0].domains, ['127.0.0.1', 'localhost', '[::1]']);
+  assert.deepEqual(integrationManifest('https://api.example.com').permissions[0].domains, ['api.example.com']);
   const client = new Client({ name: 'everwhere-integration-test', version: '1.0.0' });
   const transport = new StdioClientTransport({ command: process.execPath,
     args: [fileURLToPath(new URL('../apps/mcp/index.mjs', import.meta.url))],
@@ -186,12 +202,17 @@ test('MCP stdio uses the real API, applies a correction and recollection, and pu
     await client.connect(transport);
     const tools = await client.listTools();
     assert.equal(tools.tools.length, 16);
+    assert.deepEqual(manifest.tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+      tools.tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })));
     async function voice(name, args = {}, expectsError = false) {
       const result = await client.callTool({ name, arguments: args });
       assert.equal(result.isError, expectsError);
-      return JSON.parse(result.content[0].text);
+      const data = JSON.parse(result.content[0].text);
+      assert.equal(data._voiceos_glance.blocks.length, 2);
+      return data;
     }
     assert.equal((await voice('get_context')).data.event, 'Lago di Braies');
+    assert.ok((await request(p + '/pairing')).lastSeen > 0);
     const sse = await fetch(root + p + '/events', { headers: { Cookie: cookie }, signal: stream.signal });
     assert.equal(sse.status, 200);
     const reader = sse.body.getReader();
@@ -210,8 +231,30 @@ test('MCP stdio uses the real API, applies a correction and recollection, and pu
     assert.equal((await snap()).events[0].placeLabel, 'New harbor context');
     t.diagnostic('First local MCP confirmation, SSE and follow-on assertions: ' + Math.round(performance.now() - timing) + ' ms');
     await request(p + '/pairing', undefined, { method: 'DELETE' });
+    assert.deepEqual(await request(p + '/pairing'), { active: false, expires: null, lastSeen: null });
     assert.equal((await voice('get_context', {}, true)).code, 'TOKEN_EXPIRED');
   } finally { stream.abort(); await client.close(); }
+});
+
+test('pairing status migrates an existing database and resets when the token is replaced', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'everwhere-pairing-migration-'));
+  const legacy = new DatabaseSync(join(dir, 'everwhere.sqlite'));
+  legacy.exec('CREATE TABLE pairings (token TEXT PRIMARY KEY, actor TEXT NOT NULL, project TEXT NOT NULL, expires INTEGER NOT NULL)');
+  legacy.close();
+  const store = createStore(dir);
+  t.after(async () => { store.close(); await rm(dir, { recursive: true, force: true }); });
+  const { actor } = store.newBrowser();
+  const { id } = store.create(actor, 'Pairing test');
+  const first = store.pair(actor, id);
+  store.touchPair(first.token);
+  assert.ok(store.pairingStatus(actor, id).lastSeen > 0);
+  store.pair(actor, id);
+  assert.equal(store.pairing(first.token), null);
+  assert.equal(store.pairingStatus(actor, id).lastSeen, null);
+  const connection = new DatabaseSync(join(dir, 'everwhere.sqlite'));
+  connection.prepare('UPDATE pairings SET expires = ?').run(Date.now() - 1);
+  connection.close();
+  assert.equal(store.pairingStatus(actor, id).active, false);
 });
 
 test('real 1080p MP4 plays over range requests and dependency staleness blocks delivery', async t => {

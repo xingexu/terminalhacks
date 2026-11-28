@@ -18,7 +18,13 @@ const server = new Server({ name: 'everwhere', version: '0.1.0' }, { capabilitie
 server.setRequestHandler(ListToolsRequestSchema, () => ({ tools }));
 
 function toolResult(value, isError = false) {
-  return { content: [{ type: 'text', text: JSON.stringify(value) }], isError };
+  const summary = isError ? (value.message || 'The request could not be completed.') :
+    (value.data?.diff?.label || value.data?.event || value.data?.title || 'Request completed.');
+  const result = { ...value, _voiceos_glance: { blocks: [
+    { type: 'header', title: 'Everwhere', icon: 'globe', trailing: isError ? 'Needs attention' : value.data?.previewToken ? 'Review change' : 'Ready' },
+    { type: 'keyValue', pairs: [[isError ? 'Message' : 'Result', String(summary).slice(0, 64)]] }
+  ] } };
+  return { content: [{ type: 'text', text: JSON.stringify(result) }], isError };
 }
 
 server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
