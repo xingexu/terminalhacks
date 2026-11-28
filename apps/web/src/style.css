@@ -95,24 +95,35 @@ h1, h2, h3, p, blockquote { margin: 0; }
   transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
 }
 .menu button:hover:enabled { background: var(--surface-2); color: var(--text); }
-.menu button.active, .menu button.active:hover:enabled { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.menu button { position: relative; z-index: 1; }
+.menu button.active, .menu button.active:hover:enabled { background: transparent; border-color: transparent; color: var(--accent-fg); }
+/* One highlight that glides between views. */
+.menu::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 44px;
+  width: var(--pill-w, 0px);
+  transform: translateX(var(--pill-x, 0px));
+  border-radius: var(--pill);
+  background: var(--accent);
+  transition: transform 320ms cubic-bezier(.3, .9, .3, 1), width 320ms cubic-bezier(.3, .9, .3, 1);
+}
+.brand-logo { display: block; height: 46px; width: auto; border-radius: 10px; }
+.view-explore, .view-stack { animation: view-in 280ms ease both; }
+@keyframes view-in { from { opacity: 0; transform: translateY(8px); } }
+.timeline-card, .media-card, .storyboard-card, .grade-card, .workspace-project, .glass-icon, .waypoint, .icon-btn, .tab-set button {
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease, transform 200ms ease;
+}
+.btn:active:not(:disabled), .menu button:active:enabled, .icon-btn:active, .glass-icon:active:enabled { transform: scale(.97); }
+:is(.timeline-card, .media-card, .storyboard-card, .grade-card):hover { transform: translateY(-2px); }
 .menu-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 /* The project switcher sits beside the brand: which project, then where in it. */
 .menubar > .workspace-project { width: auto; flex: 0 1 auto; display: inline-flex; gap: 9px; max-width: min(260px, 40vw); min-height: 44px; padding: 3px 14px 3px 5px; border-radius: var(--pill); }
 .menubar > .workspace-project .project-icon { width: 34px; height: 34px; border-radius: 50%; flex: none; }
 .menubar > .workspace-project strong { min-width: 0; }
 .library-settings { margin-bottom: 16px; }
-.brand-mark {
-  width: 31px;
-  height: 31px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line-strong);
-  border-radius: 50%;
-  color: #dedbd2;
-}
-.brand-mark > svg { width: 20px; height: 20px; }
-.brand-period { color: #aaa79e; }
 .eyebrow {
   font-size: .69rem;
   line-height: 1.35;
@@ -176,7 +187,7 @@ h1, h2, h3, p, blockquote { margin: 0; }
   text-decoration: none;
   text-align: center;
   overflow-wrap: anywhere;
-  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease, transform 200ms ease;
 }
 .btn:hover:not(:disabled), .file-btn:hover { background: var(--surface-raised); border-color: #84827a; }
 .btn.primary, .btn.top-capture {
@@ -773,7 +784,8 @@ h1, h2, h3, p, blockquote { margin: 0; }
 }
 @media (max-width: 470px) {
   /* On a phone the brand shrinks to its mark so project, VoiceOS and Capture fit beside it. */
-  .brand-name, .capture-word { display: none; }
+  .capture-word { display: none; }
+  .brand-logo { height: 38px; }
   .menubar > .workspace-project { padding-right: 9px; gap: 5px; }
   .menubar > .workspace-project strong { display: none; }
   .menu { justify-content: space-between; }
