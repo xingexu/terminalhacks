@@ -40,15 +40,17 @@
   const trailContext = trailCanvas.getContext('2d');
   const sampler = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
 
-  const sources = ['photos/lake.webp', 'photos/ocean.webp', 'photos/stars.webp', 'photos/desert.webp'];
+  const panelImages = [...document.querySelectorAll('.landing-panels > img')];
   const glyphs = ' .,:;-~+=!iltfrxvuznXYTLCJ0OZQwm#MW&8%B@$';
   const trail = [];
   const trailLifetime = 620;
+  const scatterDuration = 1080;
   let trailFrame = 0;
   let width = background.clientWidth;
   let height = background.clientHeight;
   let scale = Math.min(window.devicePixelRatio, 2);
-  let photo;
+  let artworkReady = false;
+  let paintFrame = 0;
   let glyphWidth;
   let glyphHeight;
   let exitFrame = 0;
@@ -56,6 +58,7 @@
   let destination;
   let scatterCanvas;
   let scatterGL;
+  let startGlyphScatter;
   let workspaceEntered = false;
 
   function sizeCanvas(canvas, context) {
@@ -64,8 +67,13 @@
     context.setTransform(scale, 0, 0, scale, 0, 0);
   }
 
+  function schedulePaint() {
+    if (!workspaceEntered && !destination && !paintFrame) paintFrame = requestAnimationFrame(paint);
+  }
+
   function paint() {
-    if (!photo || !width || !height) return;
+    paintFrame = 0;
+    if (!sampler || !context || workspaceEntered || destination || !width || !height) return;
 
     sizeCanvas(photoCanvas, context);
     const fontSize = width < 680 ? 7 : 8;
@@ -82,21 +90,53 @@
     sampler.canvas.width = columns;
     sampler.canvas.height = rows;
 
-    const cover = Math.max(width / photo.naturalWidth, height / photo.naturalHeight);
-    const cropWidth = width / cover;
-    const cropHeight = height / cover;
-    sampler.drawImage(photo, (photo.naturalWidth - cropWidth) / 2, (photo.naturalHeight - cropHeight) / 2,
-      cropWidth, cropHeight, 0, 0, columns, rows);
+    const bounds = background.getBoundingClientRect();
+    const panels = [];
+    context.save();
+    context.beginPath();
+    for (const image of panelImages) {
+      if (!image.complete || !image.naturalWidth || !image.naturalHeight) continue;
+      const rect = image.getBoundingClientRect();
+      if (!rect.width || !rect.height) continue;
+      const left = rect.left - bounds.left, top = rect.top - bounds.top;
+      const style = getComputedStyle(image);
+      const [x, y] = style.objectPosition.split(/\s+/).map(part =>
+        part.endsWith('%') ? parseFloat(part) / 100 : .5);
+      const cover = Math.max(rect.width / image.naturalWidth, rect.height / image.naturalHeight);
+      const cropWidth = rect.width / cover, cropHeight = rect.height / cover;
+      sampler.drawImage(image, (image.naturalWidth - cropWidth) * (x ?? .5),
+        (image.naturalHeight - cropHeight) * (y ?? .5), cropWidth, cropHeight,
+        left / cellWidth, top / cellHeight, rect.width / cellWidth, rect.height / cellHeight);
+      panels.push({ left, top, right: left + rect.width, bottom: top + rect.height,
+        saturation: Number(style.getPropertyValue('--scene-saturation').trim() || 1),
+        brightness: Number(style.getPropertyValue('--scene-brightness').trim() || 1) });
+      context.rect(left, top, rect.width, rect.height);
+    }
+    artworkReady = panels.length > 0;
+    if (!artworkReady) {
+      context.restore();
+      return;
+    }
+    // Clip at physical panel edges too, even when a gutter splits a glyph cell.
+    context.clip();
     const colors = sampler.getImageData(0, 0, columns, rows);
     const pixels = colors.data;
 
     for (let row = 0; row < rows; row++) {
       let line = '';
+      const y = (row + .5) * cellHeight;
+      const rowPanels = panels.filter(panel => y >= panel.top && y < panel.bottom);
       for (let column = 0; column < columns; column++) {
         const offset = (row * columns + column) * 4;
-        const red = pixels[offset];
-        const green = pixels[offset + 1];
-        const blue = pixels[offset + 2];
+        const x = (column + .5) * cellWidth;
+        const panel = rowPanels.find(panel => x >= panel.left && x < panel.right);
+        if (!panel) { line += ' '; continue; }
+        const gray = 0.2126 * pixels[offset] + 0.7152 * pixels[offset + 1] + 0.0722 * pixels[offset + 2];
+        for (let channel = 0; channel < 3; channel++) {
+          const saturated = gray + (pixels[offset + channel] - gray) * panel.saturation;
+          pixels[offset + channel] = Math.max(0, Math.min(255, saturated)) * panel.brightness;
+        }
+        const red = pixels[offset], green = pixels[offset + 1], blue = pixels[offset + 2];
         const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
         line += glyphs[Math.round(luminance ** 0.9 * (glyphs.length - 1))];
         // Lift dark colors so sparse glyphs remain visible against the backdrop.
@@ -110,7 +150,6 @@
 
     // Mask the enlarged color grid with the text, so each cell keeps its own color.
     sampler.putImageData(colors, 0, 0);
-    context.save();
     context.globalCompositeOperation = 'source-in';
     context.imageSmoothingEnabled = false;
     context.drawImage(sampler.canvas, 0, 0, columns * cellWidth, rows * cellHeight);
@@ -163,7 +202,7 @@
   document.addEventListener('visibilitychange', clearTrail);
   window.addEventListener('blur', clearTrail);
   function pointerTrail({ clientX, clientY, pointerType }) {
-    if (!trailContext || document.documentElement.dataset.leaving || pointerType === 'touch' || !photo || reducedMotion.matches || document.hidden) return;
+    if (!trailContext || document.documentElement.dataset.leaving || pointerType === 'touch' || !artworkReady || reducedMotion.matches || document.hidden) return;
 
     const last = trail.at(-1);
     if (last && Math.hypot(clientX - last.x, clientY - last.y) < 8) return;
@@ -177,18 +216,25 @@
     const nextWidth = background.clientWidth;
     const nextHeight = background.clientHeight;
     const nextScale = Math.min(window.devicePixelRatio, 2);
-    if (nextWidth === width && nextHeight === height && nextScale === scale) return;
-    width = nextWidth;
-    height = nextHeight;
-    scale = nextScale;
-    clearTrail();
-    if (trailContext) sizeCanvas(trailCanvas, trailContext);
-    paint();
+    if (nextWidth !== width || nextHeight !== height || nextScale !== scale) {
+      width = nextWidth;
+      height = nextHeight;
+      scale = nextScale;
+      clearTrail();
+      if (trailContext) sizeCanvas(trailCanvas, trailContext);
+    }
+    schedulePaint();
   });
   backgroundObserver.observe(background);
+  for (const image of panelImages) {
+    backgroundObserver.observe(image);
+    image.addEventListener('load', schedulePaint);
+    image.addEventListener('error', schedulePaint);
+  }
+  schedulePaint();
 
   // Each instance carries one original cell from the painted, full-resolution canvas.
-  function glyphScatter(canvas, gl, originX, originY) {
+  function glyphScatter(gl) {
     function shader(type, source) {
       const result = gl.createShader(type);
       gl.shaderSource(result, source);
@@ -210,13 +256,17 @@
         vec2 ray = center - origin;
         float spread = length(viewport);
         float seed = fract(sin(dot(grid, vec2(12.9898, 78.233))) * 43758.5453);
-        float delay = .20 * length(ray) / spread + .045 * seed;
+        float delay = .18 * length(ray) / spread + .02 * seed;
         float t = clamp((progress - delay) / (1.0 - delay), 0.0, 1.0);
-        float angle = (length(ray) < .01 ? seed * 6.283 : atan(ray.y, ray.x)) + (seed - .5) * .60;
-        float travel = spread * (1.08 + .35 * seed) * t * (.40 + .60 * t);
-        float spin = (seed - .5) * 1.8 * t;
+        float motion = smoothstep(0.0, 1.0, t);
+        float angle = (length(ray) < .01 ? seed * 6.283 : atan(ray.y, ray.x)) + (seed - .5) * .38;
+        vec2 direction = vec2(cos(angle), sin(angle));
+        vec2 toEdge = mix(center, viewport - center, step(vec2(0), direction));
+        vec2 crossing = toEdge / max(abs(direction), vec2(.0001));
+        float travel = min(crossing.x, crossing.y) + length(cell) + spread * (.12 + .14 * seed);
+        float spin = (seed - .5) * 1.15 * motion;
         vec2 offset = (corner - .5) * extent;
-        vec2 pos = center + vec2(cos(angle), sin(angle)) * travel
+        vec2 pos = center + direction * travel * motion
           + mat2(cos(spin), sin(spin), -sin(spin), cos(spin)) * offset;
         uv = (start + corner * extent) / viewport;
         gl_Position = vec4(pos / viewport * vec2(2.0, -2.0) + vec2(-1.0, 1.0), 0.0, 1.0);
@@ -241,24 +291,38 @@
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, photoCanvas);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    const columns = Math.ceil(width / glyphWidth);
-    const count = columns * Math.ceil(height / glyphHeight);
-    gl.uniform1i(gl.getUniformLocation(program, 'columns'), columns);
-    gl.uniform2f(gl.getUniformLocation(program, 'viewport'), width, height);
-    gl.uniform2f(gl.getUniformLocation(program, 'cell'), glyphWidth, glyphHeight);
-    gl.uniform2f(gl.getUniformLocation(program, 'origin'), originX, originY);
     const progress = gl.getUniformLocation(program, 'progress');
-    return t => {
-      gl.clear(gl.COLOR_BUFFER_BIT);
-      gl.uniform1f(progress, t);
-      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
+    return (originX, originY) => {
+      gl.canvas.width = photoCanvas.width;
+      gl.canvas.height = photoCanvas.height;
+      gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, photoCanvas);
+      const columns = Math.ceil(width / glyphWidth);
+      const count = columns * Math.ceil(height / glyphHeight);
+      gl.uniform1i(gl.getUniformLocation(program, 'columns'), columns);
+      gl.uniform2f(gl.getUniformLocation(program, 'viewport'), width, height);
+      gl.uniform2f(gl.getUniformLocation(program, 'cell'), glyphWidth, glyphHeight);
+      gl.uniform2f(gl.getUniformLocation(program, 'origin'), originX, originY);
+      return t => {
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.uniform1f(progress, t);
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
+      };
     };
   }
 
+  // Prepare the shader before activation. Only the final artwork upload depends on the click.
+  function prepareScatter() {
+    if (workspaceEntered || scatterCanvas || reducedMotion.matches || document.hidden) return;
+    scatterCanvas = makeSurface(1, 1);
+    scatterGL = scatterCanvas.getContext('webgl2', { antialias: false, depth: false, stencil: false });
+    if (scatterGL) startGlyphScatter = glyphScatter(scatterGL);
+  }
+  tryLink.addEventListener('pointerenter', prepareScatter);
+  tryLink.addEventListener('focus', prepareScatter);
+  if (window.requestIdleCallback) window.requestIdleCallback(prepareScatter, { timeout: 1800 });
   // With 2D rendering, group adjacent glyphs to bound the draw calls on large displays.
   function canvasScatter(canvas, originX, originY) {
     const ctx = canvas.getContext('2d');
@@ -272,10 +336,14 @@
         const w = Math.min(width - x, stepX), h = Math.min(height - y, stepY);
         const dx = x + w / 2 - originX, dy = y + h / 2 - originY;
         const seed = Math.random();
-        const angle = Math.atan2(dy, dx) + (seed - .5) * .60;
-        const travel = spread * (1.08 + .35 * seed);
-        fragments.push({ x, y, w, h, dx: Math.cos(angle) * travel, dy: Math.sin(angle) * travel,
-          delay: .20 * Math.hypot(dx, dy) / spread + .045 * seed });
+        const angle = (dx || dy ? Math.atan2(dy, dx) : seed * Math.PI * 2) + (seed - .5) * .38;
+        const vx = Math.cos(angle), vy = Math.sin(angle);
+        const cx = x + w / 2, cy = y + h / 2;
+        const edgeX = (vx >= 0 ? width - cx : cx) / Math.max(.0001, Math.abs(vx));
+        const edgeY = (vy >= 0 ? height - cy : cy) / Math.max(.0001, Math.abs(vy));
+        const travel = Math.min(edgeX, edgeY) + Math.hypot(w, h) + spread * (.12 + .14 * seed);
+        fragments.push({ x, y, w, h, dx: vx * travel, dy: vy * travel,
+          delay: .18 * Math.hypot(dx, dy) / spread + .02 * seed });
       }
     }
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
@@ -283,18 +351,18 @@
       ctx.clearRect(0, 0, width, height);
       for (const p of fragments) {
         const t = Math.max(0, (progress - p.delay) / (1 - p.delay));
-        const motion = t * (.40 + .60 * t);
+        const motion = t * t * (3 - 2 * t);
         ctx.drawImage(photoCanvas, p.x * scale, p.y * scale, p.w * scale, p.h * scale,
           p.x + p.dx * motion, p.y + p.dy * motion, p.w, p.h);
       }
     };
   }
 
-  function makeSurface() {
+  function makeSurface(pixelWidth = photoCanvas.width, pixelHeight = photoCanvas.height) {
     const surface = document.createElement('canvas');
     surface.className = 'ascii-scatter';
-    surface.width = photoCanvas.width;
-    surface.height = photoCanvas.height;
+    surface.width = pixelWidth;
+    surface.height = pixelHeight;
     return surface;
   }
 
@@ -310,13 +378,19 @@
     } else {
       workspaceEntered = true;
       clearTrail();
+      cancelAnimationFrame(paintFrame);
+      for (const image of panelImages) {
+        image.removeEventListener('load', schedulePaint);
+        image.removeEventListener('error', schedulePaint);
+      }
       window.removeEventListener('pointermove', pointerTrail);
       backgroundObserver.disconnect();
       scatterGL?.getExtension('WEBGL_lose_context')?.loseContext();
       scatterGL = null;
+      startGlyphScatter = null;
       scatterCanvas?.remove();
       scatterCanvas = null;
-      photo = null;
+      artworkReady = false;
       for (const surface of [photoCanvas, trailCanvas, sampler?.canvas]) {
         if (surface) surface.width = surface.height = 0;
       }
@@ -332,29 +406,31 @@
     if (document.documentElement.dataset.leaving) return;
     destination = link.href;
     document.documentElement.dataset.leaving = 'true';
-    if (!photo || !glyphWidth || reducedMotion.matches) return navigate();
-    exitTimer = setTimeout(navigate, 850);
+    if (!artworkReady || reducedMotion.matches) return navigate();
+    exitTimer = setTimeout(navigate, scatterDuration + 250);
     const bounds = link.getBoundingClientRect();
     const x = event.detail ? event.clientX : bounds.left + bounds.width / 2;
     const y = event.detail ? event.clientY : bounds.top + bounds.height / 2;
     clearTrail();
-    scatterCanvas = makeSurface();
-    scatterGL = scatterCanvas.getContext('webgl2', { antialias: false, depth: false, stencil: false });
-    let draw = scatterGL && glyphScatter(scatterCanvas, scatterGL, x, y);
+    prepareScatter();
+    let draw = scatterGL && !scatterGL.isContextLost() && startGlyphScatter?.(x, y);
     if (!draw) {
       if (scatterGL) {
         scatterGL.getExtension('WEBGL_lose_context')?.loseContext();
         scatterGL = null;
-        scatterCanvas = makeSurface();
       }
+      scatterCanvas = makeSurface();
       draw = canvasScatter(scatterCanvas, x, y);
     }
     if (!draw) return navigate();
     background.append(scatterCanvas);
     draw(0);
-    const started = performance.now();
+    clearTimeout(exitTimer);
+    exitTimer = setTimeout(navigate, scatterDuration + 250);
+    let started;
     function tick(now) {
-      const progress = Math.min(1, (now - started) / 740);
+      started ??= now;
+      const progress = Math.min(1, (now - started) / scatterDuration);
       draw(progress);
       if (progress < 1) exitFrame = requestAnimationFrame(tick);
       else navigate();
@@ -370,31 +446,11 @@
     if (!event.persisted || workspaceEntered) return;
     scatterGL?.getExtension('WEBGL_lose_context')?.loseContext();
     scatterGL = null;
+    startGlyphScatter = null;
     scatterCanvas?.remove();
     scatterCanvas = null;
     destination = null;
     delete document.documentElement.dataset.leaving;
+    schedulePaint();
   });
-
-  // Choose one landscape per load, with fallbacks if a photo cannot be decoded.
-  for (let i = sources.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [sources[i], sources[j]] = [sources[j], sources[i]];
-  }
-  async function loadPhoto() {
-    for (const source of sources) {
-      const candidate = new Image();
-      candidate.src = source;
-      try {
-        await candidate.decode();
-      } catch {
-        continue;
-      }
-      if (workspaceEntered) return;
-      photo = candidate;
-      paint();
-      return;
-    }
-  }
-  if (sampler && context) loadPhoto();
 })();
