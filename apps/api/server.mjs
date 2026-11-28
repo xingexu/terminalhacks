@@ -164,6 +164,7 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     return { ok: true, data: { connected: false } };
   });
   app.post(projectPath + '/scene-jobs', async req => {
+    check(!req.headers.authorization, 403, 'BROWSER_REQUIRED', 'Generate scenes from the Everwhere browser.');
     const { actor } = scope(req);
     check(higgsfield.status(actor).connected, 401, 'HIGGSFIELD_AUTH', 'Connect Higgsfield before generating.');
     check(await visionReady(), 503, 'VISION_UNAVAILABLE', 'Start Ollama and install qwen3-vl:4b on the Everwhere server.');
@@ -175,11 +176,12 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     return result;
   });
   app.post(projectPath + '/scene-jobs/:id/resume', async req => {
+    check(!req.headers.authorization, 403, 'BROWSER_REQUIRED', 'Resume scenes from the Everwhere browser.');
     const result = update(req, 'scene.changed', state => {
       const job = state.sceneJobs?.find(item => item.id === req.params.id);
       check(job?.status === 'failed' && job.inputHash === sceneInputHash(state, job.eventId, job.sourceId), 409, 'SCENE_STALE', 'Create a new scene from the current memory.');
       check(!state.sceneJobs.some(item => ['queued', 'interpreting', 'building'].includes(item.status)), 409, 'SCENE_BUSY', 'Wait for the active scene job to finish.');
-      Object.assign(job, { status: 'queued', error: undefined });
+      Object.assign(job, { status: 'queued', error: undefined, retryRequested: true });
       return { id: job.id, status: job.status };
     });
     scenes.kick();

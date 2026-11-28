@@ -43,6 +43,27 @@ async function setup(t) {
   return { dir, root, ...first, p, browser, request, snap: () => request(p + '/snapshot') };
 }
 
+test('scene generation requires a browser session before provider readiness checks', async t => {
+  const { p, request } = await setup(t);
+  const { token } = await request(p + '/pairing', { confirm: true });
+  const originalFetch = globalThis.fetch;
+  let readinessChecks = 0;
+  globalThis.fetch = (...args) => {
+    if (String(args[0]) === 'http://127.0.0.1:11434/api/tags') readinessChecks++;
+    return originalFetch(...args);
+  };
+  try {
+    const headers = { Authorization: 'Bearer ' + token };
+    const create = await request(p + '/scene-jobs', {}, { cookie: '', headers, status: 403 });
+    assert.equal(create.code, 'BROWSER_REQUIRED');
+    const resume = await request(p + '/scene-jobs/not-a-job/resume', {}, { cookie: '', headers, status: 403 });
+    assert.equal(resume.code, 'BROWSER_REQUIRED');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(readinessChecks, 0);
+});
+
 async function makeImage(color = '#557764') {
   return sharp({ create: { width: 48, height: 32, channels: 3, background: color } }).jpeg().toBuffer();
 }
