@@ -383,6 +383,7 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
   if (serveWeb && existsSync(buildDir)) {
     await app.register(staticFiles, { root: buildDir, wildcard: false, serve: false });
     app.get('/assets/*', (req, reply) => reply.sendFile('assets/' + req.params['*']));
+    app.get('/environment/*', (req, reply) => reply.sendFile('environment/' + req.params['*']));
     app.get('/', (req, reply) => reply.sendFile('index.html', landingDir));
     app.get('/landing/*', (req, reply) => reply.sendFile(req.params['*'], landingDir));
     app.get('/app', (req, reply) => reply.sendFile('index.html'));
