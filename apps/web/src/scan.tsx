@@ -1,0 +1,257 @@
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Footprints, MapPin, MoveUpRight, X } from 'lucide-react';
+import {
+  ACESFilmicToneMapping, Box3, Color, DirectionalLight, HemisphereLight, LoadingManager,
+  Material, Matrix3, Mesh, PerspectiveCamera, Raycaster, Scene, SRGBColorSpace, Texture, Vector2, Vector3, WebGLRenderer
+} from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Octree } from 'three/addons/math/Octree.js';
+import { Walker } from './walking';
+import './album.css';
+
+type Position = [number, number, number];
+export default function Scan({ url, position, onClose, onWaypoint }: {
+  url: string; position?: Position; onClose: () => void; onWaypoint: (position: Position) => void;
+}) {
+  const host = useRef<HTMLDivElement>(null);
+  const wrapper = useRef<HTMLDivElement>(null);
+  const keys = useRef(new Set<string>());
+  const appliedPosition = useRef('');
+  const actions = useRef<{ choose: () => void; overview: () => void; read: () => Position; move: (point: Position) => void } | null>(null);
+  const [phase, setPhase] = useState<'loading' | 'overview' | 'choose' | 'walk' | 'error'>('loading');
+  const [notice, setNotice] = useState('');
+  useEffect(() => {
+    appliedPosition.current = '';
+    const element = host.current!;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    element.focus();
+    let renderer: WebGLRenderer;
+    try { renderer = new WebGLRenderer({ antialias: true }); }
+    catch { setPhase('error'); return () => { document.body.style.overflow = overflow; previousFocus?.focus(); }; }
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+    renderer.outputColorSpace = SRGBColorSpace;
+    renderer.toneMapping = ACESFilmicToneMapping;
+    element.appendChild(renderer.domElement);
+    const canvas = renderer.domElement;
+    canvas.style.touchAction = 'none';
+    const scene = new Scene();
+    scene.background = new Color('#15242c');
+    scene.add(new HemisphereLight('#fff7e5', '#7b828b', 2));
+    const sun = new DirectionalLight('#ffe7c6', 2);
+    sun.position.set(-6, 15, 8);
+    scene.add(sun);
+    const camera = new PerspectiveCamera(65, 1, 0.05, 1000);
+    camera.rotation.order = 'YXZ';
+    const orbit = new OrbitControls(camera, canvas);
+    orbit.enableDamping = false;
+    const collision = new Octree();
+    let walker: Walker | null = null;
+    let mode: 'overview' | 'choose' | 'walk' = 'overview';
+    let active = true;
+    let yaw = 0;
+    let pitch = 0;
+    let last = 0;
+    let drag: { id: number; x: number; y: number } | null = null;
+    const download = new AbortController();
+    const pick = new Raycaster();
+    const pointer = new Vector2();
+    const normal = new Vector3();
+    const materials = new Set<Material>();
+    const textures = new Set<Texture>();
+    const disposeModel = (model: Scene | import('three').Group) => model.traverse(object => {
+      if (!(object instanceof Mesh)) return;
+      object.geometry.dispose();
+      const surfaces = Array.isArray(object.material) ? object.material : [object.material];
+      surfaces.forEach(surface => {
+        materials.add(surface);
+        Object.values(surface).forEach(value => { if (value instanceof Texture) textures.add(value); });
+      });
+    });
+    const setMode = (value: typeof mode) => {
+      mode = value;
+      orbit.enabled = value === 'overview';
+      keys.current.clear();
+      drag = null;
+      setPhase(value);
+    };
+    const overview = () => {
+      setMode('overview');
+      setNotice('Drag to inspect the scan, then choose a clear floor to begin walking.');
+      orbit.target.copy(camera.position).add(new Vector3(0, 0, -3).applyQuaternion(camera.quaternion));
+      orbit.update();
+    };
+    function place(point: Vector3) {
+      const candidate = new Walker(collision, point.clone().add(new Vector3(0, 0.03, 0)));
+      const overlap = collision.capsuleIntersect(candidate.capsule);
+      if (overlap && overlap.depth > 0.05) {
+        setNotice('There is not enough standing room here. Choose an open floor area.');
+        return;
+      }
+      walker = candidate;
+      yaw = camera.rotation.y;
+      pitch = 0;
+      camera.position.copy(walker.eye);
+      setMode('walk');
+      setNotice('WASD to walk · Drag to look · Shift to sprint · Space to jump');
+      element.focus();
+    }
+    void (async () => {
+      try {
+        const response = await fetch(url, { signal: download.signal });
+        if (!response.ok) throw new Error('This reconstruction is unavailable.');
+        const bytes = await response.arrayBuffer();
+        const manager = new LoadingManager();
+        manager.setURLModifier(resource => {
+          if (!resource.startsWith('blob:') && !resource.startsWith('data:')) throw new Error('The scan must embed its textures.');
+          return resource;
+        });
+        const gltf = await new GLTFLoader(manager).parseAsync(bytes, '');
+        if (!active) { disposeModel(gltf.scene); materials.forEach(item => item.dispose()); textures.forEach(item => item.dispose()); return; }
+        scene.add(gltf.scene);
+        const bounds = new Box3().setFromObject(gltf.scene);
+        const center = bounds.getCenter(new Vector3());
+        const size = bounds.getSize(new Vector3());
+        if (!Number.isFinite(size.length()) || size.length() <= 0) throw new Error('This scene has no usable geometry.');
+        const radius = size.length() / 2;
+        camera.far = Math.max(100, radius * 10);
+        camera.updateProjectionMatrix();
+        camera.position.copy(center).add(new Vector3(radius, radius * 0.75, radius));
+        orbit.target.copy(center);
+        orbit.update();
+        collision.fromGraphNode(gltf.scene);
+        actions.current = {
+          choose: () => { setMode('choose'); setNotice('Click or tap a clear floor surface to begin walking.'); element.focus(); },
+          overview,
+          read: () => camera.position.toArray(),
+          move: point => {
+            const feet = new Vector3().fromArray(point).add(new Vector3(0, -1.6, 0));
+            place(feet);
+          }
+        };
+        setPhase('overview');
+        setNotice('Drag to inspect the scan, then choose a clear floor to begin walking.');
+      } catch (error) {
+        if (active) { setNotice((error as Error).message); setPhase('error'); }
+      }
+    })();
+    const resize = new ResizeObserver(() => {
+      if (!element.clientWidth || !element.clientHeight) return;
+      renderer.setSize(element.clientWidth, element.clientHeight);
+      camera.aspect = element.clientWidth / element.clientHeight;
+      camera.updateProjectionMatrix();
+    });
+    resize.observe(element);
+    const pointerDown = (event: PointerEvent) => {
+      element.focus();
+      if (mode === 'choose') {
+        const rect = canvas.getBoundingClientRect();
+        pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
+        pick.setFromCamera(pointer, camera);
+        const hit = pick.intersectObjects(scene.children, true)[0];
+        if (!hit?.face) { setNotice('Choose a visible floor surface in the scan.'); return; }
+        normal.copy(hit.face.normal).applyNormalMatrix(new Matrix3().getNormalMatrix(hit.object.matrixWorld));
+        if (normal.y < 0.55) { setNotice('Choose a level floor. This surface is too steep to stand on.'); return; }
+        place(hit.point);
+      } else if (mode === 'walk') {
+        drag = { id: event.pointerId, x: event.clientX, y: event.clientY };
+        canvas.setPointerCapture(event.pointerId);
+      }
+    };
+    const pointerMove = (event: PointerEvent) => {
+      if (!drag || mode !== 'walk') return;
+      yaw -= (event.clientX - drag.x) * 0.003;
+      pitch = Math.max(-1.2, Math.min(1.2, pitch - (event.clientY - drag.y) * 0.003));
+      drag.x = event.clientX;
+      drag.y = event.clientY;
+    };
+    const pointerUp = () => { drag = null; };
+    const clear = () => { keys.current.clear(); drag = null; };
+    const lost = (event: Event) => { event.preventDefault(); renderer.setAnimationLoop(null); setPhase('error'); setNotice('The graphics context was lost. Reopen the scene to try again.'); };
+    canvas.addEventListener('pointerdown', pointerDown);
+    canvas.addEventListener('pointermove', pointerMove);
+    canvas.addEventListener('pointerup', pointerUp);
+    canvas.addEventListener('pointercancel', pointerUp);
+    canvas.addEventListener('webglcontextlost', lost);
+    window.addEventListener('blur', clear);
+    document.addEventListener('visibilitychange', clear);
+    renderer.setAnimationLoop(time => {
+      const delta = Math.min((time - last) / 1000, 0.15);
+      last = time;
+      if (mode === 'walk' && walker && !document.hidden) {
+        yaw += (Number(keys.current.has('arrowleft')) - Number(keys.current.has('arrowright'))) * delta * 1.5;
+        camera.position.copy(walker.update(delta, yaw, keys.current));
+        camera.rotation.set(pitch, yaw, 0, 'YXZ');
+      }
+      renderer.render(scene, camera);
+    });
+    return () => {
+      active = false;
+      actions.current = null;
+      download.abort();
+      renderer.setAnimationLoop(null);
+      resize.disconnect();
+      orbit.dispose();
+      collision.clear();
+      canvas.removeEventListener('pointerdown', pointerDown);
+      canvas.removeEventListener('pointermove', pointerMove);
+      canvas.removeEventListener('pointerup', pointerUp);
+      canvas.removeEventListener('pointercancel', pointerUp);
+      canvas.removeEventListener('webglcontextlost', lost);
+      window.removeEventListener('blur', clear);
+      document.removeEventListener('visibilitychange', clear);
+      disposeModel(scene);
+      materials.forEach(surface => surface.dispose());
+      textures.forEach(texture => { (texture.source.data as ImageBitmap)?.close?.(); texture.dispose(); });
+      renderer.dispose();
+      canvas.remove();
+      document.body.style.overflow = overflow;
+      previousFocus?.focus();
+    };
+  }, [url]);
+  useEffect(() => {
+    const key = JSON.stringify(position);
+    if (position && actions.current && key !== appliedPosition.current) {
+      appliedPosition.current = key;
+      actions.current.move(position);
+    }
+  }, [position?.[0], position?.[1], position?.[2], phase]);
+  return createPortal(<div className="walk-album" ref={wrapper} role="dialog" aria-modal="true" aria-label="Walkable reconstruction"
+    onKeyDown={event => {
+      if (event.key === 'Escape') { event.stopPropagation(); onClose(); return; }
+      if (event.key === 'Tab') {
+        const items = [...(wrapper.current?.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex="0"]') || [])];
+        if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items.at(-1)?.focus(); }
+        if (!event.shiftKey && document.activeElement === items.at(-1)) { event.preventDefault(); items[0]?.focus(); }
+      }
+      const key = event.key.toLowerCase();
+      if (event.target === host.current && ['w', 'a', 's', 'd', 'shift', ' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+        event.preventDefault();
+        if (key !== ' ' || !event.repeat) keys.current.add(key);
+      }
+    }} onKeyUp={event => keys.current.delete(event.key.toLowerCase())}>
+    <div className="walk-canvas" ref={host} tabIndex={0} aria-label="Reconstruction. Choose a floor, then use WASD to walk and drag to look." onBlur={() => keys.current.clear()} />
+    <header className="walk-header"><div className="walk-brand">everwhere<span>Reconstructed · imported mesh</span></div><div className="walk-header-actions"><button onClick={onClose}><X size={16} /> Exit</button></div></header>
+    <div className="scan-actions">
+      {phase === 'loading' ? <p role="status">Loading the scan and its collision geometry…</p> : <p role="status">{notice}</p>}
+      {phase === 'overview' && <button className="walk-primary" onClick={() => actions.current?.choose()}><Footprints size={16} /> Choose floor to walk</button>}
+      {phase === 'choose' && <button onClick={() => actions.current?.overview()}>Cancel placement</button>}
+      {phase === 'walk' && <><button onClick={() => actions.current?.overview()}><MoveUpRight size={16} /> Inspect scene</button>
+        <button onClick={() => { const point = actions.current?.read(); if (point) onWaypoint(point); }}><MapPin size={16} /> Save waypoint</button></>}
+      {phase === 'error' && <button onClick={onClose}>Return to memory</button>}
+    </div>
+    {phase === 'walk' && <><div className="walk-reticle" aria-hidden="true" /><div className="walk-movement" aria-label="Movement controls">
+      {[['w', 'Walk forward', ArrowUp], ['a', 'Step left', ArrowLeft], ['s', 'Walk backward', ArrowDown], ['d', 'Step right', ArrowRight]].map(([key, name, Icon]) => {
+        const Direction = Icon as typeof ArrowUp;
+        return <button key={String(key)} className={'walk-key-' + key} aria-label={String(name)}
+          onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); keys.current.add(String(key)); }}
+          onPointerUp={() => keys.current.delete(String(key))} onPointerCancel={() => keys.current.delete(String(key))}
+          onLostPointerCapture={() => keys.current.delete(String(key))}
+          onKeyDown={event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); keys.current.add(String(key)); } }}
+          onKeyUp={() => keys.current.delete(String(key))} onBlur={() => keys.current.delete(String(key))}><Direction size={19} /></button>;
+      })}</div></>}
+  </div>, document.body);
+}

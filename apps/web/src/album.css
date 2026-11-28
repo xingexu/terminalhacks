@@ -65,6 +65,8 @@
 .walk-help .walk-help-note { color:#aec5c9; font-size:11px; }
 .walk-help-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:24px; font-size:12px; }
 .walk-loading { text-align:center; }.walk-loading p { font-size:14px; }.walk-loading h2 { color:#fff4df; }
+.scan-actions { position:absolute; bottom:32px; left:32px; max-width:calc(100% - 210px); padding:18px; border:1px solid #ffffff30; border-radius:8px; background:#182d3ce8; }
+.scan-actions p { font-size:12px; line-height:1.7; margin:0 0 12px; }.scan-actions button { margin-right:8px; font-size:12px; }
 @media (max-width:700px) {
   .walk-header { left:18px; right:18px; top:max(18px,env(safe-area-inset-top)); }.walk-brand { font-size:27px; }.walk-brand span { font-size:8px; letter-spacing:1px; }
   .walk-header-actions { gap:6px; }.walk-header-actions button { padding:8px 10px; font-size:11px; }
@@ -74,6 +76,7 @@
   .walk-interact { bottom:245px; width:calc(100% - 36px); max-width:360px; }.walk-interact strong { font-size:13px; }
   .walk-footer { left:18px; right:18px; bottom:max(20px,env(safe-area-inset-bottom)); }.walk-footer>span:first-child { display:none; }
   .walk-overlay { padding:16px; }.walk-photo { display:block; max-height:calc(100dvh - 32px); }.walk-photo-image { min-height:160px; }.walk-photo-image img { max-height:45dvh; }
+  .scan-actions { bottom:200px; left:16px; right:16px; max-width:none; padding:14px; }
   .walk-photo-copy { padding:24px; }.walk-photo-copy h2 { font-size:28px; }.walk-help { padding:24px; }.walk-help h2 { font-size:30px; }
 }
 @media (max-height:500px) and (min-width:701px) {

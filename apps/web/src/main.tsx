@@ -168,11 +168,12 @@ function WorldForm({ state, event, base, done }: { state: Snapshot; event: Memor
       await done();
     } catch (err) { setError((err as Error).message); }
     finally { setBusy(false); }
-  }}><p className="muted">Upload an SPZ reconstruction made from the selected source. You can approve and enter it once the upload finishes.</p>
+  }}><p className="muted">Upload a GLB mesh from a LiDAR or photogrammetry scan to walk on its actual surfaces, or an SPZ splat to explore its viewpoints. Link an original photo of the scanned place, then approve the import.</p>
     <label>Original source<select name="source" required>{sources.map(item => <option key={item.id} value={item.id}>{item.caption}</option>)}</select></label>
-    <label>SPZ file<input type="file" name="scene" accept=".spz" required /></label>
+    <label>3D scene<input type="file" name="scene" accept=".spz,.glb" required /></label>
+    <p className="muted">GLB exports need embedded textures, meter units, Y-up orientation, and at most 250,000 triangles. Upload limit 48 MB.</p>
     <label className="check-row"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} />
-      <span>I have permission to use this reconstruction and it was made from the selected source.</span></label>
+      <span>I have permission to use this reconstruction and the selected photo documents this place.</span></label>
     {error && <p className="form-error" role="alert">{error}</p>}
     <button className="btn primary self-start" disabled={!consent || busy || !sources.length}><Box size={16} /> {busy ? 'Uploading…' : 'Import reconstruction'}</button>
   </form>;

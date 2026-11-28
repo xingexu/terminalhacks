@@ -1,17 +1,19 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, Compass, RotateCcw, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, Compass, MapPin, RotateCcw, X } from 'lucide-react';
 import { createAlbumScene, type AlbumControls, type AlbumFrame } from './album-scene';
 import { albumEnd, photoStops } from './album-layout';
 import { displayDate, sourceURL, type Snapshot, type Source } from './model';
 import './album.css';
 
-export default function WalkableAlbum({ state, photos, title, onClose }: {
+export default function WalkableAlbum({ state, photos, title, onClose, onWaypoint }: {
   state: Snapshot; photos: Source[]; title: string; onClose: () => void;
+  onWaypoint?: (sourceId: string, position: [number, number, number]) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const dialog = useRef<HTMLDivElement>(null);
   const controls = useRef<AlbumControls | null>(null);
+  const lastStop = useRef(-1);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
   const [frame, setFrame] = useState<AlbumFrame>({ x: 0, z: 6, yaw: 0 });
   const [inspectedId, setInspectedId] = useState<string | null>(null);
@@ -27,7 +29,8 @@ export default function WalkableAlbum({ state, photos, title, onClose }: {
   });
   const inspected = photos.find(photo => photo.id === inspectedId);
   const memory = state.events.find(event => inspected && event.sourceIds.includes(inspected.id));
-  const recollections = state.recollections.filter(item => item.eventId === memory?.id);
+  const recollections = state.recollections.filter(item => item.eventId === memory?.id && (!item.anchorId ||
+    state.anchors.some(anchor => anchor.id === item.anchorId && inspected && anchor.sourceIds.includes(inspected.id))));
   const visitedCount = photos.filter(photo => visited.includes(photo.id)).length;
   const stops = photoStops(photos);
   const end = albumEnd(photos.length);
@@ -46,7 +49,10 @@ export default function WalkableAlbum({ state, photos, title, onClose }: {
     if (!host.current || !photos.length) return;
     setPhase('loading');
     try {
-      controls.current = createAlbumScene(host.current, state.projectId, photos, setFrame, () => setPhase('error'));
+      controls.current = createAlbumScene(host.current, state.projectId, photos, value => {
+        setFrame(value);
+        if (value.nearby) lastStop.current = photos.findIndex(photo => photo.id === value.nearby);
+      }, () => setPhase('error'));
       setPhase('ready');
     } catch { setPhase('error'); }
     return () => { controls.current?.dispose(); controls.current = null; };
@@ -70,9 +76,8 @@ export default function WalkableAlbum({ state, photos, title, onClose }: {
     try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* Browsing still works when storage is disabled. */ }
   }
   function nextPhoto() {
-    const next = photos.findIndex(photo => !visited.includes(photo.id));
-    const current = photos.findIndex(photo => photo.id === nearby?.id);
-    controls.current?.visit(next >= 0 ? next : (current + 1) % photos.length);
+    lastStop.current = (lastStop.current + 1) % photos.length;
+    controls.current?.visit(lastStop.current);
     host.current?.focus();
   }
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -93,10 +98,10 @@ export default function WalkableAlbum({ state, photos, title, onClose }: {
     }
     if (event.target !== host.current || inspected || help) return;
     const key = event.key.toLowerCase();
-    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift', 'e'].includes(key)) {
+    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift', 'e', ' '].includes(key)) {
       event.preventDefault();
       if (key === 'e' && !event.repeat) inspect();
-      else controls.current?.keys.add(key);
+      else if (key !== ' ' || !event.repeat) controls.current?.keys.add(key);
     }
   }
   function hold(event: PointerEvent<HTMLButtonElement>, key: string) {
@@ -142,7 +147,7 @@ export default function WalkableAlbum({ state, photos, title, onClose }: {
           {stops.map((stop, index) => <button key={stop.sourceId} className={'walk-map-stop' + (visited.includes(stop.sourceId) ? ' visited' : '')}
             title={'Go to ' + photos[index].caption} aria-label={'Go to photo ' + (index + 1) + ', ' + photos[index].caption}
             style={{ left: (50 + stop.x * 7) + '%', top: ((stop.z - end) / (10 - end) * 82 + 7) + '%' }}
-            onClick={() => { controls.current?.visit(index); host.current?.focus(); }}>{visited.includes(stop.sourceId) ? <Check size={10} /> : index + 1}</button>)}
+            onClick={() => { lastStop.current = index; controls.current?.visit(index); host.current?.focus(); }}>{visited.includes(stop.sourceId) ? <Check size={10} /> : index + 1}</button>)}
           <span className="walk-map-player" aria-label="Your position" style={{ left: (50 + frame.x * 7) + '%', top: ((frame.z - end) / (10 - end) * 82 + 7) + '%', transform: `translate(-50%,-50%) rotate(${-frame.yaw}rad)` } as CSSProperties} />
         </div>
         <button className="walk-next" onClick={nextPhoto}>Next photo <ArrowRight size={14} /></button>
@@ -153,7 +158,7 @@ export default function WalkableAlbum({ state, photos, title, onClose }: {
           onLostPointerCapture={() => controls.current?.keys.delete(key)}
           onKeyDown={event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); controls.current?.keys.add(key); } }}
           onKeyUp={() => controls.current?.keys.delete(key)} onBlur={() => controls.current?.keys.delete(key)}><Icon size={19} /></button>)}</div>
-      <footer className="walk-footer"><span><kbd>W A S D</kbd> move <kbd>Shift</kbd> sprint <span>Drag to look</span></span><span>Designed coastal setting</span></footer>
+      <footer className="walk-footer"><span><kbd>W A S D</kbd> move <kbd>Shift</kbd> sprint <kbd>Space</kbd> jump <span>Drag to look</span></span><span>Designed coastal setting</span></footer>
     </>}
     {phase !== 'ready' && <div className="walk-overlay walk-loading" role="status"><div>
       <Compass size={30} /><h2>{phase === 'loading' ? 'Opening your album…' : 'This device could not open the 3D album'}</h2>
@@ -167,14 +172,16 @@ export default function WalkableAlbum({ state, photos, title, onClose }: {
         <h2>{inspected.caption}</h2><p className="walk-photo-meta">{displayDate(inspected.capturedAt || memory?.startAt)}{memory?.placeLabel && ' · ' + memory.placeLabel}</p>
         {memory?.story && <p>{memory.story}</p>}
         {recollections.map(item => <blockquote key={item.id}>{item.text}<cite>{item.contributor} · Recollection</cite></blockquote>)}
-        <button className="walk-primary" onClick={() => setInspectedId(null)}>Continue exploring <ArrowRight size={16} /></button>
+        <div className="walk-help-actions"><button className="walk-primary" onClick={() => setInspectedId(null)}>Continue exploring <ArrowRight size={16} /></button>
+          {onWaypoint && <button onClick={() => onWaypoint(inspected.id, [frame.x, 1.6, frame.z])}><MapPin size={16} /> Save photo waypoint</button>}
+        </div>
       </div>
     </article></div>}
     {help && <div className="walk-overlay"><section className="walk-help">
       <button className="walk-photo-close" aria-label="Close controls" onClick={() => setHelp(false)}><X size={20} /></button>
       <Compass size={28} /><h2>A place for your photographs.</h2>
       <p>Walk along the waterfront and open each photograph to discover its story. The coastal setting is designed for your album.</p>
-      <dl><dt>Walk / strafe</dt><dd>W A S D or the on-screen arrows</dd><dt>Look around</dt><dd>Drag the scene. ← → turns, ↑ ↓ walks.</dd><dt>Move faster</dt><dd>Hold Shift while walking</dd><dt>Open a nearby photo</dt><dd>Press E or tap Open photo</dd><dt>Go straight to a photo</dt><dd>Choose its stop on the map or Next photo</dd><dt>Close a photo / leave</dt><dd>Escape</dd></dl>
+      <dl><dt>Walk / strafe</dt><dd>W A S D or the on-screen arrows</dd><dt>Look around</dt><dd>Drag the scene. ← → turns, ↑ ↓ walks.</dd><dt>Move faster / jump</dt><dd>Hold Shift to sprint. Space jumps from the ground.</dd><dt>Open a nearby photo</dt><dd>Press E or tap Open photo</dd><dt>Go straight to a photo</dt><dd>Choose its stop on the map or Next photo</dd><dt>Close a photo / leave</dt><dd>Escape</dd></dl>
       <p className="walk-help-note">Visited photos are remembered in this browser. Original media and attributed recollections stay linked to your project.</p>
       <div className="walk-help-actions"><button onClick={() => { controls.current?.reset(); setHelp(false); }}><RotateCcw size={16} /> Return to entrance</button><button className="walk-primary" onClick={() => setHelp(false)}>Keep exploring</button></div>
     </section></div>}

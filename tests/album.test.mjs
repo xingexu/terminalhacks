@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { albumEnd, moveInAlbum, nearbyPhoto, orderedPhotos, photoStops } from '../apps/web/src/album-layout.ts';
+import { albumEnd, nearbyPhoto, orderedPhotos, photoStops } from '../apps/web/src/album-layout.ts';
 import { sourcesFor } from '../apps/web/src/model.ts';
+import { BoxGeometry, Group, Mesh, Vector3 } from 'three';
+import { Octree } from 'three/addons/math/Octree.js';
+import { Walker } from '../apps/web/src/walking.ts';
 
 const photo = (id, capturedAt = null, provenance = 'original') => ({ id, mime: 'image/jpeg', caption: id, capturedAt, provenance });
 
@@ -17,16 +20,42 @@ test('album selection uses linked, available photos allowed by the current lens 
   assert.deepEqual(orderedPhotos([]), []);
 });
 
-test('walking translates the camera, follows its direction and stays within the promenade', () => {
-  const end = albumEnd(8);
-  assert.deepEqual(moveInAlbum({ x: 0, z: 6 }, 0, 1, 0, 3, end), { x: 0, z: 3 });
-  const turned = moveInAlbum({ x: 0, z: 0 }, Math.PI / 2, 1, 0, 2, end);
-  assert.equal(turned.x, -2);
-  assert.ok(Math.abs(turned.z) < 0.000001);
-  const diagonal = moveInAlbum({ x: 0, z: 0 }, 0, 1, 1, 2, end);
-  assert.ok(Math.abs(Math.hypot(diagonal.x, diagonal.z) - 2) < 0.000001);
-  assert.deepEqual(moveInAlbum({ x: 3.4, z: 7 }, 0, -1, 1, 50, end), { x: 3.4, z: 7 });
-  assert.equal(moveInAlbum({ x: 0, z: 0 }, 0, 1, 0, 1000, end).z, end + 2);
+function collisionRoom() {
+  const group = new Group();
+  const floor = new Mesh(new BoxGeometry(40, 1, 40));
+  floor.position.y = -0.5;
+  const wall = new Mesh(new BoxGeometry(30, 4, 0.2));
+  wall.position.set(0, 2, -3);
+  group.add(floor, wall);
+  return new Octree().fromGraphNode(group);
+}
+
+test('capsule gravity grounds the player and sprinting collides with walls while allowing sliding', () => {
+  const walker = new Walker(collisionRoom(), new Vector3(0, 2, 0));
+  for (let i = 0; i < 120; i++) walker.update(1 / 60, 0, new Set());
+  assert.ok(walker.grounded);
+  assert.ok(Math.abs(walker.eye.y - 1.6) < 0.02);
+  for (let i = 0; i < 180; i++) walker.update(1 / 60, 0, new Set(['w', 'shift']));
+  assert.ok(walker.eye.z >= -2.61 && walker.eye.z < -2.5, 'capsule must stop in front of the wall');
+  for (let i = 0; i < 60; i++) walker.update(1 / 60, 0, new Set(['w', 'd']));
+  assert.ok(walker.eye.x > 1 && walker.eye.z >= -2.61, 'diagonal input should slide along the wall');
+});
+
+test('fixed-step walking has consistent speed and jumping returns to the floor', () => {
+  const room = collisionRoom();
+  const lowRate = new Walker(room, new Vector3(0, 0.03, 10));
+  const highRate = new Walker(room, new Vector3(0, 0.03, 10));
+  for (let i = 0; i < 60; i++) lowRate.update(1 / 30, 0, new Set(['w']));
+  for (let i = 0; i < 240; i++) highRate.update(1 / 120, 0, new Set(['w']));
+  assert.ok(Math.abs(lowRate.eye.z - highRate.eye.z) < 0.04);
+  const baseline = lowRate.eye.y;
+  lowRate.update(1 / 30, 0, new Set([' ']));
+  assert.ok(lowRate.eye.y > baseline);
+  const risingVelocity = lowRate.velocity.y;
+  lowRate.update(1 / 30, 0, new Set([' ']));
+  assert.ok(lowRate.velocity.y < risingVelocity, 'jumping in the air must not add an impulse');
+  for (let i = 0; i < 120; i++) lowRate.update(1 / 60, 0, new Set());
+  assert.ok(lowRate.grounded && Math.abs(lowRate.eye.y - baseline) < 0.02);
 });
 
 test('every photo receives a reachable stop and interaction requires proximity', () => {

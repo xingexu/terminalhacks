@@ -9,6 +9,7 @@ import {
 } from './model';
 
 const Spatial = lazy(() => import('./spatial'));
+const Scan = lazy(() => import('./scan'));
 const WalkableAlbum = lazy(() => import('./album'));
 import { orderedPhotos } from './album-layout';
 
@@ -82,9 +83,11 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
   const [spatial, setSpatial] = useState<string | null>(null);
   const activeEvent = event?.id;
   const selectedAnchor = state.anchors.find(item => item.id === state.session.anchorId);
-  const world = state.worlds.find(item => item.eventId === activeEvent && item.approved && state.session.lens === 'all' &&
+  const worlds = state.worlds.filter(item => item.eventId === activeEvent && item.approved && state.session.lens === 'all' &&
     item.sourceIds.every(id => event?.sourceIds.includes(id)));
-  useEffect(() => { setSpatial(selectedAnchor?.worldId === world?.id && world ? world.id : null); }, [world?.id, selectedAnchor?.worldId]);
+  const world = worlds.find(item => item.id === spatial) ?? worlds.at(-1);
+  useEffect(() => { setSpatial(worlds.some(item => item.id === selectedAnchor?.worldId) ? selectedAnchor!.worldId : null); },
+    [activeEvent, selectedAnchor?.worldId, state.session.lens]);
   useEffect(() => { setEntered(false); setShowStory(false); }, [activeEvent, state.session.lens]);
   if (!event) return <Empty icon={<Compass size={33} />} title="Start with a place you remember">
     <p>Give a moment a name, then add the photos and stories you want to keep.</p>
@@ -114,13 +117,17 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
   return <>
     {entered && photos.length > 0 && <Suspense fallback={<div className="notice" role="status">Opening immersive album…</div>}>
       <WalkableAlbum key={state.projectId + event.id + state.session.lens + photos.map(photo => photo.id).join(',')}
-        state={state} photos={photos} title={event.title} onClose={() => setEntered(false)} />
+        state={state} photos={photos} title={event.title} onClose={() => setEntered(false)}
+        onWaypoint={(sourceId, position) => actions.addWaypoint(position, sourceId)} />
     </Suspense>}
     {spatial && world?.id === spatial ? <div className="spatial-frame">
       <Suspense fallback={<div className="spatial-state">Loading 3D viewer…</div>}>
+        {world.format === 'glb' ? <Scan url={'/v1/projects/' + state.projectId + '/worlds/' + spatial + '/scene.glb'}
+          position={selectedAnchor?.worldId === spatial ? selectedAnchor.position : undefined}
+          onClose={() => setSpatial(null)} onWaypoint={position => actions.addWaypoint(position, world.sourceIds[0], spatial)} /> :
         <Spatial url={'/v1/projects/' + state.projectId + '/worlds/' + spatial + '/scene.spz'}
           position={selectedAnchor?.worldId === spatial ? selectedAnchor.position : undefined}
-          onClose={() => setSpatial(null)} onWaypoint={position => actions.addWaypoint(position, world.sourceIds[0], spatial)} />
+          onClose={() => setSpatial(null)} onWaypoint={position => actions.addWaypoint(position, world.sourceIds[0], spatial)} />}
       </Suspense>
       <div className="spatial-waypoints">
         {state.anchors.filter(item => item.worldId === spatial).map(item =>
@@ -164,7 +171,7 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
       </div>
     </div>}
     {(pendingWorld || world || media.some(item => item.provenance === 'original' && item.mime.startsWith('image/'))) && <div className="world-actions button-row">
-      {world && !spatial && <button className="btn compact" onClick={() => setSpatial(world.id)}><Box size={15} /> Enter 3D world</button>}
+      {worlds.map(item => item.id !== spatial && <button key={item.id} className="btn compact" onClick={() => setSpatial(item.id)}><Box size={15} /> {item.format === 'glb' ? 'Walk in ' : 'Explore '}{item.title}</button>)}
       {pendingWorld && <button className="btn compact" onClick={() => actions.approve(pendingWorld)}><Check size={15} /> Approve reconstruction</button>}
       {media.some(item => item.provenance === 'original' && item.mime.startsWith('image/')) && <button className="btn compact subtle" onClick={actions.openWorld}><Plus size={15} /> Import 3D scene</button>}
     </div>}

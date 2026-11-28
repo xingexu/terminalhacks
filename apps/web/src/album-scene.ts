@@ -1,10 +1,12 @@
 import {
   ACESFilmicToneMapping, AmbientLight, BoxGeometry, BufferGeometry, CatmullRomCurve3,
   Color, CylinderGeometry, DirectionalLight, DoubleSide, Float32BufferAttribute, Fog, Group,
-  Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, PlaneGeometry, Scene,
+  Mesh, MeshBasicMaterial, MeshStandardMaterial, PCFSoftShadowMap, PerspectiveCamera, PlaneGeometry, Scene,
   ShaderMaterial, SphereGeometry, SRGBColorSpace, Texture, TubeGeometry, Vector3, WebGLRenderer
 } from 'three';
-import { albumEnd, moveInAlbum, nearbyPhoto, photoStops, type PhotoStop } from './album-layout';
+import { Octree } from 'three/addons/math/Octree.js';
+import { Walker } from './walking';
+import { albumEnd, nearbyPhoto, photoStops, type PhotoStop } from './album-layout';
 import { sourceURL, type Source } from './model';
 
 export type AlbumFrame = { x: number; z: number; yaw: number; nearby?: string };
@@ -22,6 +24,8 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.15;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = PCFSoftShadowMap;
   const canvas = renderer.domElement;
   canvas.setAttribute('aria-hidden', 'true');
   host.appendChild(canvas);
@@ -47,6 +51,7 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
   const loaded = new Map<string, { texture: Texture; mesh: Mesh; bitmap: ImageBitmap }>();
   const failures = new Set<string>();
   const frames = new Map<string, Mesh>();
+  const solids: Mesh[] = [];
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   function material(color: string, emissive = false) {
@@ -59,17 +64,29 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
     geometries.add(geometry);
     materials.add(surface);
     const item = new Mesh(geometry, surface);
+    item.castShadow = surface instanceof MeshStandardMaterial;
+    item.receiveShadow = surface instanceof MeshStandardMaterial;
     item.position.set(x, y, z);
     parent.add(item);
     return item;
   }
   function box(width: number, height: number, depth: number, surface: MeshStandardMaterial, x: number, y: number, z: number, parent: Scene | Group = scene) {
-    return mesh(new BoxGeometry(width, height, depth), surface, x, y, z, parent);
+    const item = mesh(new BoxGeometry(width, height, depth), surface, x, y, z, parent);
+    solids.push(item);
+    return item;
   }
 
   scene.add(new AmbientLight('#c6bbef', 1.9));
   const sunLight = new DirectionalLight('#ffd2a4', 3.5);
   sunLight.position.set(-40, 25, -60);
+  sunLight.castShadow = true;
+  sunLight.shadow.mapSize.set(1024, 1024);
+  sunLight.shadow.camera.left = -25;
+  sunLight.shadow.camera.right = 25;
+  sunLight.shadow.camera.top = 30;
+  sunLight.shadow.camera.bottom = -30;
+  sunLight.shadow.camera.far = 150;
+  sunLight.shadow.normalBias = 0.04;
   scene.add(sunLight);
   const rim = new DirectionalLight('#79d4dc', 1.6);
   rim.position.set(30, 8, 20);
@@ -80,7 +97,11 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
     depthWrite: false,
     uniforms: { top: { value: new Color('#3f4c83') }, middle: { value: new Color('#d18ba8') }, bottom: { value: new Color('#ffc9a0') } },
     vertexShader: 'varying vec3 vPosition; void main(){ vPosition=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
-    fragmentShader: 'uniform vec3 top; uniform vec3 middle; uniform vec3 bottom; varying vec3 vPosition; void main(){ float h=normalize(vPosition).y; vec3 color=mix(bottom,middle,smoothstep(-0.05,0.2,h)); color=mix(color,top,smoothstep(0.18,0.8,h)); gl_FragColor=vec4(color,1.0); }'
+    fragmentShader: `uniform vec3 top; uniform vec3 middle; uniform vec3 bottom; varying vec3 vPosition;
+      void main(){ float h=normalize(vPosition).y; vec3 color=mix(bottom,middle,smoothstep(-0.05,0.2,h)); color=mix(color,top,smoothstep(0.18,0.8,h)); gl_FragColor=vec4(color,1.0);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+      }`
   });
   const sky = mesh(new SphereGeometry(230, 32, 20), skyMaterial, 0, 0, 0);
   const sun = mesh(new SphereGeometry(9, 32, 24), new MeshBasicMaterial({ color: '#ffe3b0', fog: false }), -90, 18, -170);
@@ -120,6 +141,10 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
     for (let z = 10; z > end; z -= 3) box(0.075, 1, 0.075, dark, x, 0.48, z);
     box(0.06, 0.025, length, x < 0 ? pink : teal, x / 2, 0.025, (end + 12) / 2);
   }
+  for (const z of [end + 0.5, 11.5]) {
+    box(14.5, 1.1, 0.18, stone, 0, 0.55, z);
+    box(14.5, 0.05, 0.22, brass, 0, 1.12, z);
+  }
   // Palm fronds are curved strips with tapered leaflets, all real scene geometry.
   const bark = material('#77604e');
   const leaf = material('#244f42');
@@ -130,7 +155,7 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
     group.rotation.y = turn;
     scene.add(group);
     const curve = new CatmullRomCurve3([new Vector3(0, 0, 0), new Vector3(0.15, 2, 0), new Vector3(0.6, 4, 0), new Vector3(0.9, 6, 0)]);
-    mesh(new TubeGeometry(curve, 16, 0.14, 7, false), bark, 0, 0, 0, group);
+    solids.push(mesh(new TubeGeometry(curve, 16, 0.14, 7, false), bark, 0, 0, 0, group));
     for (let index = 0; index < 9; index++) {
       const angle = index / 9 * Math.PI * 2;
       const vertices: number[] = [];
@@ -144,8 +169,10 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
             6 + Math.sin(part * Math.PI) * 0.8 - part * part * 1.1,
             Math.sin(angle) * radius - Math.cos(angle) * width];
         };
-        vertices.push(...point(t, 0), ...point(t + 0.035, 1), ...point(next, 0));
-        vertices.push(...point(t, 0), ...point(next, 0), ...point(t + 0.035, -1));
+        vertices.push(...point(t, 0), ...point(t + 0.025, 1), ...point(next - 0.005, 1));
+        vertices.push(...point(t, 0), ...point(next - 0.005, 1), ...point(next, 0));
+        vertices.push(...point(t, 0), ...point(next - 0.005, -1), ...point(t + 0.025, -1));
+        vertices.push(...point(t, 0), ...point(next, 0), ...point(next - 0.005, -1));
       }
       const geometry = new BufferGeometry();
       geometry.setAttribute('position', new Float32BufferAttribute(vertices, 3));
@@ -183,6 +210,17 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
     const surface = mesh(new PlaneGeometry(4.3, 2.9), placeholder, 0, 2.15, 0.151, group);
     frames.set(stop.sourceId, surface);
   }
+
+  scene.updateMatrixWorld(true);
+  const collisionGeometry = new Group();
+  solids.forEach(solid => {
+    const collider = new Mesh(solid.geometry);
+    collider.matrix.copy(solid.matrixWorld);
+    collider.matrixAutoUpdate = false;
+    collisionGeometry.add(collider);
+  });
+  const collisionWorld = new Octree().fromGraphNode(collisionGeometry);
+  const walker = new Walker(collisionWorld, new Vector3(0, 0.05, 6));
 
   async function loadPhoto(stop: PhotoStop) {
     const abort = new AbortController();
@@ -226,11 +264,12 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
     }
   }
 
-  function reset() { camera.position.set(0, 1.7, 6); yaw = 0; pitch = -0.02; keys.clear(); }
+  function reset() { walker.place(new Vector3(0, 0.05, 6)); camera.position.copy(walker.eye); yaw = 0; pitch = -0.02; keys.clear(); }
   function visit(index: number) {
     const stop = stops[index];
     if (!stop) return;
-    camera.position.set(stop.x < 0 ? -1.8 : 1.8, 1.7, stop.z + 0.1);
+    walker.place(new Vector3(stop.x < 0 ? -1.8 : 1.8, 0.05, stop.z + 0.1));
+    camera.position.copy(walker.eye);
     yaw = stop.x < 0 ? Math.PI / 2 : -Math.PI / 2;
     pitch = 0.06;
     keys.clear();
@@ -268,15 +307,11 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
   document.addEventListener('visibilitychange', clear);
 
   renderer.setAnimationLoop(time => {
-    const delta = Math.min((time - previous) / 1000, 0.05);
+    const delta = Math.min((time - previous) / 1000, 0.15);
     previous = time;
     if (!paused && !document.hidden) {
       yaw += (Number(keys.has('arrowleft')) - Number(keys.has('arrowright'))) * delta * 1.5;
-      const forward = Number(keys.has('w') || keys.has('arrowup')) - Number(keys.has('s') || keys.has('arrowdown'));
-      const strafe = Number(keys.has('d')) - Number(keys.has('a'));
-      const next = moveInAlbum(camera.position, yaw, forward, strafe, delta * (keys.has('shift') ? 6 : 3), end);
-      camera.position.x = next.x;
-      camera.position.z = next.z;
+      camera.position.copy(walker.update(delta, yaw, keys));
     }
     camera.rotation.set(pitch, yaw, 0, 'YXZ');
     sky.position.copy(camera.position);
@@ -311,6 +346,8 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
       loaded.forEach(item => { item.texture.dispose(); item.bitmap.close(); });
       geometries.forEach(geometry => geometry.dispose());
       materials.forEach(surface => surface.dispose());
+      collisionWorld.clear();
+      sunLight.shadow.map?.dispose();
       renderer.dispose();
       canvas.remove();
     }

@@ -16,6 +16,7 @@ import {
 } from './service.mjs';
 import { ingest, removeMedia } from '../../packages/media/local.mjs';
 import { storeSplat } from '../../packages/media/splat.mjs';
+import { storeMesh } from '../../packages/media/mesh.mjs';
 import { appendChange, digest, eventById, mediaById, rank, requireCondition as check, uid } from '../../packages/runtime/memory.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -267,8 +268,9 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
       400, 'ORIGINAL_REQUIRED', 'Choose an original image linked to this memory.');
     check(Number(req.query.expectedRevision) === state.revision, 409, 'REVISION_CONFLICT', 'Review the current memory before adding a world.');
     const file = await req.file();
-    check(file, 400, 'FILE_REQUIRED', 'Choose an SPZ Gaussian splat.');
-    const asset = await storeSplat(await file.toBuffer(), file.filename, join(dataDir, 'projects', project));
+    check(file, 400, 'FILE_REQUIRED', 'Choose an SPZ splat or GLB mesh.');
+    const save = /\.glb$/i.test(file.filename) ? storeMesh : storeSplat;
+    const asset = await save(await file.toBuffer(), file.filename, join(dataDir, 'projects', project));
     let retained = false;
     try {
       const result = update(req, 'revision.committed', current => {
@@ -288,14 +290,14 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
       if (!retained) await rm(asset.storage, { force: true });
     }
   });
-  app.get(projectPath + '/worlds/:id/scene.spz', async (req, reply) => {
+  app.get(projectPath + '/worlds/:id/:asset', async (req, reply) => {
     const { actor, project } = scope(req);
     const state = store.read(actor, project);
     const world = state.worlds?.find(item => item.id === req.params.id);
-    check(world?.approved && !world.revoked && state.session.lens === 'all' &&
+    check(world?.approved && !world.revoked && req.params.asset === (world.format === 'glb' ? 'scene.glb' : 'scene.spz') && state.session.lens === 'all' &&
       world.sourceIds.every(id => mediaById(state, id) && eventById(state, world.eventId)?.sourceIds.includes(id)),
       404, 'WORLD_UNAVAILABLE', 'This reconstruction is unavailable.');
-    return streamFile(req, reply, world.storage, 'application/octet-stream');
+    return streamFile(req, reply, world.storage, world.format === 'glb' ? 'model/gltf-binary' : 'application/octet-stream');
   });
   app.get(projectPath + '/artifacts/:id/access', async req => read(req, (state, actor, project) => {
     const job = state.jobs.find(item => item.id === req.params.id);
