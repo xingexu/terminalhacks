@@ -378,7 +378,10 @@ function App() {
       {hasMedia && state && dialog.kind === 'voice' && <VoicePanel base={base} state={state} />}
       {state && current && dialog.kind === 'world' && <WorldForm state={state} event={current} base={base}
         done={async () => { await refresh(); dismiss(); setNotice('Reconstruction uploaded for approval.'); }} />}
-      {hasMedia && state && dialog.kind === 'capture' && <Capture state={state} base={base} items={items} reload={refresh} addMemory={() => show('memory')}
+      {hasMedia && state && dialog.kind === 'capture' && <Capture state={state} base={base} items={items} reload={refresh}
+        renderMemoryForm={done => <EventForm name="Create memory" onSubmit={async body => {
+          await api(base + '/memories', { ...body, expectedRevision: state.revision }); await refresh(); done();
+        }} />}
         preview={async (item, eventId, text) => {
           const proposal = await api<Proposal>(base + '/capture/observations/' + item.id + '/preview', {
             eventId, expectedRevision: state.revision, text, ...(eventId === current?.id && currentAnchor && { anchorId: currentAnchor.id })

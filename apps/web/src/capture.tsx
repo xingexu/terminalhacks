@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AudioLines, Camera, Check, FolderOpen, Image, Mic, Square, Trash2, Upload, X } from 'lucide-react';
 import { api, displayDate, sourceURL, type Observation, type Snapshot } from './model';
 
@@ -6,10 +6,10 @@ type CaptureProps = {
   state: Snapshot; base: string; items: Observation[];
   reload: () => Promise<void>;
   preview: (item: Observation, eventId: string, text?: string) => Promise<void>;
-  addMemory: () => void;
+  renderMemoryForm: (onCreated: () => void) => ReactNode;
 };
 
-export function Capture({ state, base, items, reload, preview, addMemory }: CaptureProps) {
+export function Capture({ state, base, items, reload, preview, renderMemoryForm }: CaptureProps) {
   const [consent, setConsent] = useState(false);
   const [keepLocation, setKeepLocation] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
@@ -20,6 +20,7 @@ export function Capture({ state, base, items, reload, preview, addMemory }: Capt
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
   const [failures, setFailures] = useState<string[]>([]);
+  const [creatingMemory, setCreatingMemory] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const timer = useRef<number | undefined>(undefined);
@@ -140,8 +141,12 @@ export function Capture({ state, base, items, reload, preview, addMemory }: Capt
     {progress && <p className="muted" role="status">{progress}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     {!!failures.length && <ul className="form-error">{failures.map((item, i) => <li key={i}>{item}</li>)}</ul>}
-    <div className="inbox-title"><h3>Review inbox</h3><span>{items.length} pending</span><button className="text-button" onClick={addMemory}>New memory</button></div>
-    {!state.events.length && <p className="empty-inbox">Create a memory before linking a source. <button className="text-button" onClick={addMemory}>Add a memory</button></p>}
+    <div className="inbox-title"><h3>Review inbox</h3><span>{items.length} pending</span><button type="button" className="text-button" disabled={busy || creatingMemory} onClick={() => setCreatingMemory(true)}>New memory</button></div>
+    {creatingMemory && <div className="surface">
+      <div className="inbox-title"><h3>Create a memory</h3><button type="button" className="text-button" onClick={() => setCreatingMemory(false)}>Cancel new memory</button></div>
+      {renderMemoryForm(() => setCreatingMemory(false))}
+    </div>}
+    {!state.events.length && <p className="empty-inbox">Create a memory before linking a source. <button type="button" className="text-button" disabled={busy || creatingMemory} onClick={() => setCreatingMemory(true)}>Add a memory</button></p>}
     {!items.length && <p className="empty-inbox">New photos, videos, and voice notes will appear here.</p>}
     {items.map(item => <InboxItem key={item.id} item={item} state={state} base={base} refresh={reload} preview={preview} />)}
   </div>;
