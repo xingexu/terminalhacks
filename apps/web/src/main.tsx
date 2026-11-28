@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNod
 import { createRoot } from 'react-dom/client';
 import {
   Archive as ArchiveIcon, ArrowDownToLine, ArrowRight, AudioLines, BookOpen, Box, Camera, ChevronDown, ChevronRight,
-  CircleHelp, Compass, Feather, Film, Fingerprint, Images, LayoutGrid, LockKeyhole, MapPin, Mic, Plus, Settings, X
+  CircleHelp, Compass, Feather, Film, Fingerprint, Globe, Images, LayoutGrid, LockKeyhole, MapPin, Mic, Plus, Settings, Users, X
 } from 'lucide-react';
 import '@fontsource-variable/dm-sans';
 import '@fontsource/instrument-serif/400.css';
@@ -31,6 +31,15 @@ const nav = [
   { id: 'archive', name: 'Archive', icon: ArchiveIcon }
 ] as const;
 
+// The menu bar's top-level sections. Only "mine" has a backend in this build.
+const sections = [
+  { id: 'mine', name: 'My memories', icon: Images },
+  { id: 'shared', name: 'Shared memories', icon: Users },
+  { id: 'community', name: 'Community', icon: Globe }
+] as const;
+type Section = typeof sections[number]['id'];
+const sectionFromHash = (): Section => sections.find(item => item.id !== 'mine' && '#' + item.id === location.hash)?.id ?? 'mine';
+
 type Dialog =
   { kind: 'library' | 'settings' | 'voice' | 'capture' | 'memory' | 'recollection' | 'correction' | 'help' | 'world' } |
   { kind: 'generate'; eventId: string } |
@@ -58,6 +67,14 @@ function Modal({ title, onClose, children, wide = false }: { title: string; onCl
     <div className="modal-inner"><div className="modal-head"><h2 id="dialog-title" tabIndex={-1}>{title}</h2>
       <button className="icon-btn" onClick={onClose} aria-label="Close dialog"><X size={21} /></button></div>{children}</div>
   </dialog>;
+}
+
+function SectionPage({ title, drawing, heading, back, children }: { title: string; drawing: string; heading: string; back: () => void; children: ReactNode }) {
+  return <div className="main-content section-page">
+    <div className="project-head"><div><p className="eyebrow project-kicker">Not available yet</p><h1>{title}</h1></div></div>
+    <Empty icon={<AsciiArt art={drawing} />} title={heading}>{children}
+      <button className="btn" onClick={back}><Images size={16} /> Back to my memories</button></Empty>
+  </div>;
 }
 
 function Universe({ state, event, actions }: { state: Snapshot; event?: Memory; actions: ViewActions }) {
@@ -256,8 +273,10 @@ function App() {
   const [startupError, setStartupError] = useState('');
   const [map, setMap] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [section, setSection] = useState<Section>(sectionFromHash);
   const ref = useRef('');
   const earlyRoute = useRef<View | null>(null);
+  const tabs = useRef<HTMLDivElement>(null);
   const base = '/projects/' + project;
   const current = state?.events.find(item => item.id === state.session.eventId) ?? state?.events[0];
 
@@ -320,11 +339,25 @@ function App() {
   }, [project, base, refresh]);
 
   useEffect(() => {
+    if (section !== 'mine') {
+      history.replaceState(null, '', '/app#' + section);
+      document.title = 'Everwhere · ' + sections.find(item => item.id === section)!.name;
+      return;
+    }
     if (!state || state.projectId !== project) return;
     const target = '/p/' + project + '/' + state.session.view;
-    if (location.pathname !== target) history.replaceState(null, '', target);
+    if (location.pathname !== target || location.hash) history.replaceState(null, '', target);
     document.title = 'Everwhere · ' + state.title;
-  }, [project, state]);
+  }, [project, state, section]);
+  // On a phone the view tabs scroll sideways; keep the current one in sight without moving the page.
+  const activeView = state?.session.view;
+  useEffect(() => {
+    const bar = tabs.current;
+    const active = bar?.querySelector<HTMLElement>('.active');
+    if (!bar || !active) return;
+    if (active.offsetLeft < bar.scrollLeft) bar.scrollLeft = active.offsetLeft - 8;
+    else if (active.offsetLeft + active.offsetWidth > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = active.offsetLeft + active.offsetWidth - bar.clientWidth + 8;
+  }, [activeView, section]);
   useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(''), 5500);
@@ -338,6 +371,10 @@ function App() {
   const guarded = (work: () => Promise<unknown>) => { void work().catch(err => setNotice((err as Error).message)); };
   const select = (input: Partial<Session>) => guarded(async () => { await api(base + '/session', input); await refresh(); });
   const openUniverse = () => select({ view: 'universe' });
+  const openSection = (next: Section) => {
+    setSection(next);
+    window.scrollTo(0, 0);
+  };
   const openView = (view: View) => {
     setMap(false);
     select({ view });
@@ -389,31 +426,30 @@ function App() {
   };
   return <div className="app-frame">
     <a className="skip-link" href="#experience">Skip to experience</a>
-    <aside className="sidebar" aria-label="Workspace">
+    <header className="menubar">
       <a className="brand" href="/" aria-label="Everwhere home"><span className="brand-mark"><AsciiArt art={art.mark} /></span><span>everwhere<span className="brand-period">.</span></span></a>
-      <button className="workspace-project" onClick={() => show('library')} aria-label={'Switch project, current project ' + (state?.title || 'Projects')}><span className="project-icon"><Images size={17} /></span><span><strong>{state?.title || 'Memory projects'}</strong><small>{state?.demo ? 'Illustrated sample' : 'Private project'}</small></span><ChevronDown size={15} /></button>
-      <div className="nav-groups">
-        <nav aria-label="Experience">
-          <button className={universe ? 'active' : ''} aria-current={universe ? 'page' : undefined} onClick={openUniverse} disabled={!state}><LayoutGrid size={18} />Universe</button>
-          {nav.slice(1, 5).map(({ id, name, icon: Icon }) => <button key={id} className={screen === id ? 'active' : ''} aria-current={screen === id ? 'page' : undefined}
-            onClick={() => openView(id)} disabled={!state}><Icon size={18} />{name}</button>)}
-        </nav>
+      <nav className="menu" aria-label="Sections">{sections.map(({ id, name, icon: Icon }) =>
+        <button key={id} className={section === id ? 'active' : ''} aria-current={section === id ? 'page' : undefined} onClick={() => openSection(id)}><Icon size={17} />{name}</button>)}</nav>
+      <div className="menu-actions">
+        {section === 'mine' && <span className="private-label"><LockKeyhole size={14} /> Private</span>}
+        <button className="btn compact subtle menu-voice" onClick={() => show('voice')} disabled={!state} aria-label="Connect VoiceOS"><AudioLines size={16} /> <span>VoiceOS</span></button>
+        <button className="btn top-capture" onClick={() => { setSection('mine'); state ? show('capture') : show('library'); }}><Camera size={17} /> <span>{state ? <>Capture<span className="capture-word"> memory</span></> : 'Projects'}</span>{items.length > 0 && <span className="pending-count" aria-label={items.length + ' pending sources'}>{items.length}</span>}</button>
+        <button className="icon-btn" onClick={() => show('help')} aria-label="Open tutorial" title="Open tutorial"><CircleHelp size={18} /></button>
       </div>
-      <div className="sidebar-bottom">
-        <button className="voice-card" onClick={() => show('voice')} disabled={!state} aria-label="Connect VoiceOS"><span className="voice-icon"><AudioLines size={21} /></span><span><strong>VoiceOS</strong><small>Setup & voice controls</small></span></button>
-        <nav className="nav-utilities" aria-label="Project tools">
-          <button className="text-button" aria-current={screen === 'archive' ? 'page' : undefined} onClick={() => openView('archive')} disabled={!state}><ArchiveIcon size={16} /> Archive</button>
-          <button className="text-button" onClick={() => show('settings')} disabled={!state}><Settings size={16} /> Settings</button>
-          <button className="icon-btn" onClick={() => show('help')} aria-label="Open tutorial" title="Open tutorial"><CircleHelp size={17} /></button>
-        </nav>
-      </div>
-    </aside>
-    <main className={'main screen-' + screen} id="experience" tabIndex={-1}>
-      <header className="topbar">
-        <div className="breadcrumbs"><button onClick={state ? openUniverse : () => show('library')}>My universe</button><ChevronRight size={14} /><button className="breadcrumb-project" onClick={() => show('library')} aria-label="Switch memory project">{state?.title || 'Projects'}</button></div>
-        <div className="top-actions"><span className="private-label"><LockKeyhole size={14} /> Private</span>
-          <button className="btn top-capture" onClick={() => state ? show('capture') : show('library')}><Camera size={17} /> <span>{state ? 'Capture memory' : 'Projects'}</span>{items.length > 0 && <span className="pending-count" aria-label={items.length + ' pending sources'}>{items.length}</span>}</button></div>
-      </header>
+    </header>
+    <main className={'main screen-' + (section === 'mine' ? screen : section)} id="experience" tabIndex={-1}>
+      {section === 'shared' && <SectionPage title="Shared memories" drawing={art.shared} heading="Nothing is shared in this build" back={() => openSection('mine')}>
+        <p>Every Everwhere project is private to this browser. Sharing is not built yet; this is where memories other people invite you into would appear.</p></SectionPage>}
+      {section === 'community' && <SectionPage title="Community" drawing={art.community} heading="Community is not built yet" back={() => openSection('mine')}>
+        <p>This is where collections people choose to publish would appear. Nothing leaves your private projects today.</p></SectionPage>}
+      {section === 'mine' && <nav className="subbar" aria-label="My memories">
+        <button className="workspace-project" onClick={() => show('library')} aria-label={'Switch project, current project ' + (state?.title || 'Projects')}><span className="project-icon"><Images size={17} /></span><span><strong>{state?.title || 'Memory projects'}</strong><small>{state?.demo ? 'Illustrated sample' : 'Private project'}</small></span><ChevronDown size={15} /></button>
+        <div className="view-tabs" ref={tabs}>{nav.map(({ id, name, icon: Icon }) =>
+          <button key={id} className={screen === id ? 'active' : ''} aria-current={screen === id ? 'page' : undefined}
+            onClick={() => id === 'universe' ? openUniverse() : openView(id)} disabled={!state}><Icon size={17} />{name}</button>)}</div>
+        <button className="icon-btn" onClick={() => show('settings')} disabled={!state} aria-label="Project settings" title="Project settings"><Settings size={18} /></button>
+      </nav>}
+      {section === 'mine' && <>
       {startupError && <div className="notice main-notice" role="alert">{startupError}<button className="btn compact" onClick={() => location.reload()}>Retry</button></div>}
       {!startupError && (loading || (!state && project)) && <div className="load-state" role="status"><AsciiSpinner /> Opening your universe…</div>}
       {!loading && !state && !project && <div className="load-state"><AsciiArt art={art.universe} /><h1>Every life is a world.</h1><button className="btn primary" onClick={() => show('library')}><Plus size={17} /> Create a project</button></div>}
@@ -439,6 +475,7 @@ function App() {
         {screen === 'remember' && <Remember state={state} event={current} actions={actions} />}
         {screen === 'archive' && <Archive state={state} event={current} actions={actions} initialMap={map} />}
       </div>}
+      </>}
     </main>
     {notice && <aside className="toast" role="status">{notice}<button className="icon-btn" onClick={() => setNotice('')} aria-label="Dismiss message"><X size={17} /></button></aside>}
     {dialog && <Modal key={captureOpen ? 'capture' : dialog.kind} title={sectionTitles[dialog.kind]} onClose={dismiss} wide={captureOpen || dialog.kind === 'source'}>

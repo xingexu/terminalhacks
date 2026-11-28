@@ -62,18 +62,17 @@
 .thumb-empty .ascii-art { font-size: 8px; line-height: 1.05; color: var(--quiet); }
 
 /* Labels, dates and counts are set in the landing page's monospace. */
-.eyebrow, .breadcrumbs, .private-label, .project-details, .universe-meta, .hero-location, .glass-pill, .scene-sample,
-.universe-media-label, .timeline-date, .timeline-place, .media-meta span, .film-caption span, .section-heading > .muted,
-.result-row > span, .inbox-title span, .album-launch p, .album-instruction, .album-toolbar label, .tutorial-step,
-.tutorial-image > span, .pending-count, .map-caption, .waypoint, .hero-controls-row > span, .app-frame kbd,
-.grade-card small {
+.eyebrow, .private-label, .project-details, .universe-meta, .hero-location, .glass-pill, .scene-sample,
+.universe-media-label, .timeline-date, .timeline-place, .media-meta span, .film-caption span,
+.section-heading > .muted, .result-row > span, .inbox-title span, .album-launch p, .album-instruction,
+.album-toolbar label, .tutorial-step, .tutorial-image > span, .pending-count, .map-caption, .waypoint,
+.hero-controls-row > span, .app-frame kbd, .grade-card small {
   font-family: var(--mono);
   font-weight: 400;
 }
 .eyebrow { letter-spacing: .09em; font-size: .68rem; }
 .project-kicker { letter-spacing: .09em; }
 .project-kicker::before { content: '//'; color: var(--quiet); }
-.breadcrumbs { font-size: .76rem; }
 .project-details, .universe-meta, .hero-location { font-size: .76rem; }
 .universe-feature-copy .universe-meta { max-width: none; }
 .timeline-date { letter-spacing: .02em; }
@@ -83,9 +82,11 @@
 .tutorial-step { font-size: .7rem; }
 .tutorial-image > span { font-size: .74rem; }
 
-/* Square cells: no rounded chrome. */
-.album-launch, .album-toolbar select, .album-card .album-check, .generation-reference, .tutorial-image,
-.voice-shortcut, .app-frame kbd, .pending-count, .tutorial-progress button::after { border-radius: 0; }
+/* Frames and fields are square cells; anything you press is round. */
+.album-launch, .album-toolbar select, .generation-reference, .tutorial-image,
+.voice-shortcut, .app-frame kbd, .tutorial-progress button::after { border-radius: 0; }
+.album-card .album-check { border-radius: 50%; }
+.pending-count { border-radius: var(--pill); }
 
 /* Boxes are drawn the way a terminal draws them: dashed rules with a + at each corner. */
 .surface, .empty, .journal, .album-launch { position: relative; border-style: dashed; border-color: #3e3e3b; }
@@ -112,27 +113,7 @@
 .page-section { border-top-style: dashed; border-top-color: #3e3e3b; }
 .story-prompt { background: var(--rail); }
 
-/* Navigation: numbered entries, a caret on the current one. */
-.nav-groups nav { counter-reset: entry; }
-.nav-groups nav button { counter-increment: entry; }
-.nav-groups nav button::after {
-  content: counter(entry, decimal-leading-zero);
-  margin-left: auto;
-  font: 400 .66rem var(--mono);
-  color: var(--quiet);
-  opacity: .72;
-}
-.nav-groups nav button.active::after { content: '<'; opacity: 1; color: var(--text); }
-
-/* Tabs and switches read as bracketed text. */
-.tab-set button { gap: 6px; padding-inline: 4px; }
-.tab-set button::before, .tab-set button::after { font: 400 .9rem var(--mono); color: transparent; }
-.tab-set button::before { content: '['; }
-.tab-set button::after { content: ']'; }
-.tab-set button:hover, .tab-set button.selected { background: transparent; border-color: transparent; }
-.tab-set button:hover::before, .tab-set button:hover::after { color: var(--quiet); }
-.tab-set button.selected::before, .tab-set button.selected::after { color: var(--text); }
-.tab-set button.selected { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 6px; }
+/* The switch reads as a bracketed character. */
 .switch-track, .lens-active .switch-track {
   width: auto;
   height: auto;
@@ -166,18 +147,24 @@
   width: 44px;
   height: 44px;
   border: 0;
-  border-radius: 0;
+  border-radius: 50%;
   background: none;
-  font: 400 .86rem var(--mono);
+  font: 400 .82rem var(--mono);
   color: var(--text);
 }
-.map-point::before { content: '['; }
-.map-point::after { content: ']'; }
-.map-point > span { display: inline-block; padding: 2px 1px; background: #0f0f0f; }
-.map-point::before, .map-point::after { background: #0f0f0f; padding-block: 2px; }
-.map-point.selected { background: none; color: var(--accent-fg); }
-.map-point.selected > span, .map-point.selected::before, .map-point.selected::after { background: var(--accent); }
-.map-point:hover > span, .map-point:hover::before, .map-point:hover::after { background: var(--surface-raised); color: var(--text); }
+.map-point > span {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: #0f0f0f;
+}
+.map-point.selected { background: none; }
+.map-point.selected > span { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.map-point:hover > span { border-color: var(--text); }
 .map-north { font: 400 .76rem var(--mono); color: var(--text-muted); gap: 4px; background: #0f0f0f; padding: 0 4px; }
 .map-caption { color: var(--text-muted); font-size: .72rem; display: flex; flex-wrap: wrap; gap: 4px 18px; justify-content: space-between; }
 .map-legend .btn > span { font-family: var(--mono); font-weight: 400; }
@@ -185,16 +172,10 @@
 /* Tutorial steps count in characters. */
 .tutorial-count { font-family: var(--mono); letter-spacing: .04em; white-space: pre; }
 
-@media (max-width: 850px) {
-  .nav-groups nav button::after { content: none; }
-  .nav-groups nav button.active::after { content: none; }
-}
 @media (max-width: 470px) {
-  /* Monospace runs wider, so the phone header keeps only what it needs. */
-  .breadcrumbs > button:first-child, .breadcrumbs > svg { display: none; }
   .project-details { column-gap: 14px; }
   .project-details .dot-separator { display: none; }
-  .tab-set { gap: 0; }
+  .tab-set button { padding-inline: 12px; }
   .tab-set button svg { display: none; }
 }
 @media (max-width: 600px) {
