@@ -8,6 +8,8 @@ For a scene film, generate/import and **approve the chosen world first**. Enter 
 
 Choose **Record 1080p film** and keep the page visible for the replay/capture and upload. **Cancel film** discards the unfinished recording; changed evidence requires a new path/review. Open Watch, select **3D scene recording**, wait for processing, then **Approve film** and confirm separately before playing or using **Download**. A new world, changed sources or a correction can retire a prior film. The album and journal retain every available visual source in the shared order.
 
+For an enclosed imported room, first zoom through the exterior in inspection mode and choose a clear **interior** floor. Save and confirm a waypoint, then select it in **Saved places**. Reload once to verify the selected waypoint reopens inside the room. Finish all waypoint edits **before** recording the final film: adding one afterward changes the memory and retires the earlier film. Do not mistake a roof or tabletop for the intended floor. Inspect scale, texture detail and lighting on the actual chosen asset; successful import alone is not visual acceptance.
+
 | Time | Action | Claim supported |
 |---|---|---|
 | 0:00–0:35 | Open the memory; show original photos, recorded time and location. | A scattered collection becomes one reviewable memory. Unknown metadata stays unknown. |
