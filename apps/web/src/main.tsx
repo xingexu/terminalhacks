@@ -380,7 +380,7 @@ function App() {
       {hasMedia && state && dialog.kind === 'voice' && <VoicePanel base={base} state={state} />}
       {state && current && dialog.kind === 'world' && <WorldForm state={state} event={current} base={base}
         done={async () => { await refresh(); dismiss(); setNotice('Reconstruction uploaded for approval.'); }} />}
-      {hasMedia && state && captureOpen && <div hidden={dialog.kind === 'confirm'}><Capture state={state} base={base} items={items} reload={refresh}
+      {hasMedia && state && captureOpen && <div hidden={dialog.kind === 'confirm'}><Capture state={state} base={base} items={items} visible={dialog.kind === 'capture'} reload={refresh}
         renderMemoryForm={done => <EventForm name="Create memory" onSubmit={async body => {
           await api(base + '/memories', { ...body, expectedRevision: state.revision }); await refresh(); done();
         }} />}

@@ -4,12 +4,13 @@ import { api, displayDate, sourceURL, type Observation, type Snapshot } from './
 
 type CaptureProps = {
   state: Snapshot; base: string; items: Observation[];
+  visible: boolean;
   reload: () => Promise<void>;
   preview: (item: Observation, eventId: string, text?: string) => Promise<void>;
   renderMemoryForm: (onCreated: () => void) => ReactNode;
 };
 
-export function Capture({ state, base, items, reload, preview, renderMemoryForm }: CaptureProps) {
+export function Capture({ state, base, items, visible, reload, preview, renderMemoryForm }: CaptureProps) {
   const [consent, setConsent] = useState(false);
   const [keepLocation, setKeepLocation] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
@@ -26,6 +27,10 @@ export function Capture({ state, base, items, reload, preview, renderMemoryForm 
   const timer = useRef<number | undefined>(undefined);
   const mounted = useRef(false);
   const folder = useRef<HTMLInputElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!visible) content.current?.querySelectorAll('audio').forEach(audio => audio.pause());
+  }, [visible]);
   useEffect(() => {
     mounted.current = true;
     folder.current?.setAttribute('webkitdirectory', '');
@@ -115,7 +120,7 @@ export function Capture({ state, base, items, reload, preview, renderMemoryForm 
       setQueued(false);
     }
   }
-  return <div className="capture-content">
+  return <div className="capture-content" ref={content}>
     <div className="capture-info"><Camera size={23} /><p>Choose photos, clips, or a voice note. Review each source before it becomes part of a memory.</p></div>
     <label className="check-row"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} disabled={busy} />
       <span>I have permission to keep these sources in this private project.</span></label>
