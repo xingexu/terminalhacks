@@ -6,7 +6,7 @@ import { AsciiImage } from './ascii';
 const steps = [
   { title: 'Keep the moment.', text: 'Start a private project, then use Capture to add selected photos, clips, or a voice note.', icon: Camera, image: 'lake', caption: 'Photos · clips · voice notes' },
   { title: 'Give it a place.', text: 'Create a memory with a title, place, and date. In the capture inbox, choose the memory, preview the link, and confirm it.', icon: Check, image: 'desert', caption: 'Capture → review → confirm' },
-  { title: 'Come back to it.', text: 'In Explore, choose Step inside this photo. Add remembered details, connect Higgsfield, and generate a scene. Review the reconstruction, then enter and walk with WASD. Create also holds your photo albums, and Watch holds your films.', icon: Compass, image: 'ocean', caption: 'Your memories, connected' },
+  { title: 'Come back to it.', text: 'In Explore, open an approved memory world. A supplied place description can match a reviewed Street View stop; photos remain linked evidence, not generated panoramas. Use WASD or VoiceOS to navigate. Create holds your albums, and Watch holds your films.', icon: Compass, image: 'ocean', caption: 'Your memories, connected' },
   { title: 'Your memories, by voice.', text: 'Open the VoiceOS app from Applications on your Mac. Go to Apps → Custom → Everwhere to check your connection.', icon: AudioLines, image: 'stars', caption: '“What memory is open in Everwhere?”' }
 ];
 

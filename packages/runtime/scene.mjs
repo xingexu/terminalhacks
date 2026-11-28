@@ -7,7 +7,7 @@ export function sceneContext(state, projectId, eventId, requestedIds, worldId) {
   const world = worldId && state.worlds?.find(item => item.id === worldId && item.eventId === eventId);
   if (worldId) check(world?.approved && !world.revoked && state.session.lens === 'all' &&
     world.sourceIds.every(id => mediaById(state, id) && event.sourceIds.includes(id)),
-  404, 'SCENE_UNAVAILABLE', 'This reconstruction is unavailable.');
+  404, 'SCENE_UNAVAILABLE', 'This scene is unavailable.');
   const sourceIds = [...new Set(world ? world.sourceIds : requestedIds)].sort();
   check(sourceIds.length > 0 && sourceIds.length <= 256 && sourceIds.every(id => {
     const source = mediaById(state, id);

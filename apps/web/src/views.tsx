@@ -4,20 +4,21 @@ import {
   Clapperboard, Compass, Eye, Film, Image, MapPin, Maximize, Pause, Play, Plus, Search, Sparkles, X
 } from 'lucide-react';
 import {
-  api, artifactURL, displayDate, isVisual, sourceURL, sourcesFor,
-  type Anchor, type Job, type Memory, type Profile, type SearchResult, type Snapshot, type Source, type View, type World
+  allowed, api, artifactURL, displayDate, isVisual, sourceURL, sourcesFor, storyboardBasis,
+  type Anchor, type Job, type Lens, type Memory, type Profile, type SearchResult, type Snapshot, type Source, type Storyboard, type View, type World
 } from './model';
 
 import { updateScenePointer, useScenePalette } from './scene';
 import { art, AsciiArt, AsciiImage } from './ascii';
 
 const Spatial = lazy(() => import('./spatial'));
+const Panorama = lazy(() => import('./panorama'));
 const Scan = lazy(() => import('./scan'));
 const WalkableAlbum = lazy(() => import('./album'));
 import { orderedPhotos } from './album-layout';
 
 export type ViewActions = {
-  select: (input: { eventId?: string; anchorId?: string; view?: View }) => void;
+  select: (input: { eventId?: string; anchorId?: string; view?: View; lens?: Lens }) => Promise<boolean>;
   openSource: (source: Source) => void;
   openCapture: () => void;
   openMemory: () => void;
@@ -30,6 +31,14 @@ export type ViewActions = {
   openWorld: () => void;
   openGeneration: () => void;
 };
+
+export function AtlasMark({ size = 24 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <circle cx="16" cy="16" r="11.5" stroke="currentColor" strokeWidth=".8" opacity=".55" />
+    <path d="M16 1.5 18.4 13.6 30.5 16 18.4 18.4 16 30.5 13.6 18.4 1.5 16 13.6 13.6 16 1.5Z" fill="currentColor" />
+    <path d="M16 4v24M4 16h24" stroke="#192018" opacity=".65" strokeWidth=".65" />
+  </svg>;
+}
 
 export function Empty({ icon, title, children }: { icon: ReactNode; title: string; children?: ReactNode }) {
   return <div className="empty">{icon}<h3>{title}</h3>{children}</div>;
@@ -45,6 +54,15 @@ function MediaPicture({ project, source, className }: { project: string; source?
     <Thumb project={project} source={source} className="media-base" />
     {source && <Thumb project={project} source={source} className="media-reveal" />}
   </span>;
+}
+
+export function NarrationPreview({ projectId, narration }: { projectId: string; narration: NonNullable<Storyboard['narration']> }) {
+  return <section className="form-stack" aria-label="Film narration">
+    <strong>Original voice note</strong>
+    <p>The film uses the first {narration.seconds.toFixed(1)} seconds of this note, starting {narration.startSeconds.toFixed(1)} seconds into the film. Preview the original note below.</p>
+    <audio controls preload="none" aria-label="Preview original voice note" style={{ width: '100%' }}
+      src={sourceURL(projectId, narration.sourceId, '?variant=playback')} />
+  </section>;
 }
 
 function MediaGrid({ state, sources, open }: { state: Snapshot; sources: Source[]; open: ViewActions['openSource'] }) {
@@ -84,6 +102,8 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
   const [spatial, setSpatial] = useState<string | null>(null);
   const activeEvent = event?.id;
   const selectedAnchor = state.anchors.find(item => item.id === state.session.anchorId);
+  const requestedTourAnchors = useRef(new Set<string>());
+  const autoOpenContext = useRef(activeEvent + ':' + state.session.lens);
   useEffect(() => {
     setEntered(Boolean(state.session.anchorNavigationId && selectedAnchor?.worldId === 'trail-' + activeEvent));
     setShowStory(false);
@@ -91,14 +111,24 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
   const worlds = state.worlds.filter(item => item.eventId === activeEvent && item.approved && item.status !== 'stale' && state.session.lens === 'all' &&
     item.sourceIds.every(id => event?.sourceIds.includes(id)));
   const world = worlds.find(item => item.id === spatial) ?? worlds.at(-1);
-  useEffect(() => { setSpatial(worlds.some(item => item.id === selectedAnchor?.worldId) ? selectedAnchor!.worldId : null); },
-    [activeEvent, selectedAnchor?.worldId, state.session.lens]);
+  // An approved live Street View route is the intended entry; the mesh scene remains the fallback.
+  const walkableWorld = worlds.filter(item => item.format === 'tour' && item.tour?.liveStreetView).at(-1) ?? worlds.filter(item => item.format === 'glb').at(-1);
+  useEffect(() => {
+    const context = activeEvent + ':' + state.session.lens;
+    const contextChanged = autoOpenContext.current !== context;
+    autoOpenContext.current = context;
+    // Acknowledging our own route change must not reopen an explicitly closed viewer.
+    const ownAcknowledgement = selectedAnchor && requestedTourAnchors.current.delete(selectedAnchor.id);
+    if (!contextChanged && ownAcknowledgement) return;
+    setSpatial(worlds.some(item => item.id === selectedAnchor?.worldId) ? selectedAnchor!.worldId : null);
+  }, [activeEvent, selectedAnchor?.id, selectedAnchor?.worldId, state.session.lens, state.session.anchorNavigationId]);
   if (!event) return <Empty icon={<AsciiArt art={art.compass} />} title="Start with a place you remember">
     <p>Give a moment a name, then add the photos and stories you want to keep.</p>
     <button className="btn primary" onClick={actions.openMemory}><Plus size={17} /> Add a memory</button>
   </Empty>;
-  const media = sourcesFor(state, event.sourceIds).filter(isVisual);
-  const photos = orderedPhotos(media);
+  const storyboard = state.storyboards[event.id];
+  const media = sourcesFor(state, storyboard?.sourceIds ?? event.sourceIds).filter(isVisual);
+  const photos = storyboard ? media.filter(item => item.mime.startsWith('image/')) : orderedPhotos(media);
   const anchors = state.anchors.filter(anchor => anchor.eventId === event.id && anchor.worldId === 'trail-' + event.id && anchor.sourceIds.some(id => media.some(source => source.id === id)));
   const anchor = anchors.find(item => item.id === state.session.anchorId) ?? anchors[0];
   const active = sourcesFor(state, anchor?.sourceIds ?? []).find(isVisual) ?? media[0];
@@ -116,8 +146,11 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
     setEntered(true);
     setShowStory(false);
   }
-  const pendingWorld = state.worlds.find(item => item.eventId === event.id && !item.approved && item.status !== 'stale' &&
+  const pendingWorlds = state.worlds.filter(item => item.eventId === event.id && !item.approved && item.status !== 'stale' &&
     item.sourceIds.every(id => event.sourceIds.includes(id)));
+  const staleWorlds = state.worlds.filter(item => item.eventId === event.id && item.status === 'stale');
+  const sourcePhoto = state.media.some(item => event.sourceIds.includes(item.id) && item.mime.startsWith('image/'));
+  const hiddenWorlds = state.session.lens === 'originals' && state.worlds.some(item => item.eventId === event.id && item.approved && item.status !== 'stale');
   return <section className="view-explore">
     <div className="explore-stage">
     {entered && photos.length > 0 && <Suspense fallback={<div className="notice" role="status">Opening immersive album…</div>}>
@@ -126,17 +159,37 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
         onWaypoint={(sourceId, position) => actions.addWaypoint(position, sourceId)} />
     </Suspense>}
     {spatial && world?.id === spatial ? <div className="spatial-frame">
-      <Suspense fallback={<div className="spatial-state">Loading 3D viewer…</div>}>
-        {world.format === 'glb' ? <Scan url={'/v1/projects/' + state.projectId + '/worlds/' + spatial + '/scene.glb'}
+      <Suspense fallback={<div className="spatial-state">Opening your memory…</div>}>
+        {world.format === 'tour' ? <Panorama key={world.id} url={'/v1/projects/' + state.projectId + '/worlds/' + spatial + '/tour.json'}
+          title={world.title} projectId={state.projectId} worldId={world.id} movement={state.session.movement}
+          owner={state.session.activeWorldId === world.id ? state.session.activeViewerId : undefined}
+          place={state.session.streetViewPlace?.worldId === world.id ? state.session.streetViewPlace : undefined}
+          initialNodeId={selectedAnchor?.worldId === spatial ? selectedAnchor.nodeId : world.tour?.startNodeId}
+          onNodeChange={async nodeId => {
+            const target = state.anchors.find(item => item.worldId === spatial && item.nodeId === nodeId);
+            if (!target) throw new Error('This viewpoint no longer has a saved place. Return to the memory and reopen the walkthrough.');
+            if (target.id !== state.session.anchorId) requestedTourAnchors.current.add(target.id);
+            if (!await actions.select({ anchorId: target.id })) {
+              requestedTourAnchors.current.delete(target.id);
+              throw new Error('Your place could not be saved. You are still at the previous viewpoint. Retry when connected.');
+            }
+          }} onClose={() => setSpatial(null)}
+          onSource={node => {
+            const source = state.media.find(item => node.sourceIds?.includes(item.id));
+            if (source) { setSpatial(null); actions.openSource(source); }
+          }} /> : world.format === 'glb' ? <Scan url={'/v1/projects/' + state.projectId + '/worlds/' + spatial + '/scene.glb'}
           projectId={state.projectId} eventId={event.id} worldId={world.id} revision={state.revision}
-          generation={world.generation} position={selectedAnchor?.worldId === spatial ? selectedAnchor.position : undefined}
+          movement={state.session.movement}
+          provenance={world.provenance ?? 'reconstructed'} planId={world.planId ?? world.sceneManifest?.planId}
+          position={selectedAnchor?.worldId === spatial ? selectedAnchor.position : undefined}
           anchors={state.anchors.filter(item => item.worldId === spatial)}
           selectedAnchor={selectedAnchor?.worldId === spatial ? selectedAnchor : undefined}
           recollections={state.recollections} onSelectAnchor={anchorId => actions.select({ anchorId })} onRecollect={actions.openRecollection}
-          onClose={() => setSpatial(null)} onWaypoint={position => actions.addWaypoint(position, world.sourceIds[0], spatial)} /> :
+          onClose={() => setSpatial(null)} onWaypoint={position => actions.addWaypoint(position, undefined, spatial)} /> :
         <Spatial url={'/v1/projects/' + state.projectId + '/worlds/' + spatial + '/scene.spz'}
+          provenance={world.provenance ?? 'reconstructed'}
           position={selectedAnchor?.worldId === spatial ? selectedAnchor.position : undefined}
-          onClose={() => setSpatial(null)} onWaypoint={position => actions.addWaypoint(position, world.sourceIds[0], spatial)} />}
+          onClose={() => setSpatial(null)} onWaypoint={position => actions.addWaypoint(position, undefined, spatial)} />}
       </Suspense>
       <div className="spatial-waypoints">
         {state.anchors.filter(item => item.worldId === spatial).map(item =>
@@ -169,9 +222,9 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
           <h2>{event.title}</h2>
           <div className="hero-location"><MapPin size={15} /> {event.placeLabel}{anchor && <><span className="dot-separator" /> {anchor.title}</>}</div>
           <div className="button-row">
-            <button className="btn hero-cta" onClick={actions.openGeneration}><Box size={17} /> Step inside this photo <ArrowRight size={16} /></button>
-            {photos.length > 0 ? <button className="btn hero-cta" onClick={openAlbum}><Compass size={17} /> Enter photo album <ArrowRight size={16} /></button> :
+            {walkableWorld ? <button className="btn hero-cta" onClick={() => setSpatial(walkableWorld.id)}><Compass size={17} /> Enter memory world <ArrowRight size={16} /></button> : photos.length > 0 ? <button className="btn hero-cta" onClick={openAlbum}><Compass size={17} /> Enter memory <ArrowRight size={16} /></button> :
               <button className="btn hero-cta" onClick={actions.openCapture}><Camera size={16} /> Add photos</button>}
+            {walkableWorld && photos.length > 0 && <button className="btn compact" onClick={openAlbum}>Open photo album</button>}
             {active && <button className="glass-icon" aria-label="Waypoint story" onClick={() => setShowStory(!showStory)}><BookOpen size={17} /></button>}
           </div>
         </div>
@@ -184,13 +237,28 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
         </div>
       </div>
     </div>}
-    {(state.sceneJobs ?? []).filter(job => job.eventId === event.id && job.status !== 'ready').slice(0, 1).map(job =>
-      <div className="notice" role="status" key={job.id}><Box size={18} /><div><strong>{job.status === 'interpreting' ? 'Interpreting your photo' : job.status === 'building' ? 'Building your scene in Higgsfield' : job.status === 'queued' ? 'Scene generation queued' : 'Scene needs attention'}</strong>
-        <p>{job.error || 'You can continue browsing while the scene is prepared.'}</p><button className="btn compact" onClick={actions.openGeneration}>Scene details</button></div></div>)}
-    {(pendingWorld || world || media.some(item => item.provenance === 'original' && item.mime.startsWith('image/'))) && <div className="world-actions button-row">
-      {worlds.map(item => item.id !== spatial && <button key={item.id} className="btn compact" onClick={() => setSpatial(item.id)}><Box size={15} /> {item.format === 'glb' ? 'Walk in ' : 'Explore '}{item.title}</button>)}
-      {pendingWorld && <button className="btn compact" onClick={() => actions.approve(pendingWorld)}><Check size={15} /> Approve reconstruction</button>}
-      {media.some(item => item.provenance === 'original' && item.mime.startsWith('image/')) && <button className="btn compact subtle" onClick={actions.openWorld}><Plus size={15} /> Import 3D scene</button>}
+    <div className="world-actions button-row">
+      <button className="btn compact primary" onClick={actions.openGeneration}><Sparkles size={15} aria-hidden="true" /> Generate memory world</button>
+      {worlds.map(item => item.id !== spatial && <button key={item.id} className="btn compact" onClick={() => setSpatial(item.id)}><Box size={15} aria-hidden="true" /> {item.provenance === 'imagined' ? 'Enter imagined world: ' : item.format === 'glb' ? 'Walk in reconstruction: ' : 'Explore reconstruction: '}{item.title}</button>)}
+      {pendingWorlds.map(item => {
+        const variants = state.worlds.filter(candidate => candidate.eventId === item.eventId && candidate.title === item.title);
+        const suffix = variants.length > 1 ? ' · Variant ' + (variants.findIndex(candidate => candidate.id === item.id) + 1) : '';
+        return <button key={item.id} className="btn compact" onClick={() => actions.approve(item)}><Check size={15} aria-hidden="true" />
+          Approve {item.provenance === 'imagined' ? 'imagined world' : 'reconstruction'}: {item.title}{suffix}</button>;
+      })}
+      {sourcePhoto && <button className="btn compact subtle" onClick={actions.openWorld}><Plus size={15} aria-hidden="true" /> Import memory scene</button>}
+    </div>
+    {world && <p className="muted">{world.provenance === 'imagined' ? 'Generated interpretation' : 'Reconstructed scan'} · {world.planId && world.provider === 'local-procedural-v1' ? 'Everwhere procedural generation' : world.provider || 'Imported scene'} · {world.sourceIds.length} linked source {world.sourceIds.length === 1 ? 'photo' : 'photos'}</p>}
+    {hiddenWorlds && <div className="notice"><p>Originals only hides generated scenes. Show all to enter an approved world.</p><button className="btn compact" onClick={() => actions.select({ lens: 'all' })}>Show all</button></div>}
+    {!!staleWorlds.length && <p className="muted">A previous generated world is out of date because its evidence changed. Generate and review a new world to use the current memory.</p>}
+    {world?.provenance === 'imagined' && world.format === 'glb' && <div className="button-row generation-export">
+      <a className="btn compact" href={'/v1/projects/' + state.projectId + '/worlds/' + world.id + '/scene.glb?download=1'}><ArrowDownToLine size={15} aria-hidden="true" /> Download imagined world GLB</a>
+      {world.planId && <a className="btn compact" href={'/v1/projects/' + state.projectId + '/worlds/' + world.id + '/plan.json'} download><ArrowDownToLine size={15} aria-hidden="true" /> Download scene plan</a>}
+      {state.media.some(source => world.sourceIds.includes(source.id) && source.attribution) && <>
+        <a className="btn compact" href={'/v1/projects/' + state.projectId + '/worlds/' + world.id + '/credits.json'} download><ArrowDownToLine size={15} aria-hidden="true" /> Download source credits</a>
+        <p>Share the credits file with every shared copy of this scene. Credits are a separate companion file, not embedded in the GLB. Photo-derived CC BY-SA adaptations must follow the linked ShareAlike terms.</p>
+      </>}
+      <p>GLB{world.planId ? ' and plan' : ''} for 3D-tool import. A native Unreal project is not included; Unreal import has not been verified.</p>
     </div>}
     </div>
     <Timeline state={state} event={event} actions={actions} />
@@ -200,49 +268,74 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
 export function Watch({ state, event, actions }: { state: Snapshot; event?: Memory; actions: ViewActions }) {
   const [playing, setPlaying] = useState(false);
   const [frame, setFrame] = useState(0);
-  const media = event ? sourcesFor(state, event.sourceIds).filter(isVisual) : [];
-  const source = media[frame % (media.length || 1)];
-  useEffect(() => { setFrame(0); setPlaying(false); }, [event?.id, state.session.lens]);
-  useEffect(() => {
-    if (!playing || !media.length) return;
-    const timer = window.setInterval(() => setFrame(value => (value + 1) % media.length), 4800);
-    return () => window.clearInterval(timer);
-  }, [playing, media.length]);
-  const jobs = state.jobs.filter(item => item.eventId === event?.id && item.lens === state.session.lens);
+  const [selectedKind, setSelectedKind] = useState<Storyboard['kind'] | null>(null);
+  const allJobs = state.jobs.filter(item => item.eventId === event?.id && item.lens === state.session.lens);
+  const kind = selectedKind ?? allJobs.find(item => ['queued', 'running', 'ready'].includes(item.status))?.kind ?? 'source_montage';
+  const sceneFilm = kind === 'scene_recording';
+  const jobs = allJobs.filter(item => (item.kind ?? 'source_montage') === kind);
+  const montage = allJobs.find(item => item.kind !== 'scene_recording' && ['queued', 'running', 'ready'].includes(item.status));
   const current = jobs.find(item => ['queued', 'running', 'ready'].includes(item.status));
+  const storyboard = current ? current.storyboard : !sceneFilm && event ? state.storyboards[event.id] : undefined;
+  const storyboardWorld = state.worlds.find(world => world.id === storyboard?.worldId);
+  const frames = storyboard?.frames ?? [];
+  const activeFrame = frames[frame % (frames.length || 1)];
+  const source = activeFrame && sourcesFor(state, [activeFrame.sourceId])[0];
+  const excluded = sourcesFor(state, storyboard?.excludedSourceIds ?? []);
+  const showVideo = current?.status === 'ready' && current.approved;
+  useEffect(() => { setSelectedKind(null); }, [event?.id, state.session.lens]);
+  useEffect(() => { setFrame(0); setPlaying(false); }, [event?.id, state.session.lens, storyboard?.id, showVideo]);
+  useEffect(() => {
+    if (!playing || !activeFrame || showVideo || sceneFilm) return;
+    const timer = window.setTimeout(() => setFrame(value => (value + 1) % frames.length), activeFrame.seconds * 1000);
+    return () => window.clearTimeout(timer);
+  }, [playing, frame, frames.length, activeFrame?.seconds, showVideo, sceneFilm]);
   const filmReady = current?.status === 'ready';
-  const showVideo = filmReady && current.approved;
   const rendering = current?.status === 'queued' || current?.status === 'running';
   const image = source && sourceURL(state.projectId, source.id, '?variant=thumb');
   const palette = useScenePalette(image, filmReady || rendering || playing);
-  const status = filmReady ? (showVideo ? 'Your film is ready to watch' : 'Film ready for approval') :
-    current?.status === 'queued' ? 'Film queued' : 'Rendering your film';
-  return <div className={'view-stack view-watch grade-' + state.visualProfile + (filmReady ? ' is-film-ready' : '') +
-    (rendering ? ' is-film-rendering' : '') + (playing ? ' is-storyboard-playing' : '')} style={palette}>
+  return <div className={'view-stack view-watch grade-' + state.visualProfile + (filmReady ? ' is-film-ready' : '') + (rendering ? ' is-film-rendering' : '') + (playing ? ' is-storyboard-playing' : '')} style={palette}>
     <div className="section-heading page-section"><h2>Films from your memories</h2>
-      {!current && !!media.length && <button className="btn primary" onClick={actions.render}><Clapperboard size={17} />
-        {jobs[0]?.status === 'stale' ? 'Render updated film' : jobs[0] ? 'Try rendering again' : 'Create film'}</button>}</div>
+      {!sceneFilm && <button className="btn primary" onClick={actions.render} disabled={!frames.length || Boolean(montage)}><Clapperboard size={17} /> Render MP4</button>}</div>
+    <div className="button-row" aria-label="Film type">
+      <button className="btn" aria-pressed={!sceneFilm} onClick={() => setSelectedKind('source_montage')}>Photo/video montage</button>
+      <button className="btn" aria-pressed={sceneFilm} onClick={() => setSelectedKind('scene_recording')}>3D scene recording</button>
+    </div>
+    {storyboard && <p className="muted">{sceneFilm ? '3D scene recording' : 'Photo/video montage'} · {storyboard.durationSeconds.toFixed(1)} seconds. {sceneFilm ? 'Footage follows your reviewed camera path. Source references guide captions and narration; they do not identify exactly what the camera is looking at.' : storyboardBasis[storyboard.basis] + ' This film does not record the 3D walk.'}</p>}
+    {storyboardWorld && <p className="muted">Based on world: <strong>{storyboardWorld.title}</strong></p>}
     {showVideo && current ? <div className="film-stage"><video controls playsInline preload="metadata" src={artifactURL(state.projectId, current.id)} poster={source && sourceURL(state.projectId, source.id, '?variant=thumb')}>
       <track default kind="captions" label="English captions" srcLang="en" src={artifactURL(state.projectId, current.id, 'captions')} />
-    </video></div> : source ? <div className="film-stage film-preview" onPointerMove={updateScenePointer}>
+    </video></div> : sceneFilm ? <Empty icon={<Film size={30} />} title={current ? 'Your scene film is being prepared' : 'Film your walkable world'}>
+      <p>{current ? 'The actual camera recording will be available after processing and separate approval. The cards below are evidence references, not recorded footage.' : 'Enter an approved 3D world, open Scene tools, record a 30–60 second camera path, then review and record its film.'}</p>
+      {!current && <button className="btn" onClick={() => actions.select({ view: 'explore' })}>Open memory</button>}
+    </Empty> : source ? <div className="film-stage film-preview" onPointerMove={updateScenePointer}>
       {image && <AsciiImage key={image} src={image} />}
       <Thumb project={state.projectId} source={source} className="film-preview-img" />
       <Thumb project={state.projectId} source={source} className="film-preview-img film-reveal" />
       <span className="glass-pill film-tag"><Film size={14} /> Storyboard preview</span>
       <button className="film-play" aria-label={playing ? 'Pause storyboard' : 'Play storyboard'} onClick={() => setPlaying(!playing)}>{playing ? <Pause size={29} fill="currentColor" /> : <Play size={29} fill="currentColor" />}</button>
-      <div className="film-caption"><strong>{event?.title}</strong><span>{source.caption} · {source.provenance === 'imagined' ? 'Imagined demo' : 'Original source'}</span></div>
-    </div> : <Empty icon={<AsciiArt art={art.film} />} title="Your film starts with a source"><p>Link a photo or video to this memory.</p><button className="btn" onClick={actions.openCapture}>Add sources</button></Empty>}
-    <div className="film-status" role="status">
-      {current && <div className="notice render-notice"><Film size={19} /><div><strong>{status}</strong>
-        <p>{filmReady ? 'Saved from memory revision ' + current.revision + '.' : 'You can keep exploring while the film is prepared.'}</p></div>
-        {filmReady && (showVideo ? <a className="btn compact" href={artifactURL(state.projectId, current.id) + '?download=1'}><ArrowDownToLine size={16} /> Download MP4</a> :
-          <button className="btn compact primary" onClick={() => actions.approve(current)}><Check size={16} /> Approve film</button>)}</div>}
-      {!current && jobs[0] && <div className="notice"><CircleHelp size={18} /><p>{jobs[0].status === 'stale' ? 'This memory changed. Render an updated film to use the current sources.' : jobs[0].error || 'This film is unavailable.'}</p></div>}
-    </div>
-    {media.length > 0 && <><div className="section-heading"><h2>Storyboard</h2><span className="muted">{media.length} {media.length === 1 ? 'source' : 'sources'}</span></div>
-      <div className="storyboard">{media.map((item, index) => <button className={'storyboard-card' + (source?.id === item.id ? ' selected' : '')}
-        key={item.id} aria-pressed={showVideo ? undefined : source?.id === item.id}
-        onClick={() => showVideo ? actions.openSource(item) : setFrame(index)}><Thumb project={state.projectId} source={item} /><span>{item.caption}</span></button>)}</div></>}
+      <div className="film-caption" style={{ right: 17, overflowWrap: 'anywhere' }}><strong>{event?.title}</strong><span>{activeFrame.caption} · {activeFrame.provenance === 'imagined' ? 'Imagined demo' : 'Original source'} · {activeFrame.seconds}s</span></div>
+    </div> : current ? <div className="notice"><p>This saved film has no reviewable storyboard. Refresh the memory to check its availability.</p></div> :
+      <Empty icon={<Film size={30} />} title="Your film starts with a source"><p>Link a photo or video to this memory.</p><button className="btn" onClick={actions.openCapture}>Add sources</button></Empty>}
+    {!sceneFilm && !showVideo && activeFrame?.recollection && <blockquote>{activeFrame.recollection.text}<br /><small>{activeFrame.recollection.contributor} · Recollection{activeFrame.recollection.excerpt ? ' excerpt' : ''}</small></blockquote>}
+    {storyboard?.narration && <NarrationPreview projectId={state.projectId} narration={storyboard.narration} />}
+    {current && <div className="notice render-notice"><Film size={19} /><div><strong>{current.status === 'ready' ? current.approved ? '1080p film ready' : 'Film rendered and awaiting approval' : 'Rendering the 1080p film'}</strong>
+      <p>{current.status === 'ready' ? 'Saved from memory revision ' + current.revision + '.' : 'You can keep exploring while FFmpeg renders.'}</p></div>
+      {current.status === 'ready' && (current.approved ? <a className="btn compact" href={artifactURL(state.projectId, current.id) + '?download=1'}><ArrowDownToLine size={16} /> Download</a> :
+        <button className="btn compact primary" onClick={() => actions.approve(current)}><Check size={16} /> Approve film</button>)}</div>}
+    {!current && jobs[0] && <div className="notice"><CircleHelp size={18} /><p>{jobs[0].status === 'stale' ? 'The previous film is out of date because this memory changed. Render a new cut to use the current evidence.' : jobs[0].error || 'This film is unavailable.'}</p></div>}
+    {frames.length > 0 && <><div className="section-heading"><h2>{sceneFilm ? 'Source references and caption timeline' : 'Storyboard'}</h2><span className="muted">{frames.length} {frames.length === 1 ? 'source' : 'sources'} · {storyboard?.durationSeconds.toFixed(1)}s</span></div>
+      <div className="storyboard">{frames.map((item, index) => {
+        const visual = sourcesFor(state, [item.sourceId])[0];
+        return <button className={'storyboard-card' + (source?.id === item.sourceId ? ' selected' : '')} key={item.sourceId}
+          aria-pressed={!sceneFilm && !showVideo && frame === index} disabled={!visual} onClick={() => showVideo || sceneFilm ? actions.openSource(visual) : setFrame(index)}>
+          <Thumb project={state.projectId} source={visual} /><span>{index + 1}. {item.caption}<br />{item.seconds.toFixed(1)}s · {displayDate(item.capturedAt, true)}</span></button>;
+      })}</div>
+      {!!storyboard?.omittedRecollections && <p className="muted">{storyboard.omittedRecollections} additional {storyboard.omittedRecollections === 1 ? 'recollection remains' : 'recollections remain'} in your journal, outside this cut.</p>}
+    </>}
+    {excluded.length > 0 && <section><div className="section-heading"><h2>Outside this cut</h2><span className="muted">{excluded.length} {excluded.length === 1 ? 'source' : 'sources'}</span></div>
+      <p className="muted">These sources remain in your memory, album and journal.</p>
+      <MediaGrid state={state} sources={excluded} open={actions.openSource} />
+    </section>}
   </div>;
 }
 
@@ -257,8 +350,10 @@ function PhotoAlbum({ state, event, actions }: { state: Snapshot; event?: Memory
   const [scope, setScope] = useState<'memory' | 'project'>('memory');
   const [excluded, setExcluded] = useState<string[]>([]);
   const [entered, setEntered] = useState(false);
-  const sourceIds = scope === 'memory' ? event?.sourceIds || [] : [...new Set(state.events.flatMap(memory => memory.sourceIds))];
-  const photos = orderedPhotos(sourcesFor(state, sourceIds));
+  const storyboard = event && state.storyboards[event.id];
+  const sourceIds = scope === 'memory' ? storyboard?.sourceIds ?? event?.sourceIds ?? [] : [...new Set(state.events.flatMap(memory => memory.sourceIds))];
+  const sources = sourcesFor(state, sourceIds);
+  const photos = scope === 'memory' && storyboard ? sources.filter(item => item.mime.startsWith('image/')) : orderedPhotos(sources);
   const selected = photos.filter(photo => !excluded.includes(photo.id));
   const title = scope === 'project' ? state.title : event?.title || 'Photo album';
   useEffect(() => { setExcluded([]); setEntered(false); }, [scope]);
@@ -272,7 +367,7 @@ function PhotoAlbum({ state, event, actions }: { state: Snapshot; event?: Memory
     </div>
     {photos.length ? <>
       <div className="album-launch">
-        <div><span className="eyebrow">Immersive photo album</span><h3>{title}</h3><p>{selected.length} photos selected · Ordered by capture date</p></div>
+        <div><span className="eyebrow">Immersive photo album</span><h3>{title}</h3><p>{selected.length} photos selected · {scope === 'memory' && storyboard ? 'Storyboard order, then remaining sources' : 'Ordered by capture date'}</p></div>
         <button className="btn primary" disabled={!selected.length} onClick={() => setEntered(true)}><Compass size={18} /> Enter album <ArrowRight size={16} /></button>
       </div>
       <p className="album-instruction">Choose photos for your walk. Open a photo to view its original source.</p>
@@ -297,7 +392,7 @@ export function Create({ state, event, actions }: { state: Snapshot; event?: Mem
   const [tab, setTab] = useState<'photos' | 'clips' | 'journal'>('photos');
   const [compare, setCompare] = useState(false);
   const [openAlbum, setOpenAlbum] = useState<string | null>(null);
-  const items = event ? sourcesFor(state, event.sourceIds) : [];
+  const items = event ? sourcesFor(state, state.storyboards[event.id]?.sourceIds ?? event.sourceIds) : [];
   const media = items.filter(source => source.mime.startsWith(tab === 'photos' ? 'image/' : 'video/'));
   const first = items.find(source => source.mime.startsWith('image/'));
   const rec = state.recollections.filter(item => item.eventId === event?.id);

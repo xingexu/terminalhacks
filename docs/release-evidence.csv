@@ -46,3 +46,7 @@
 "S13","NOT RUN","10","","","","","V3 proposed; gated by V2 acceptance and review"
 "S14","NOT RUN","10","","","","","V3 proposed; gated by V2 acceptance and review"
 "S15","NOT RUN","10","","","","","V3 proposed; gated by V2 acceptance and review"
+GEN-20261128,PASS,Codex integration lead,e7437ea + 284d822,macOS; Node24; Chrome via Playwright MCP,10666,docs/GENERATION-VERIFICATION.md; 77/77 tests; typecheck/build; browser generation/walking/failures,Synthetic inputs; rolling FPS only; existing large 3D bundle warning
+A01-GEN,NOT RUN,Codex integration lead,284d822,macOS,,Real MCP recollection and SSE browser update passed,Native VoiceOS app/spoken command/confirmation card not verified
+A05-GEN,NOT MET,Owner-approved procedural fallback,284d822,Chrome WebGL,,Generated imagined GLB navigable; provenance visible,Procedural interpretation does not meet original measured reconstruction/provider requirement
+A15-GEN,NOT RUN,Codex integration lead,284d822,Local production build,,Local demo journey verified,No deployment or submission; native-device complete rehearsals outstanding

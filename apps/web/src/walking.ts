@@ -15,8 +15,9 @@ export class Walker {
   private supportRay = new Ray(new Vector3(), new Vector3(0, -1, 0));
   private supportNormal = new Vector3();
   private world: Octree;
+  readonly speed: number;
 
-  constructor(world: Octree, position: Vector3) { this.world = world; this.place(position); }
+  constructor(world: Octree, position: Vector3, speed = 2.8) { this.world = world; this.speed = speed; this.place(position); }
 
   place(position: Vector3) {
     this.spawn.copy(position);
@@ -32,7 +33,7 @@ export class Walker {
     const forward = Number(keys.has('w') || keys.has('arrowup')) - Number(keys.has('s') || keys.has('arrowdown'));
     const strafe = Number(keys.has('d')) - Number(keys.has('a'));
     this.direction.set(-Math.sin(yaw) * forward + Math.cos(yaw) * strafe, 0,
-      -Math.cos(yaw) * forward - Math.sin(yaw) * strafe).normalize().multiplyScalar(keys.has('shift') ? 5.5 : 2.8);
+      -Math.cos(yaw) * forward - Math.sin(yaw) * strafe).normalize().multiplyScalar(this.speed * (keys.has('shift') ? 1.96 : 1));
     if (keys.has(' ') && this.grounded) this.velocity.y = 5;
     keys.delete(' ');
     this.accumulator += Math.min(delta, 0.15);
