@@ -1,6 +1,6 @@
 # Everwhere
 
-Everwhere is a private memory app for turning selected photos, clips, and recollections into an explorable timeline, albums, journals, and films. This build implements the private web workflow from the V2 handoff. The landing page opens into a short first-use tutorial, which can be replayed with the sidebar help button. Choose **Create a project** to begin, or explore an illustrated Dolomites sample with fictional copy and labeled, generated imagery.
+Everwhere is a private memory app for turning selected photos, clips, and recollections into an explorable timeline, albums, journals, and films. This build implements the private web workflow from the V2 handoff. The ASCII landing dissolves over black into Explore, then the tutorial opens after the home page has loaded for one second. Reopen the tutorial with the menu bar help button. Choose **Create a project** to begin, or explore an illustrated Dolomites sample with fictional copy and labeled, generated imagery.
 
 ## Run locally
 

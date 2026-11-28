@@ -21,7 +21,7 @@
   --card: 14px;
   --display: 'Instrument Serif', Georgia, serif;
   --gutter: clamp(28px, 4.15vw, 74px);
-  background: var(--bg);
+  background: #000;
   color: var(--text);
   font-size: 16px;
   font-synthesis: none;
@@ -51,7 +51,7 @@ h1, h2, h3, p, blockquote { margin: 0; }
 }
 .skip-link:focus { transform: none; }
 
-.app-frame { min-height: 100vh; }
+.app-frame { min-height: 100vh; background: var(--bg); }
 /* The menu bar lives in the page, above the content, rather than in a side rail. */
 .menubar {
   position: sticky;

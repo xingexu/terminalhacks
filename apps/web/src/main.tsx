@@ -217,6 +217,7 @@ function App() {
   const [startupError, setStartupError] = useState('');
   const [loading, setLoading] = useState(true);
   const [tour, setTour] = useState<number | null>(null);
+  const [tourPending, setTourPending] = useState(true);
   const ref = useRef('');
   const earlyRoute = useRef<View | null>(null);
   const tabs = useRef<HTMLElement>(null);
@@ -244,15 +245,29 @@ function App() {
     loadProjects().then(list => {
       const [, p, id, view] = location.pathname.split('/');
       const requested = p === 'p' && list.some(item => item.id === id) ? id : '';
+      const returnEvent = new URLSearchParams(location.search).get('generate');
       if (requested && nav.some(item => item.id === view)) earlyRoute.current = view as View;
+      else if (location.pathname === '/app' && !returnEvent) earlyRoute.current = 'explore';
       const last = localStorage.getItem('everwhere-project');
       chooseProject(requested || list.find(item => item.id === last)?.id || list[0]?.id || '');
-      const returnEvent = new URLSearchParams(location.search).get('generate');
-      if (returnEvent) setDialog({ kind: 'generate', eventId: returnEvent });
-      else setTour(0);
+      if (returnEvent) {
+        setTourPending(false);
+        setDialog({ kind: 'generate', eventId: returnEvent });
+      }
       if (returnEvent) history.replaceState(null, '', location.pathname);
     }).catch(err => setStartupError((err as Error).message)).finally(() => setLoading(false));
   }, [chooseProject, loadProjects]);
+
+  const workspaceReady = !loading && !startupError && (!project || state?.projectId === project);
+  useEffect(() => {
+    if (!tourPending || !workspaceReady || dialog) return;
+    // Let the loaded home page be visible for a full second before introducing the tour.
+    const timer = window.setTimeout(() => {
+      setTourPending(false);
+      setTour(0);
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [tourPending, workspaceReady, dialog]);
 
   const refresh = useCallback(async () => {
     if (!project) return;
@@ -344,7 +359,6 @@ function App() {
   // The tour's buttons press the same controls the user would.
   const runTour = (action: TourAction) => {
     if (!state) show('library');
-    else if (action === 'generate') current ? actions.openGeneration() : show('memory');
     else show(action);
   };
   const currentNav = nav.find(item => item.id === state?.session.view) ?? nav[0];
@@ -373,7 +387,7 @@ function App() {
       <div className="menu-actions">
         <button className="btn compact subtle menu-voice" onClick={() => show('voice')} disabled={!state} aria-label="Connect VoiceOS"><AudioLines size={16} /> <span>VoiceOS</span></button>
         <button className="btn top-capture" onClick={() => state ? show('capture') : show('library')}><Camera size={17} /> <span>{state ? <>Capture<span className="capture-word"> memory</span></> : 'Projects'}</span>{items.length > 0 && <span className="pending-count" aria-label={items.length + ' pending sources'}>{items.length}</span>}</button>
-        <button className="icon-btn" onClick={() => setTour(0)} aria-label="Open tutorial" title="Open tutorial"><CircleHelp size={18} /></button>
+        <button className="icon-btn" onClick={() => { setTourPending(false); setTour(0); }} aria-label="Open tutorial" title="Open tutorial"><CircleHelp size={18} /></button>
       </div>
     </header>
     <main className={'main screen-' + screen} id="experience" tabIndex={-1}>
