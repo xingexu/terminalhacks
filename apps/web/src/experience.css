@@ -80,17 +80,29 @@ kbd { display: inline-block; font: 11px ui-monospace, monospace; color: var(--te
   .tutorial-actions, .tutorial-actions .button-row { flex-wrap: wrap; gap: 8px; }
 }
 
-/* Guided tour: a coach card in the corner, and a pulse on the control it is describing. */
-.tutorial-outline { margin: 0 0 20px; padding: 0; list-style: none; counter-reset: step; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 18px; font-size: .82rem; color: var(--text-muted); }
-.tutorial-outline li { counter-increment: step; display: flex; gap: 9px; }
-.tutorial-outline li::before { content: counter(step, decimal-leading-zero); font-family: var(--mono); color: var(--quiet); }
-.tour { position: fixed; right: 22px; bottom: 22px; z-index: 6; width: min(400px, calc(100vw - 28px)); display: grid; gap: 10px; padding: 16px 18px 18px; background: #1b1b1bf7; border: 1px solid var(--line-strong); border-radius: var(--card); box-shadow: 0 18px 60px #000a; animation: view-in 260ms ease both; }
-.tour[hidden] { display: none; }
-.tour-head { display: flex; align-items: center; justify-content: space-between; color: var(--text-muted); font-size: .74rem; margin: -6px -8px -6px 0; }
-.tour h3 { font: 1.9rem/1.02 var(--display); letter-spacing: -.015em; }
-.tour p { color: var(--text-muted); font-size: .88rem; line-height: 1.55; }
-.tour .tour-note { font-size: .78rem; padding-left: 11px; border-left: 1px solid var(--line-strong); }
-.tour-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
-.tour-actions .text-button { color: var(--text-muted); font-size: .82rem; }
-.tour-target { outline: 2px solid #fffefa !important; outline-offset: 5px; animation: tour-pulse 1.5s ease-in-out infinite; }
-@keyframes tour-pulse { 0%, 100% { box-shadow: 0 0 0 0 #fffefa66; } 50% { box-shadow: 0 0 0 14px #fffefa00; } }
+/* The tutorial sits in the middle of the screen and blurs everything behind it. */
+.tour-backdrop { position: fixed; inset: 0; z-index: 8; display: grid; place-items: center; padding: 18px; overflow-y: auto; background: #0a0a0ab8; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); animation: fade-in 320ms ease both; }
+.tour-backdrop[hidden] { display: none; }
+.tour-backdrop.is-leaving { animation: fade-out 220ms ease both; }
+.tour { width: min(560px, 100%); display: grid; gap: 16px; padding: clamp(18px, 3vw, 30px); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 22px; box-shadow: 0 30px 90px #000c; animation: rise-in 420ms cubic-bezier(.2, .8, .2, 1) both; }
+.is-leaving .tour { animation: sink-out 220ms ease both; }
+.tour-head { display: flex; align-items: center; gap: 12px; color: var(--text-muted); font-size: .76rem; }
+.tour-head .icon-btn { margin: -8px -8px -8px auto; }
+.tour-badge { padding: 5px 12px; border-radius: var(--pill); background: var(--accent); color: var(--accent-fg); font: 400 .7rem var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.tour .tutorial-image { height: 150px; }
+.tour-body { display: grid; gap: 11px; min-height: 212px; align-content: start; animation: step-in 340ms cubic-bezier(.2, .8, .2, 1) both; }
+.tour-body h3 { font: clamp(2.1rem, 4vw, 2.9rem)/1 var(--display); letter-spacing: -.02em; }
+.tour-body p { color: var(--text-muted); line-height: 1.6; }
+.tour-body .tour-note { font-size: .84rem; padding-left: 12px; border-left: 1px solid var(--line-strong); }
+.tour-do { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.tour-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 14px; border-top: 1px dashed #3e3e3b; }
+.tour-actions .text-button { color: var(--text-muted); font-size: .86rem; }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes rise-in { from { opacity: 0; transform: translateY(18px) scale(.975); } }
+@keyframes sink-out { to { opacity: 0; transform: translateY(10px) scale(.985); } }
+@keyframes step-in { from { opacity: 0; transform: translateX(14px); } }
+/* Dialogs and messages arrive the same way. */
+.modal[open] { animation: rise-in 300ms cubic-bezier(.2, .8, .2, 1) both; }
+.modal[open]::backdrop { animation: fade-in 260ms ease both; }
+.toast { animation: rise-in 300ms cubic-bezier(.2, .8, .2, 1) both; }
