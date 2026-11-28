@@ -1,4 +1,4 @@
-import { Vector3 } from 'three';
+import { Ray, Vector3 } from 'three';
 import { Capsule } from 'three/addons/math/Capsule.js';
 import { Octree } from 'three/addons/math/Octree.js';
 
@@ -12,6 +12,8 @@ export class Walker {
   private spawn = new Vector3();
   private offset = new Vector3();
   private direction = new Vector3();
+  private supportRay = new Ray(new Vector3(), new Vector3(0, -1, 0));
+  private supportNormal = new Vector3();
   private world: Octree;
 
   constructor(world: Octree, position: Vector3) { this.world = world; this.place(position); }
@@ -50,6 +52,13 @@ export class Walker {
         const intoSurface = this.velocity.dot(hit.normal);
         if (intoSurface < 0) this.velocity.addScaledVector(hit.normal, -intoSurface);
         this.capsule.translate(hit.normal.multiplyScalar(hit.depth + 0.00001));
+      }
+      if (this.velocity.y <= 0) {
+        this.supportRay.origin.copy(this.capsule.start);
+        const support = this.world.rayIntersect(this.supportRay);
+        if (support && support.distance <= this.capsule.radius + 0.02 && support.triangle.getNormal(this.supportNormal).y > 0.55) {
+          this.grounded = true;
+        }
       }
     }
     if (this.capsule.end.y < this.spawn.y - 15) this.place(this.spawn);

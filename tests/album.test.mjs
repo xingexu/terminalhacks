@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { albumEnd, nearbyPhoto, orderedPhotos, photoStops } from '../apps/web/src/album-layout.ts';
 import { sourcesFor } from '../apps/web/src/model.ts';
-import { BoxGeometry, Group, Mesh, Vector3 } from 'three';
+import { BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, PlaneGeometry, Quaternion, Vector3 } from 'three';
 import { Octree } from 'three/addons/math/Octree.js';
+import { collisionFromObject, worldSurfaceNormal } from '../apps/web/src/collision.ts';
 import { Walker } from '../apps/web/src/walking.ts';
 
 const photo = (id, capturedAt = null, provenance = 'original') => ({ id, mime: 'image/jpeg', caption: id, capturedAt, provenance });
@@ -41,6 +42,16 @@ test('capsule gravity grounds the player and sprinting collides with walls while
   assert.ok(walker.eye.x > 1 && walker.eye.z >= -2.61, 'diagonal input should slide along the wall');
 });
 
+test('grounded walking can jump while pushing into a wall', () => {
+  const walker = new Walker(collisionRoom(), new Vector3(0, 0.03, 0));
+  for (let i = 0; i < 180; i++) walker.update(1 / 60, 0, new Set(['w']));
+  assert.ok(walker.grounded);
+  assert.ok(walker.eye.z >= -2.61);
+  const baseline = walker.eye.y;
+  walker.update(1 / 60, 0, new Set(['w', ' ']));
+  assert.ok(walker.eye.y > baseline, 'floor support should allow jumping while the wall blocks forward movement');
+});
+
 test('fixed-step walking has consistent speed and jumping returns to the floor', () => {
   const room = collisionRoom();
   const lowRate = new Walker(room, new Vector3(0, 0.03, 10));
@@ -56,6 +67,21 @@ test('fixed-step walking has consistent speed and jumping returns to the floor',
   assert.ok(lowRate.velocity.y < risingVelocity, 'jumping in the air must not add an impulse');
   for (let i = 0; i < 120; i++) lowRate.update(1 / 60, 0, new Set());
   assert.ok(lowRate.grounded && Math.abs(lowRate.eye.y - baseline) < 0.02);
+});
+
+test('collision triangles include translated mirrored instances with upward floor normals', () => {
+  const scene = new Group();
+  scene.position.x = 2;
+  const floor = new InstancedMesh(new PlaneGeometry(4, 4), new MeshBasicMaterial(), 1);
+  floor.rotation.x = -Math.PI / 2;
+  floor.setMatrixAt(0, new Matrix4().compose(new Vector3(3, 0, 0), new Quaternion(), new Vector3(-1, 1, 1)));
+  scene.add(floor);
+  const collision = collisionFromObject(scene);
+  assert.ok(worldSurfaceNormal(floor, new Vector3(0, 0, 1), 0).y > 0.99);
+  const walker = new Walker(collision, new Vector3(5, 0.03, 0));
+  for (let i = 0; i < 120; i++) walker.update(1 / 60, 0, new Set());
+  assert.ok(walker.grounded && Math.abs(walker.eye.y - 1.6) < 0.02);
+  collision.clear();
 });
 
 test('every photo receives a reachable stop and interaction requires proximity', () => {

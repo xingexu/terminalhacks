@@ -3,23 +3,27 @@ import { createPortal } from 'react-dom';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Footprints, MapPin, MoveUpRight, X } from 'lucide-react';
 import {
   ACESFilmicToneMapping, Box3, Color, DirectionalLight, HemisphereLight, LoadingManager,
-  Material, Matrix3, Mesh, PerspectiveCamera, Raycaster, Scene, SRGBColorSpace, Texture, Vector2, Vector3, WebGLRenderer
+  Material, Mesh, PerspectiveCamera, Raycaster, Scene, SRGBColorSpace, Texture, Vector2, Vector3, WebGLRenderer
 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Octree } from 'three/addons/math/Octree.js';
+import { collisionFromObject, worldSurfaceNormal } from './collision';
 import { Walker } from './walking';
+import type { Anchor, Recollection } from './model';
 import './album.css';
 
 type Position = [number, number, number];
-export default function Scan({ url, position, onClose, onWaypoint }: {
+export default function Scan({ url, position, onClose, onWaypoint, anchors, selectedAnchor, recollections, onSelectAnchor, onRecollect }: {
   url: string; position?: Position; onClose: () => void; onWaypoint: (position: Position) => void;
+  anchors: Anchor[]; selectedAnchor?: Anchor; recollections: Recollection[];
+  onSelectAnchor: (id: string) => void; onRecollect: () => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const wrapper = useRef<HTMLDivElement>(null);
   const keys = useRef(new Set<string>());
   const appliedPosition = useRef('');
-  const actions = useRef<{ choose: () => void; overview: () => void; read: () => Position; move: (point: Position) => void } | null>(null);
+  const actions = useRef<{ choose: () => void; selectFloor: () => void; overview: () => void; read: () => Position; move: (point: Position) => void } | null>(null);
   const [phase, setPhase] = useState<'loading' | 'overview' | 'choose' | 'walk' | 'error'>('loading');
   const [notice, setNotice] = useState('');
   useEffect(() => {
@@ -48,7 +52,7 @@ export default function Scan({ url, position, onClose, onWaypoint }: {
     camera.rotation.order = 'YXZ';
     const orbit = new OrbitControls(camera, canvas);
     orbit.enableDamping = false;
-    const collision = new Octree();
+    let collision = new Octree();
     let walker: Walker | null = null;
     let mode: 'overview' | 'choose' | 'walk' = 'overview';
     let active = true;
@@ -76,6 +80,7 @@ export default function Scan({ url, position, onClose, onWaypoint }: {
       orbit.enabled = value === 'overview';
       keys.current.clear();
       drag = null;
+      if (value === 'choose') { yaw = camera.rotation.y; pitch = camera.rotation.x; }
       setPhase(value);
     };
     const overview = () => {
@@ -98,6 +103,14 @@ export default function Scan({ url, position, onClose, onWaypoint }: {
       setMode('walk');
       setNotice('WASD to walk · Drag to look · Shift to sprint · Space to jump');
       element.focus();
+    }
+    function selectFloor(point: Vector2) {
+      pick.setFromCamera(point, camera);
+      const hit = pick.intersectObjects(scene.children, true)[0];
+      if (!hit?.face) { setNotice('Choose a visible floor surface in the scan.'); return; }
+      normal.copy(worldSurfaceNormal(hit.object, hit.face.normal, hit.instanceId));
+      if (normal.y < 0.55) { setNotice('Choose a level floor. This surface is too steep to stand on.'); return; }
+      place(hit.point);
     }
     void (async () => {
       try {
@@ -122,9 +135,10 @@ export default function Scan({ url, position, onClose, onWaypoint }: {
         camera.position.copy(center).add(new Vector3(radius, radius * 0.75, radius));
         orbit.target.copy(center);
         orbit.update();
-        collision.fromGraphNode(gltf.scene);
+        collision = collisionFromObject(gltf.scene);
         actions.current = {
-          choose: () => { setMode('choose'); setNotice('Click or tap a clear floor surface to begin walking.'); element.focus(); },
+          choose: () => { setMode('choose'); setNotice('Click a clear floor, or aim with arrow keys and press Enter.'); element.focus(); },
+          selectFloor: () => selectFloor(new Vector2()),
           overview,
           read: () => camera.position.toArray(),
           move: point => {
@@ -150,12 +164,7 @@ export default function Scan({ url, position, onClose, onWaypoint }: {
       if (mode === 'choose') {
         const rect = canvas.getBoundingClientRect();
         pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
-        pick.setFromCamera(pointer, camera);
-        const hit = pick.intersectObjects(scene.children, true)[0];
-        if (!hit?.face) { setNotice('Choose a visible floor surface in the scan.'); return; }
-        normal.copy(hit.face.normal).applyNormalMatrix(new Matrix3().getNormalMatrix(hit.object.matrixWorld));
-        if (normal.y < 0.55) { setNotice('Choose a level floor. This surface is too steep to stand on.'); return; }
-        place(hit.point);
+        selectFloor(pointer);
       } else if (mode === 'walk') {
         drag = { id: event.pointerId, x: event.clientX, y: event.clientY };
         canvas.setPointerCapture(event.pointerId);
@@ -184,6 +193,10 @@ export default function Scan({ url, position, onClose, onWaypoint }: {
       if (mode === 'walk' && walker && !document.hidden) {
         yaw += (Number(keys.current.has('arrowleft')) - Number(keys.current.has('arrowright'))) * delta * 1.5;
         camera.position.copy(walker.update(delta, yaw, keys.current));
+        camera.rotation.set(pitch, yaw, 0, 'YXZ');
+      } else if (mode === 'choose') {
+        yaw += (Number(keys.current.has('arrowleft')) - Number(keys.current.has('arrowright'))) * delta;
+        pitch = Math.max(-1.5, Math.min(1.5, pitch + (Number(keys.current.has('arrowup')) - Number(keys.current.has('arrowdown'))) * delta));
         camera.rotation.set(pitch, yaw, 0, 'YXZ');
       }
       renderer.render(scene, camera);
@@ -228,6 +241,10 @@ export default function Scan({ url, position, onClose, onWaypoint }: {
         if (!event.shiftKey && document.activeElement === items.at(-1)) { event.preventDefault(); items[0]?.focus(); }
       }
       const key = event.key.toLowerCase();
+      if (event.target === host.current && phase === 'choose' && key === 'enter') {
+        event.preventDefault();
+        actions.current?.selectFloor();
+      }
       if (event.target === host.current && ['w', 'a', 's', 'd', 'shift', ' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
         event.preventDefault();
         if (key !== ' ' || !event.repeat) keys.current.add(key);
@@ -235,6 +252,13 @@ export default function Scan({ url, position, onClose, onWaypoint }: {
     }} onKeyUp={event => keys.current.delete(event.key.toLowerCase())}>
     <div className="walk-canvas" ref={host} tabIndex={0} aria-label="Reconstruction. Choose a floor, then use WASD to walk and drag to look." onBlur={() => keys.current.clear()} />
     <header className="walk-header"><div className="walk-brand">everwhere<span>Reconstructed · imported mesh</span></div><div className="walk-header-actions"><button onClick={onClose}><X size={16} /> Exit</button></div></header>
+    {anchors.length > 0 && <aside className="scan-waypoints" aria-label="Saved places">
+      <h2>Saved places</h2>
+      {anchors.map(anchor => <button key={anchor.id} aria-pressed={selectedAnchor?.id === anchor.id} onClick={() => onSelectAnchor(anchor.id)}><MapPin size={14} /> {anchor.title}</button>)}
+      {selectedAnchor && <><button onClick={onRecollect}>Add a recollection here</button>
+        {recollections.filter(item => item.anchorId === selectedAnchor.id).map(item => <blockquote key={item.id}><p>{item.text}</p><cite>{item.contributor} · Recollection</cite></blockquote>)}
+      </>}
+    </aside>}
     <div className="scan-actions">
       {phase === 'loading' ? <p role="status">Loading the scan and its collision geometry…</p> : <p role="status">{notice}</p>}
       {phase === 'overview' && <button className="walk-primary" onClick={() => actions.current?.choose()}><Footprints size={16} /> Choose floor to walk</button>}
@@ -243,7 +267,8 @@ export default function Scan({ url, position, onClose, onWaypoint }: {
         <button onClick={() => { const point = actions.current?.read(); if (point) onWaypoint(point); }}><MapPin size={16} /> Save waypoint</button></>}
       {phase === 'error' && <button onClick={onClose}>Return to memory</button>}
     </div>
-    {phase === 'walk' && <><div className="walk-reticle" aria-hidden="true" /><div className="walk-movement" aria-label="Movement controls">
+    {(phase === 'walk' || phase === 'choose') && <div className="walk-reticle" aria-hidden="true" />}
+    {phase === 'walk' && <div className="walk-movement" aria-label="Movement controls">
       {[['w', 'Walk forward', ArrowUp], ['a', 'Step left', ArrowLeft], ['s', 'Walk backward', ArrowDown], ['d', 'Step right', ArrowRight]].map(([key, name, Icon]) => {
         const Direction = Icon as typeof ArrowUp;
         return <button key={String(key)} className={'walk-key-' + key} aria-label={String(name)}
@@ -252,6 +277,6 @@ export default function Scan({ url, position, onClose, onWaypoint }: {
           onLostPointerCapture={() => keys.current.delete(String(key))}
           onKeyDown={event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); keys.current.add(String(key)); } }}
           onKeyUp={() => keys.current.delete(String(key))} onBlur={() => keys.current.delete(String(key))}><Direction size={19} /></button>;
-      })}</div></>}
+      })}</div>}
   </div>, document.body);
 }
