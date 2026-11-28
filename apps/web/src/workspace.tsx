@@ -428,7 +428,7 @@ export function WorkspaceApp({ covered = false }: { covered?: boolean }) {
   return <div className="app-frame gameplay-workspace">
     <a className="skip-link" href="#experience">Skip to experience</a>
     <aside className="sidebar" aria-label="Workspace">
-      <a className="brand" href="/" aria-label="Everwhere home"><span className="brand-mark"><AsciiArt art={art.mark} /></span><span className="rail-label">everwhere<span className="brand-period">.</span></span></a>
+      <a className="brand" href="/" aria-label="Everwhere home"><span className="brand-mark"><AsciiArt art={art.mark} /></span><span className="rail-label"><img className="brand-logo" src="/landing/everwhere-logo.webp" alt="Everwhere" /></span></a>
       <button className="workspace-project" onClick={() => show('library')} aria-label={'Switch project, current project ' + (state?.title || 'Projects')}><span className="project-icon"><Images size={17} /></span><span className="rail-label"><strong>{state?.title || 'Memory projects'}</strong><small>{state?.demo ? 'Illustrated sample' : 'Private project'}</small></span><ChevronDown className="rail-label" size={15} /></button>
       <div className="nav-groups">
         <nav aria-label="Experience">
