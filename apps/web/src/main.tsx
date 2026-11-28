@@ -15,8 +15,8 @@ import { Generation } from './generation';
 import { Capture } from './capture';
 import { Archive, AtlasMark, Create, Explore, NarrationPreview, Remember, Watch, type ViewActions } from './views';
 import {
-  api, displayDate, localDateTime, sourceURL, storyboardBasis, type Command, type Lens, type Memory, type Observation, type Project, type Proposal,
-  type Session, type Snapshot, type Source, type View
+  api, ApiError, displayDate, localDateTime, sourceURL, storyboardBasis, type Command, type Lens, type Memory, type Observation, type Project, type Proposal,
+  type Session, type Snapshot, type View
 } from './model';
 
 const nav = [
@@ -29,8 +29,8 @@ const nav = [
 
 type Dialog =
   { kind: 'library' | 'settings' | 'voice' | 'capture' | 'memory' | 'recollection' | 'correction' | 'help' | 'world' | 'generation' } |
-  { kind: 'source'; source: Source } |
-  { kind: 'confirm'; proposal: Proposal; revision: number; command?: Command; film?: boolean; fromCapture?: boolean };
+  { kind: 'source'; sourceId: string } |
+  { kind: 'confirm'; proposal: Proposal; revision: number; command?: Command; film?: boolean; fromCapture?: string };
 
 function Modal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -286,14 +286,22 @@ function App() {
   const [items, setItems] = useState<Observation[]>([]);
   const [notice, setNotice] = useState('');
   const [startupError, setStartupError] = useState('');
+  const [syncError, setSyncError] = useState('');
   const [map, setMap] = useState(false);
   const [loading, setLoading] = useState(true);
   const ref = useRef('');
+  const refreshGeneration = useRef(0);
+  const appliedRefresh = useRef(0);
+  const committing = useRef<Dialog | null>(null);
   const earlyRoute = useRef<View | null>(null);
   const base = '/projects/' + project;
   const current = state?.events.find(item => item.id === state.session.eventId) ?? state?.events[0];
-  const activeContext = useRef({ dialog, project, eventId: current?.id, revision: state?.revision, lens: state?.session.lens });
-  activeContext.current = { dialog, project, eventId: current?.id, revision: state?.revision, lens: state?.session.lens };
+  const source = dialog?.kind === 'source' ? state?.media.find(item => item.id === dialog.sourceId) : undefined;
+  const staleConfirmation = !!state && dialog?.kind === 'confirm' && (state.revision !== dialog.revision ||
+    (!!dialog.fromCapture && !items.some(item => item.id === dialog.fromCapture)) ||
+    (!!dialog.film && dialog.proposal.diff.storyboard?.id !== state.storyboards[current?.id || '']?.id));
+  const activeContext = useRef({ dialog, project, eventId: current?.id, revision: state?.revision, lens: state?.session.lens, syncError, items, staleConfirmation });
+  activeContext.current = { dialog, project, eventId: current?.id, revision: state?.revision, lens: state?.session.lens, syncError, items, staleConfirmation };
 
   const loadProjects = useCallback(async () => {
     const list = await api<Project[]>('/bootstrap');
@@ -302,11 +310,20 @@ function App() {
   }, []);
   const chooseProject = useCallback((id: string) => {
     ref.current = id;
+    appliedRefresh.current = ++refreshGeneration.current;
+    committing.current = null;
     setProject(id);
     setState(null);
     setItems([]);
+    setDialog(null);
+    setMap(false);
+    setStartupError('');
+    setSyncError('');
+    document.title = 'Everwhere';
     if (id) localStorage.setItem('everwhere-project', id);
-    else history.replaceState(null, '', '/app' + location.search);
+    else {
+      history.replaceState(null, '', '/app' + location.search);
+    }
   }, []);
   useEffect(() => {
     loadProjects().then(list => {
@@ -315,17 +332,42 @@ function App() {
       if (requested && nav.some(item => item.id === view)) earlyRoute.current = view as View;
       const last = localStorage.getItem('everwhere-project');
       chooseProject(requested || list.find(item => item.id === last)?.id || list[0]?.id || '');
-      if (!last) setDialog({ kind: 'help' });
+      if (!last || new URLSearchParams(location.search).get('tour') === '1') setDialog({ kind: 'help' });
     }).catch(err => setStartupError((err as Error).message)).finally(() => setLoading(false));
+  }, [chooseProject, loadProjects]);
+
+  const unavailable = useCallback(async (id: string) => {
+    if (ref.current !== id) return;
+    chooseProject('');
+    setProjects(list => list.filter(item => item.id !== id));
+    setNotice('This project is no longer available.');
+    try {
+      const list = await loadProjects();
+      if (!ref.current) chooseProject(list[0]?.id || '');
+    } catch (err) { if (!ref.current) setStartupError((err as Error).message); }
   }, [chooseProject, loadProjects]);
 
   const refresh = useCallback(async () => {
     if (!project) return;
-    const [fresh, inbox] = await Promise.all([api<Snapshot>(base + '/snapshot'), api<Observation[]>(base + '/capture/inbox')]);
-    if (ref.current !== project) return;
-    setState(old => old && old.projectId === project && old.seq > fresh.seq ? old : fresh);
-    setItems(inbox);
-  }, [base, project]);
+    const generation = ++refreshGeneration.current;
+    try {
+      const [fresh, inbox] = await Promise.all([api<Snapshot>(base + '/snapshot'), api<Observation[]>(base + '/capture/inbox')]);
+      if (ref.current !== project || generation < appliedRefresh.current) return;
+      appliedRefresh.current = generation;
+      setState(old => old && old.projectId === project && old.seq > fresh.seq ? old : fresh);
+      setItems(inbox);
+      setSyncError('');
+      setStartupError('');
+    } catch (err) {
+      if (ref.current !== project || generation < appliedRefresh.current) return;
+      appliedRefresh.current = generation;
+      if (err instanceof ApiError && err.code === 'PROJECT_NOT_FOUND') await unavailable(project);
+      else {
+        setSyncError('Connection interrupted. Showing the last loaded memory; reconnecting…');
+        throw err;
+      }
+    }
+  }, [base, project, unavailable]);
 
   useEffect(() => {
     if (!project) return;
@@ -336,16 +378,29 @@ function App() {
         earlyRoute.current = null;
         if (view) await api(base + '/session', { view });
         await refresh();
-      } catch (err) { if (!cancelled) setStartupError((err as Error).message); }
+      } catch (err) {
+        if (cancelled || ref.current !== project) return;
+        if (err instanceof ApiError && err.code === 'PROJECT_NOT_FOUND') await unavailable(project);
+        else setStartupError((err as Error).message);
+      }
     };
     void load();
     const events = new EventSource('/v1' + base + '/events');
     events.onmessage = event => {
-      if (JSON.parse(event.data).kind !== 'project.deleted') void refresh().catch(() => {});
+      if (JSON.parse(event.data).kind === 'project.deleted') void unavailable(project);
+      else void refresh().catch(() => {});
     };
-    const timer = window.setInterval(() => { if (events.readyState !== EventSource.OPEN) void refresh().catch(() => {}); }, 4000);
+    events.onerror = () => { void refresh().catch(() => {}); };
+    const timer = window.setInterval(() => { if (events.readyState !== EventSource.OPEN || activeContext.current.syncError) void refresh().catch(() => {}); }, 4000);
     return () => { cancelled = true; events.close(); window.clearInterval(timer); };
-  }, [project, base, refresh]);
+  }, [project, base, refresh, unavailable]);
+
+  useEffect(() => {
+    if (state && dialog?.kind === 'source' && !source) {
+      setDialog(null);
+      setNotice('This source is no longer available.');
+    }
+  }, [state, dialog, source]);
 
   useEffect(() => {
     if (!state || state.projectId !== project) return;
@@ -359,28 +414,33 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [notice]);
   useEffect(() => {
-    if (!state || dialog?.kind !== 'confirm' || !dialog.film) return;
-    if (state.revision !== dialog.revision || dialog.proposal.diff.storyboard?.id !== state.storyboards[current?.id || '']?.id) {
-      setDialog(null);
-      setNotice('The memory changed. Review the current storyboard before rendering.');
+    if (staleConfirmation && committing.current !== dialog) {
+      setDialog(dialog?.kind === 'confirm' && dialog.fromCapture ? { kind: 'capture' } : null);
+      setNotice('The memory or source changed. Review the current evidence before confirming.');
     }
-  }, [state, current?.id, dialog]);
+  }, [staleConfirmation, dialog]);
 
   const show = (kind: Extract<Dialog, { kind: 'library' | 'settings' | 'voice' | 'capture' | 'memory' | 'recollection' | 'correction' | 'help' | 'world' | 'generation' }>['kind']) => setDialog({ kind });
   const dismiss = () => {
+    committing.current = null;
     setDialog(null);
   };
   const guarded = (work: () => Promise<unknown>) => { void work().catch(err => setNotice((err as Error).message)); };
   const select = (input: Partial<Session>) => guarded(async () => { await api(base + '/session', input); await refresh(); });
   const preview = async (type: string, payload: Record<string, unknown>, target = current?.id) => {
     if (!state || !target) throw new Error('Select a memory to continue.');
+    const context = activeContext.current;
     const command = { type, targetId: target, expectedRevision: state.revision, payload };
     const proposal = await api<Proposal>(base + '/previews', command);
+    const latest = activeContext.current;
+    if (ref.current !== context.project || latest.dialog !== context.dialog) return;
+    if (latest.revision !== context.revision || latest.eventId !== context.eventId || latest.lens !== context.lens)
+      throw new Error('The memory changed. Preview again.');
     setDialog({ kind: 'confirm', proposal, command, revision: state.revision });
   };
   const actions: ViewActions = {
     select,
-    openSource: source => setDialog({ kind: 'source', source }),
+    openSource: source => setDialog({ kind: 'source', sourceId: source.id }),
     openCapture: () => show('capture'),
     openMap: () => { setMap(true); select({ view: 'archive' }); },
     openMemory: () => show('memory'),
@@ -391,7 +451,7 @@ function App() {
       const context = activeContext.current;
       const proposal = await api<Proposal>(base + '/film-preview', { eventId: current?.id, expectedRevision: state?.revision });
       const latest = activeContext.current;
-      if (latest.dialog !== context.dialog || latest.project !== context.project || latest.eventId !== context.eventId ||
+      if (latest.dialog !== context.dialog || ref.current !== context.project || latest.eventId !== context.eventId ||
         latest.revision !== context.revision || latest.lens !== context.lens) return;
       setDialog({ kind: 'confirm', proposal, film: true, revision: state!.revision });
     }),
@@ -435,6 +495,7 @@ function App() {
           <button className="btn top-capture" onClick={() => state ? show('capture') : show('library')}><Plus size={17} /> <span>{state ? 'Capture' : 'New project'}</span>{!!items.length && <span className="pending-count" aria-label={items.length + ' sources awaiting review'}>{items.length}</span>}</button></div>
       </header>
       {startupError && <div className="notice main-notice" role="alert">{startupError}<button className="btn compact" onClick={() => location.reload()}>Retry</button></div>}
+      {syncError && !startupError && <div className="notice main-notice" role="alert">{syncError}<button className="btn compact" onClick={() => guarded(refresh)}>Retry</button></div>}
       {loading && <div className="load-state" role="status"><AtlasMark size={38} /> Opening your memories…</div>}
       {!loading && !state && !project && <div className="load-state"><Images size={42} /><h1>Your memories start here.</h1><button className="btn primary" onClick={() => show('library')}><Plus size={17} /> Create a project</button></div>}
       {state && <div className="main-content">
@@ -457,7 +518,7 @@ function App() {
       </div>}
     </main>
     {notice && <aside className="toast" role="status">{notice}<button className="icon-btn" onClick={() => setNotice('')} aria-label="Dismiss message"><X size={17} /></button></aside>}
-    {dialog && <Modal key={captureOpen ? 'capture' : dialog.kind} title={sectionTitles[dialog.kind]} onClose={dismiss} wide={captureOpen || dialog.kind === 'source' || dialog.kind === 'generation'}>
+    {dialog && (dialog.kind !== 'source' || source) && <Modal key={captureOpen ? 'capture' : dialog.kind} title={sectionTitles[dialog.kind]} onClose={dismiss} wide={captureOpen || dialog.kind === 'source' || dialog.kind === 'generation'}>
       {dialog.kind === 'library' && <><p className="muted">Open a project or start a private collection.</p>
         <div className="library-list">{projects.map(item => <button className="workspace-project" key={item.id} onClick={() => { if (item.id !== project) chooseProject(item.id); dismiss(); }}>
           <span className="project-icon"><Images size={17} /></span><span><strong>{item.title}</strong><small>{item.demo ? 'Sample project' : 'Private project'}</small></span><ChevronRight size={17} /></button>)}</div>
@@ -466,7 +527,7 @@ function App() {
         connectVoice={() => show('voice')}
         create={() => show('library')} />}
       {hasMedia && state && dialog.kind === 'settings' && <SettingsPanel state={state} base={base} reload={() => void refresh().catch(() => {})} deleteProject={async () => {
-        await api(base, { confirm: true }, 'DELETE'); const list = await loadProjects(); chooseProject(list[0]?.id || ''); dismiss();
+        await api(base, { confirm: true }, 'DELETE'); await unavailable(project);
       }} />}
       {hasMedia && state && dialog.kind === 'voice' && <VoicePanel base={base} state={state} />}
       {state && current && dialog.kind === 'generation' && <Generation key={project + current.id} state={state} event={current} base={base} onCorrect={() => show('correction')} onRefresh={refresh}
@@ -495,10 +556,14 @@ function App() {
           await api(base + '/memories', { ...body, expectedRevision: state.revision }); await refresh(); done();
         }} />}
         preview={async (item, eventId, text) => {
+          const context = activeContext.current;
           const proposal = await api<Proposal>(base + '/capture/observations/' + item.id + '/preview', {
             eventId, expectedRevision: state.revision, text, ...(eventId === current?.id && currentAnchor && { anchorId: currentAnchor.id })
           });
-          setDialog({ kind: 'confirm', revision: state.revision, proposal, command: proposal.command, fromCapture: true });
+          const latest = activeContext.current;
+          if (ref.current !== context.project || latest.dialog !== context.dialog || !latest.items.some(observation => observation.id === item.id)) return;
+          if (latest.revision !== context.revision) throw new Error('The memory changed. Preview again.');
+          setDialog({ kind: 'confirm', revision: state.revision, proposal, command: proposal.command, fromCapture: item.id });
         }} /></div>}
       {state && dialog.kind === 'memory' && <EventForm name="Create memory" onSubmit={async body => {
         await api(base + '/memories', { ...body, expectedRevision: state.revision }); await refresh(); dismiss();
@@ -506,27 +571,37 @@ function App() {
       {current && dialog.kind === 'correction' && <EventForm name="Preview correction" event={current} onSubmit={payload => preview('event.correct', payload)} />}
       {current && dialog.kind === 'recollection' && <RecollectionForm anchor={currentAnchor?.title} onCapture={() => show('capture')}
         onSubmit={text => preview('recollection.add', { text, ...(currentAnchor && { anchorId: currentAnchor.id }) })} />}
-      {state && dialog.kind === 'source' && <div className="source-detail"><span className="eyebrow">{dialog.source.provenance === 'imagined' ? 'IMAGINED DEMO IMAGE' : 'ORIGINAL SOURCE'}</span>
-        <h3>{dialog.source.caption}</h3>
-        {dialog.source.mime.startsWith('image/') ? <img src={sourceURL(project, dialog.source.id)} alt={dialog.source.caption} /> :
-          dialog.source.mime.startsWith('video/') ? <video controls playsInline src={sourceURL(project, dialog.source.id)} /> :
-            <audio controls src={sourceURL(project, dialog.source.id)} />}
-        <p className="muted">{!dialog.source.capturedAt && dialog.source.capturedLocal ? dialog.source.capturedLocal.replace('T', ' · ') + ' · Timezone unknown' : displayDate(dialog.source.capturedAt)}</p>
-        {dialog.source.gps && <p className="muted">Embedded coordinates: {dialog.source.gps.map(value => value.toFixed(5)).join(', ')}</p>}
-        {dialog.source.provenance === 'original' && <a className="btn self-start" href={sourceURL(project, dialog.source.id, '?download=1&variant=original')}><ArrowDownToLine size={16} /> Download original</a>}</div>}
-      {state && dialog.kind === 'confirm' && <Confirmation key={dialog.proposal.previewToken} value={dialog} projectId={project}
+      {source && dialog.kind === 'source' && <div className="source-detail"><span className="eyebrow">{source.provenance === 'imagined' ? 'IMAGINED DEMO IMAGE' : 'ORIGINAL SOURCE'}</span>
+        <h3>{source.caption}</h3>
+        {source.mime.startsWith('image/') ? <img src={sourceURL(project, source.id)} alt={source.caption} /> :
+          source.mime.startsWith('video/') ? <video controls playsInline src={sourceURL(project, source.id)} /> :
+            <audio controls src={sourceURL(project, source.id)} />}
+        <p className="muted">{!source.capturedAt && source.capturedLocal ? source.capturedLocal.replace('T', ' · ') + ' · Timezone unknown' : displayDate(source.capturedAt)}</p>
+        {source.gps && <p className="muted">Embedded coordinates: {source.gps.map(value => value.toFixed(5)).join(', ')}</p>}
+        {source.provenance === 'original' && <a className="btn self-start" href={sourceURL(project, source.id, '?download=1&variant=original')}><ArrowDownToLine size={16} /> Download original</a>}</div>}
+      {staleConfirmation && <p role="status">Refreshing the review…</p>}
+      {state && dialog.kind === 'confirm' && !staleConfirmation && <Confirmation key={dialog.proposal.previewToken} value={dialog} projectId={project}
         worldTitle={state.worlds.find(world => world.id === dialog.proposal.diff.storyboard?.worldId)?.title}
         back={() => dialog.fromCapture ? show('capture') : dismiss()} commit={async requestId => {
-        const common = { requestId, previewToken: dialog.proposal.previewToken };
-        if (dialog.film) await api(base + '/jobs', common);
-        else if (dialog.command) await api(base + '/commands', { ...dialog.command, ...common });
-        else throw new Error('This preview does not contain a change.');
-        await refresh();
-        if (dialog.film && (activeContext.current.dialog !== dialog || activeContext.current.project !== project ||
-          activeContext.current.eventId !== current?.id)) return;
-        setNotice(dialog.film ? 'Film rendering started.' : dialog.fromCapture ? 'Captured evidence linked.' : 'Change confirmed.');
-        if (dialog.fromCapture) show('capture');
-        else dismiss();
+        committing.current = dialog;
+        try {
+          const common = { requestId, previewToken: dialog.proposal.previewToken };
+          if (dialog.film) await api(base + '/jobs', common);
+          else if (dialog.command) await api(base + '/commands', { ...dialog.command, ...common });
+          else throw new Error('This preview does not contain a change.');
+          await refresh();
+          const latest = activeContext.current;
+          if (ref.current !== project || committing.current !== dialog || latest.dialog !== dialog) return;
+          setNotice(dialog.film ? 'Film rendering started.' : dialog.fromCapture ? 'Captured evidence linked.' : 'Change confirmed.');
+          if (dialog.fromCapture) show('capture');
+          else dismiss();
+        } catch (err) {
+          if (ref.current === project && committing.current === dialog && activeContext.current.staleConfirmation) {
+            setDialog(dialog.fromCapture ? { kind: 'capture' } : null);
+            setNotice((err as Error).message);
+          }
+          throw err;
+        } finally { if (committing.current === dialog) committing.current = null; }
       }} />}
     </Modal>}
   </div>;
