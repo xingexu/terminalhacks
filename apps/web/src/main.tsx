@@ -631,6 +631,7 @@ function App() {
           dismiss(); setNotice('Scene imported for approval.');
         }} />}
       {hasMedia && state && captureOpen && <div hidden={dialog.kind === 'confirm'}><Capture state={state} base={base} items={items} visible={dialog.kind === 'capture'} cameraViewer={cameraViewer} cameraNotice={cameraNotice} reload={refresh}
+        onNavigated={message => { setDialog(open => open?.kind === 'capture' ? null : open); setNotice(message); }}
         renderMemoryForm={done => <EventForm name="Create memory" onSubmit={async body => {
           await api(base + '/memories', { ...body, expectedRevision: state.revision }); await refresh(); done();
         }} />}
