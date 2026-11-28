@@ -52,7 +52,7 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
     let renderer: WebGLRenderer;
     try { renderer = new WebGLRenderer({ antialias: true }); }
     catch { setPhase('error'); return () => { document.body.style.overflow = overflow; previousFocus?.focus(); }; }
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 1));
     renderer.outputColorSpace = SRGBColorSpace;
     renderer.toneMapping = ACESFilmicToneMapping;
     element.appendChild(renderer.domElement);
@@ -184,7 +184,7 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
           setPaused: value => { paused = value; keys.current.clear(); pathRecorder.interrupt(); orbit.enabled = !value && mode === 'overview'; },
           setReducedMotion: value => { reducedMotion = value; },
           setCreativeLighting: value => { sun.color.set(value === 'daylight' ? '#ffffff' : '#ffe7c6'); sun.intensity = value === 'daylight' ? 3 : 2; },
-          setQuality: value => { renderer.setPixelRatio(value === 'low' ? 0.75 : Math.min(devicePixelRatio, 1.5)); metrics.reset(); },
+          setQuality: value => { renderer.setPixelRatio(value === 'low' ? 0.5 : Math.min(devicePixelRatio, 1)); metrics.reset(); },
           details: () => ({ renderer: renderer.getContext().getParameter(renderer.getContext().RENDERER), width: canvas.width, height: canvas.height,
             geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures })
         });

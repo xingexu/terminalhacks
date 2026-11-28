@@ -26,12 +26,14 @@ export type AlbumControls = {
 
 export function createAlbumScene(host: HTMLElement, project: string, photos: Source[], onFrame: (frame: AlbumFrame) => void, onError: () => void): AlbumControls {
   const renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.15;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = PCFShadowMap;
+  renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.needsUpdate = true;
   const canvas = renderer.domElement;
   canvas.setAttribute('aria-hidden', 'true');
   host.appendChild(canvas);
@@ -374,7 +376,7 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
         sunLight.intensity = value === 'daylight' ? 4.5 : 3.5;
         scene.environmentIntensity = value === 'daylight' ? 1 : 0.5;
       },
-      setQuality: value => { renderer.setPixelRatio(value === 'low' ? 0.75 : Math.min(devicePixelRatio, 1.5)); metrics.reset(); },
+      setQuality: value => { renderer.setPixelRatio(value === 'low' ? 0.5 : Math.min(devicePixelRatio, 1)); metrics.reset(); },
       details: () => ({ renderer: renderer.getContext().getParameter(renderer.getContext().RENDERER), width: canvas.width, height: canvas.height,
         geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures })
     },
