@@ -14,7 +14,7 @@
 | S06 — Responsive presentation | **PASS:** lead verified 390px controls and retained provider credits. |
 | S07 — Companion film | **PASS:** [final film](DEMO.md), 60s, 1920×1080, 30fps H.264; deliberately silent AAC and seven caption cues. Lead verified decode and sampled frames. Generated concepts and actual app recording are labeled distinctly; no native VoiceOS audio is implied. See [film QA](DEMO.md). |
 | S08 — Complete rehearsal | **NOT VERIFIED:** finish the live native/camera/write sequence and timed five-minute rehearsal. A passing subset is not end-to-end completion. |
-| S09 — Handoff/submission | Runnable data is now ignored `repo/.data/terminal-hacks-demo` on port4173; original temporary backup is preserved. New sprint push, deployment and submission remain unestablished unless separately recorded. |
+| S09 — Handoff/submission | Runnable data is ignored `repo/.data/terminal-hacks-demo` on port4173; original temporary backup is preserved. Implementation `9da115f` is verified on GitHub; PR #5 is open against main. Deployment, merge and submission remain unverified. |
 
 **Source attachment is not panorama generation.** A reviewed camera image joins the memory. It does not alter Google's imagery or automatically join the imported route's fixed source list. A read-only cloned-state check showed adding a source/recollection leaves the current imported route ready and approved. Revoking a source actually used by the route still blocks it. Generated scenes/films can be retired when their own dependencies change; preserve those checks.
 

@@ -42,7 +42,13 @@ VoiceOS runs the absolute Node command pointing at `apps/mcp/index.mjs`. The pri
 
 ### Sixty-second companion presentation
 
-The companion video is produced separately and is not part of this repository. Its60-second outline: sample photo and supplied location; review known place context; clearly labeled concept visuals; actual app navigation; VoiceOS command examples. Generated footage must not be presented as a recording of working app behavior. Current actual-app footage shows keyboard and on-screen navigation; native speech is not shown.
+The companion video is produced separately and is not part of this repository. On the prepared Mac, the finished file is `../research/everwhere/companion-film/everwhere-companion-60s.mp4` relative to this repository. Open it with:
+
+```sh
+open "../research/everwhere/companion-film/everwhere-companion-60s.mp4"
+```
+
+Its 60-second outline: sample photo and supplied location; review known place context; clearly labeled concept visuals; actual app navigation; VoiceOS command examples. The verified file is 1920×1080, 30fps H.264 with captions and a deliberately silent audio track. Generated footage must not be presented as a recording of working app behavior. Current actual-app footage shows keyboard and on-screen navigation; native speech is not shown.
 
 ### Recovery and submission
 
@@ -57,7 +63,7 @@ The relocated demo database retains the current pairing's **November 28, 2026, 2
 3. If the native process has any of `EVERWHERE_API`, `EVERWHERE_PROJECT` or `EVERWHERE_PAIRING_TOKEN` configured, that environment configuration takes precedence over the file as one complete group. Update its token and retain the matching API/project there, then reload that native integration. Do not assume editing the fallback file overrides an old environment token.
 4. File-based token changes are read on the next tool call; they do not require an API-server restart. Adapter/tool-list changes do require reloading the native integration. Ask VoiceOS which memory is open, verify the intended project and updated bridge activity, then perform one visible turn and check its matching receipt in the intended tab. A successful context lookup alone is not movement proof.
 
-The previously recorded official rules and schedule specify a working web app, a five-minute live demonstration without slides, and a 4 p.m. build end. Published judging dimensions include functionality, brief fit, live demonstration and six-hour scope; numerical weights are unknown. The user reports organizer permission for the existing repository and advance coding. Recheck organizer instructions before submitting. Deployment and external submission are not established by localhost tests. No new sprint changes have been pushed as of this document update.
+The previously recorded official rules and schedule specify a working web app, a five-minute live demonstration without slides, and a 4 p.m. build end. Published judging dimensions include functionality, brief fit, live demonstration and six-hour scope; numerical weights are unknown. The user reports organizer permission for the existing repository and advance coding. Recheck organizer instructions before submitting. Deployment and external submission are not established by localhost tests. The implementation at `9da115f` was verified pushed to `codex/generation-sprint`; [PR #5](https://github.com/xingexu/terminalhacks/pull/5) is open against `main`, not merged.
 
 ### Final integration check — November28,12:40 Toronto
 

@@ -6,11 +6,11 @@ This hackathon build focuses on **Mont-Tremblant and Le Shack**. Add a permitted
 
 ## Run
 
-Requires Node.js24+, FFmpeg and ffprobe. From this repository:
+Requires Node.js24+, FFmpeg and ffprobe. For a fresh checkout, from this repository:
 
 ```sh
 npm ci
-cp apps/web/.env.example apps/web/.env.local
+test -f apps/web/.env.local || cp apps/web/.env.example apps/web/.env.local
 # Set VITE_GOOGLE_MAPS_API_KEY in the private .env.local file.
 npm run build
 EVERWHERE_DATA="$PWD/.data" PORT=4173 npm start
@@ -19,6 +19,14 @@ EVERWHERE_DATA="$PWD/.data" PORT=4173 npm start
 Open http://127.0.0.1:4173. Enable Maps JavaScript API and restrict the browser key to the intended HTTP referrer and API. Never commit .env.local, the private data directory, or pairing tokens. A browser key is necessarily delivered to the browser; restrictions are essential.
 
 Create a project and memory, then import and approve an authorized Street View tour using the existing scene import. The prepared demo's private data is not included in Git. Project access uses a browser session; retain the same origin/profile. [Tour format](packages/media/tour.mjs) and [demo guide](docs/DEMO.md) describe the supported path.
+
+To resume the **prepared demo on this Mac**, retain the existing `.env.local` and browser profile, and use its data directory instead:
+
+```sh
+EVERWHERE_DATA="$PWD/.data/terminal-hacks-demo" PORT=4173 npm start
+```
+
+Open the prepared [Mont-Tremblant memory](http://127.0.0.1:4173/p/193a740f-5e50-47d9-bddd-c9e9f7599dd3/explore). A fresh data directory or browser profile will not contain its data or access cookie.
 
 ## Demo flow
 
