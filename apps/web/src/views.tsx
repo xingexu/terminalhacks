@@ -78,6 +78,9 @@ export function Timeline({ state, event, actions }: { state: Snapshot; event?: M
   </section>;
 }
 
+// The last "open the walk" request from VoiceOS that this window has already acted on.
+let handledAlbumRequest = '';
+
 export function Explore({ state, event, actions }: { state: Snapshot; event?: Memory; actions: ViewActions }) {
   const [entered, setEntered] = useState(false);
   const [showStory, setShowStory] = useState(false);
@@ -88,6 +91,14 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
     setEntered(Boolean(state.session.anchorNavigationId && selectedAnchor?.worldId === 'trail-' + activeEvent));
     setShowStory(false);
   }, [state.session.anchorNavigationId, activeEvent, state.session.lens]);
+  const albumRequest = state.session.albumRequest;
+  useEffect(() => {
+    // VoiceOS asked to open the walk. Only a fresh request counts, so reloading the page later does not reopen it.
+    if (!albumRequest || albumRequest.id === handledAlbumRequest || Date.now() - Date.parse(albumRequest.at) > 20_000) return;
+    handledAlbumRequest = albumRequest.id;
+    setEntered(true);
+    setShowStory(false);
+  }, [albumRequest?.id, activeEvent]);
   const worlds = state.worlds.filter(item => item.eventId === activeEvent && item.approved && item.status !== 'stale' && state.session.lens === 'all' &&
     item.sourceIds.every(id => event?.sourceIds.includes(id)));
   const world = worlds.find(item => item.id === spatial) ?? worlds.at(-1);
@@ -286,7 +297,7 @@ function PhotoAlbum({ state, event, actions }: { state: Snapshot; event?: Memory
           {!excluded.includes(photo.id) && <Check size={16} />}
         </button>
       </div>)}</div>
-    </> : <Empty icon={<AsciiArt art={art.photo} />} title="Your album starts with a photo"><p>Add photos in Capture, then review and confirm their memory links.</p><button className="btn" onClick={actions.openCapture}>Add photos</button></Empty>}
+    </> : <Empty icon={<AsciiArt art={art.photo} />} title="Your album starts with a photo"><p>Pull an event from your photo library under VoiceOS, or add photos in Capture.</p><button className="btn" onClick={actions.openCapture}>Add photos</button></Empty>}
     {entered && selected.length > 0 && <Suspense fallback={<div className="notice" role="status">Opening immersive album…</div>}>
       <WalkableAlbum key={state.projectId + state.session.lens + selected.map(photo => photo.id).join(',')} state={state} photos={selected} title={title} onClose={() => setEntered(false)} />
     </Suspense>}

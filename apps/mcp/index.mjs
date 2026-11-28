@@ -36,7 +36,8 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
       redirect: 'error',
       headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
       body: JSON.stringify(params.arguments || {}),
-      signal: AbortSignal.timeout(12000)
+      // Pulling photos exports them from the library first, which takes longer than a lookup.
+      signal: AbortSignal.timeout(params.name === 'pull_event_photos' ? 180000 : 12000)
     });
     const result = await response.json();
     return toolResult(result, !response.ok || !result.ok);

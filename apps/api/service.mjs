@@ -399,3 +399,27 @@ export function resolveEvent(state, query) {
     { candidates: candidates.map(({ id, title }) => ({ id, title })) });
   return candidates[0];
 }
+
+/** Photos pulled from the photo library join a memory named after their event, under one capture grant that can be withdrawn. */
+export function linkLibraryPhotos(state, actor, { title, items }) {
+  const session = startCapture(state, { consent: true, source: 'selected_file' });
+  session.origin = 'photo_library';
+  const name = title.trim().slice(0, 180) || 'Photo library';
+  const event = state.events.find(item => item.title.toLowerCase() === name.toLowerCase()) ?? createEvent(state, { title: name });
+  const unused = [];
+  let imported = 0;
+  for (const item of items) {
+    if (state.media.some(media => !media.revoked && media.hash === item.hash)) { unused.push(item); continue; }
+    Object.assign(item, { pending: true, captureGrant: session.grantId });
+    state.media.push(item);
+    const { observationId } = observe(state, { sessionId: session.id, externalId: uid(), source: 'selected_file', kind: 'media',
+      capturedAt: item.capturedAt, location: null, mediaId: item.id });
+    const preview = capturePreview(state, observationId, { eventId: event.id, expectedRevision: state.revision }, actor);
+    commitCommand(state, { previewToken: preview.previewToken, requestId: uid(), expectedRevision: state.revision }, actor, true);
+    imported += 1;
+  }
+  session.status = 'stopped';
+  updateSession(state, { eventId: event.id, view: 'explore' });
+  return { event: event.title, eventId: event.id, imported, alreadyHere: unused.length, unused,
+    title: imported ? 'Pulled ' + imported + (imported === 1 ? ' photo' : ' photos') + ' from ' + event.title : 'Those photos are already in ' + event.title };
+}

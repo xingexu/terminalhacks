@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AudioLines, Check, Copy, Download, ExternalLink } from 'lucide-react';
+import { AudioLines, Check, Copy, Download, ExternalLink, Images } from 'lucide-react';
 import { api, type Snapshot } from './model';
 
 type PairingStatus = { active: boolean; expires: number | null; lastSeen: number | null };
@@ -12,6 +12,46 @@ export function VoiceShortcut() {
       <small>Check your Agent Mode shortcut in VoiceOS Settings.</small>
     </div>
   </div>;
+}
+
+type LibraryStatus = { allowed: boolean; source: 'apple-photos' | 'folder' | 'none'; events: { id: string; name: string; count: number }[]; problem?: string };
+
+/** Lets the person turn photo library access on, see their events, and pull one into a memory. */
+function PhotoLibrary({ base }: { base: string }) {
+  const [status, setStatus] = useState<LibraryStatus | null>(null);
+  const [busy, setBusy] = useState('');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const run = async (label: string, work: () => Promise<void>) => {
+    setBusy(label); setError(''); setMessage('');
+    try { await work(); } catch (err) { setError((err as Error).message); } finally { setBusy(''); }
+  };
+  useEffect(() => { void run('check', async () => setStatus(await api<LibraryStatus>(base + '/photo-library'))); }, [base]);
+  const allow = (value: boolean) => run('access', async () => setStatus(await api<LibraryStatus>(base + '/photo-library/access', { allow: value })));
+  const pull = (name: string) => run(name, async () => {
+    const result = await api<{ title: string; alreadyHere: number }>(base + '/photo-library/pull', { event: name });
+    setMessage(result.title + (result.alreadyHere ? '. ' + result.alreadyHere + ' already here.' : '.') + ' Close this window to see the memory in Explore.');
+  });
+  return <section className="voice-start photo-library" aria-labelledby="photo-library-title">
+    <h3 id="photo-library-title">Your photo library</h3>
+    <p>{status?.source === 'folder' ? 'Everwhere reads the event folders on this computer.' : 'Everwhere reads the albums in the Photos app on this Mac. Each album is one event.'} With
+      access on, VoiceOS can list your events and pull up to 24 photos from one into a memory. Copies stay on this computer.</p>
+    {status?.source === 'none' && <p className="setup-note">This server is not a Mac with the Photos app, so there is no library to read here.</p>}
+    <div className="button-row">
+      {status?.allowed ? <button className="btn" disabled={!!busy} onClick={() => void allow(false)}>Turn access off</button> :
+        <button className="btn primary" disabled={!status || !!busy || status.source === 'none'} onClick={() => void allow(true)}><Images size={16} /> {busy === 'access' ? 'Asking…' : 'Allow photo library access'}</button>}
+      {status?.allowed && <button className="btn" disabled={!!busy} onClick={() => void allow(true)}>{busy === 'access' ? 'Reading…' : 'Refresh events'}</button>}
+    </div>
+    {!status?.allowed && status?.source === 'apple-photos' && <p className="muted">macOS will then ask whether the app running Everwhere may control Photos. Choose Allow.</p>}
+    {status?.allowed && status.problem && <p className="form-error" role="alert">{status.problem}</p>}
+    {status?.allowed && !status.problem && (status.events.length ? <ul className="library-events">
+      {status.events.map(item => <li key={item.id}><span><strong>{item.name}</strong><small>{item.count} {item.count === 1 ? 'photo' : 'photos'}</small></span>
+        <button className="btn compact" disabled={!!busy} onClick={() => void pull(item.name)}>{busy === item.name ? 'Pulling…' : 'Pull photos'}</button></li>)}
+    </ul> : <p className="muted">No events with photos were found.</p>)}
+    {status?.allowed && <div className="voice-example"><div><small>Or say it to VoiceOS</small><p>“Pull the photos from {status.events[0]?.name ?? 'my trip'}”, then “Open the walk”.</p></div></div>}
+    {message && <p className="muted" role="status">{message}</p>}
+    {error && <p className="form-error" role="alert">{error}</p>}
+  </section>;
 }
 
 export function VoicePanel({ base, state }: { base: string; state: Snapshot }) {
@@ -67,6 +107,7 @@ export function VoicePanel({ base, state }: { base: string; state: Snapshot }) {
         <button className="icon-btn" aria-label="Copy example question" onClick={() => void copy('What memory is open in Everwhere?', 'Example question')}><Copy size={16} /></button></div>
       <p className="muted">Keep Everwhere running. A successful command updates the bridge activity above.</p>
     </section>
+    <PhotoLibrary base={base} />
     <details className="voice-pairing" open={!status?.lastSeen || !!token}>
       <summary>Pairing settings <span>{state.title}</span></summary>
       <div className="form-stack">

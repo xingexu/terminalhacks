@@ -385,6 +385,44 @@
         ],
         "additionalProperties": false
       }
+    },
+    {
+      "name": "list_photo_events",
+      "description": "List the events (albums) in the person's photo library with photo counts. Read only; needs photo library access turned on in Everwhere.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "pull_event_photos",
+      "description": "Pull up to 24 photos from one photo library event into a memory named after it, and select that memory. Use the event name the person said.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "event": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 180
+          }
+        },
+        "required": [
+          "event"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "open_immersive_album",
+      "description": "Open the walkable immersive album built from the selected memory's photos in the Everwhere window.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
     }
   ]
 }

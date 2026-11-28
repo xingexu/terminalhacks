@@ -9,7 +9,8 @@ export type Recollection = { id: string; eventId: string; anchorId?: string; aud
 export type Job = { id: string; eventId: string; lens: Lens; status: string; approved: boolean; inputHash: string; revision: number; error?: string };
 export type World = { id: string; eventId: string; title: string; approved: boolean; inputHash: string; sourceIds: string[]; points: number; format?: 'spz' | 'glb'; status?: string; generation?: { spawn: [number, number, number]; lookAt: [number, number, number]; description: string; inferred: string } };
 export type SceneJob = { id: string; eventId: string; sourceId: string; status: string; error?: string; worldId?: string };
-export type Session = { eventId: string | null; anchorId: string | null; view: View; lens: Lens; anchorNavigationId?: string | null };
+export type Session = { eventId: string | null; anchorId: string | null; view: View; lens: Lens; anchorNavigationId?: string | null;
+  albumRequest?: { id: string; at: string } | null };
 export type Snapshot = {
   projectId: string; title: string; demo: boolean; revision: number; seq: number; visualProfile: Profile; session: Session;
   events: Memory[]; media: Source[]; anchors: Anchor[]; recollections: Recollection[]; jobs: Job[];
