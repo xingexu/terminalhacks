@@ -13,7 +13,7 @@ export function integrationManifest(origin = 'http://127.0.0.1:4173') {
   return {
     schemaVersion: 1,
     id: 'com.everwhere.memories',
-    version: '0.2.0',
+    version: '0.4.0',
     name: 'Everwhere',
     summary: 'Find memories, revisit places, and review your stories by voice.',
     publisher: { id: 'everwhere', name: 'Everwhere' },
@@ -25,13 +25,15 @@ export function integrationManifest(origin = 'http://127.0.0.1:4173') {
       { name: 'EVERWHERE_API', title: 'API origin', type: 'text', default: api.origin, description: 'The address of your running Everwhere server.' },
       { name: 'EVERWHERE_PROJECT', title: 'Project ID', type: 'text', required: true, description: 'Copy the project ID from Everwhere → VoiceOS.' }
     ],
-    tools: tools.map(tool => tool.name === 'confirm_change' ? {
+    tools: tools.map(tool => ['confirm_change', 'research_place'].includes(tool.name) ? {
       ...tool,
       confirmation: {
         schemaVersion: 1,
         root: {
-          type: 'card', title: 'Confirm the reviewed change?',
-          children: [{ type: 'text', text: 'Apply the Everwhere preview you just reviewed. Expired or changed previews must be reviewed again.' }],
+          type: 'card', title: tool.name === 'research_place' ? 'Research this place on Wikipedia?' : 'Confirm the reviewed change?',
+          children: [{ type: 'text', text: tool.name === 'research_place' ?
+            'Send the memory place name or approximate coordinates to Wikipedia. Photos and conversation stay private. Results are background context, not proof of your memory.' :
+            'Apply the Everwhere preview you just reviewed. Expired or changed previews must be reviewed again.' }],
           footer: [{ type: 'actions', items: [
             { label: 'Cancel', role: 'cancel' },
             { label: 'Confirm change', role: 'confirm', color: 'accent' }

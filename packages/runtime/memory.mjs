@@ -34,17 +34,31 @@ export function digest(value) {
   return createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
 }
 
+// The sample project. Its pictures are illustrated placeholders and its Street View route is a starting point, not a verified one.
+export const demoVersion = 2;
 const demoEvents = [
-  { id: 'e-lake', title: 'Lago di Braies', placeLabel: 'South Tyrol, Italy', startAt: '2024-10-12T10:00:00+02:00', story: 'The lake was still that morning. From the old boathouse, the mountains seemed to go on forever below the waterline.', gps: [46.694, 12.085], sourceIds: ['m-lake', 'm-boats'], tags: 'lake water harbor rowboats dock dolomites autumn' },
-  { id: 'e-cabin', title: 'The mountain refuge', placeLabel: 'South Tyrol, Italy', startAt: '2024-10-13T16:00:00+02:00', story: 'After a long climb, we found a little wooden refuge tucked against the mountain.', gps: [46.675, 12.113], sourceIds: ['m-cabin'], tags: 'cabin coffee refuge dinner wood afternoon dolomites' },
-  { id: 'e-trail', title: 'Sunrise at Tre Cime', placeLabel: 'Belluno, Italy', startAt: '2024-10-14T07:00:00+02:00', story: 'We set out before sunrise and reached the ridge as the first light found the peaks.', gps: [46.618, 12.303], sourceIds: ['m-trail'], tags: 'sunrise hike trail mountain dawn peaks dolomites' }
+  { id: 'e-lake', title: 'Place Saint-Bernard', placeLabel: 'Mont-Tremblant, Québec', startAt: '2025-01-18T16:30:00-05:00', story: 'The village lights came on just as the snow started. The square at the top of the hill was quiet, and every roof had a white edge.', gps: [46.2142, -74.5859], sourceIds: ['m-lake', 'm-boats'], tags: 'village square snow lights gondola tremblant winter evening' },
+  { id: 'e-cabin', title: 'Lac Tremblant', placeLabel: 'Mont-Tremblant, Québec', startAt: '2025-01-19T08:00:00-05:00', story: 'The lake had frozen right across. From the old dock the hills looked close enough to walk to.', gps: [46.2155, -74.5935], sourceIds: ['m-cabin'], tags: 'lac frozen dock ice tremblant winter' },
+  { id: 'e-trail', title: 'First light at the summit', placeLabel: 'Mont-Tremblant, Québec', startAt: '2025-01-20T07:10:00-05:00', story: 'The first gondola reached the top before the sun did. The Laurentians turned pink one ridge at a time.', gps: [46.2332, -74.5557], sourceIds: ['m-trail'], tags: 'summit sunrise ridge laurentians dawn peaks tremblant' }
 ];
 const demoMedia = [
-  ['lake', 'From the lakeshore'],
-  ['boats', 'The old boathouse'],
-  ['cabin', 'A refuge in the mountains'],
-  ['trail', 'First light on the ridge']
+  ['lake', 'The pedestrian village'],
+  ['boats', 'Gondolas over the slopes'],
+  ['cabin', 'The frozen lake'],
+  ['trail', 'First light from the summit']
 ];
+const demoWorld = { id: 'w-tremblant', demoFile: 'tremblant.tour.json', format: 'tour', points: 2, title: 'Mont-Tremblant pedestrian village',
+  eventId: 'e-lake', status: 'ready', approval: 'approved', approved: true, sourceIds: ['m-lake'], provenance: 'imagined', provider: 'Google Street View',
+  tour: { startNodeId: 'place', liveStreetView: true, nodes: [{ id: 'place', title: 'Place Saint-Bernard', sourceIds: ['m-lake'] }, { id: 'village', title: 'Lower village', sourceIds: ['m-lake'] }] } };
+
+/** Adds the sample Street View route to a sample project. Kept out of createMemory so an empty sample stays the baseline. */
+export function addSampleRoute(state) {
+  if (!state.demo || state.worlds.some(world => world.id === demoWorld.id)) return state;
+  state.worlds.push({ ...structuredClone(demoWorld), contentHash: digest(demoWorld), inputHash: digest([demoWorld.id, demoVersion]) });
+  state.anchors.push(...demoWorld.tour.nodes.map(node => ({ id: 'a-sv-' + node.id, eventId: demoWorld.eventId, worldId: demoWorld.id,
+    nodeId: node.id, title: node.title, sourceIds: node.sourceIds, position: [0, 0, 0] })));
+  return state;
+}
 
 export function createMemory(title, demo = false) {
   const events = demo ? demoEvents.map(event => ({ ...structuredClone(event), version: 0 })) : [];
@@ -53,13 +67,13 @@ export function createMemory(title, demo = false) {
     demoFile: name + '.webp', hash: digest(name)
   })) : [];
   const anchors = demo ? [
-    { id: 'a-lake', eventId: 'e-lake', sourceIds: ['m-lake'], title: 'Lakeshore', position: [0, 0, 0] },
-    { id: 'a-boats', eventId: 'e-lake', sourceIds: ['m-boats'], title: 'Boathouse', position: [1, 0, 0] },
-    { id: 'a-cabin', eventId: 'e-cabin', sourceIds: ['m-cabin'], title: 'Refuge', position: [0, 0, 0] },
-    { id: 'a-trail', eventId: 'e-trail', sourceIds: ['m-trail'], title: 'Ridge', position: [0, 0, 0] }
+    { id: 'a-lake', eventId: 'e-lake', sourceIds: ['m-lake'], title: 'The square', position: [0, 0, 0] },
+    { id: 'a-boats', eventId: 'e-lake', sourceIds: ['m-boats'], title: 'Gondola', position: [1, 0, 0] },
+    { id: 'a-cabin', eventId: 'e-cabin', sourceIds: ['m-cabin'], title: 'Lakeside', position: [0, 0, 0] },
+    { id: 'a-trail', eventId: 'e-trail', sourceIds: ['m-trail'], title: 'Summit', position: [0, 0, 0] }
   ].map(anchor => ({ ...anchor, worldId: 'trail-' + anchor.eventId })) : [];
   return {
-    title, demo, revision: 0, seq: 0, visualProfile: 'natural', events, media, anchors,
+    title, demo, ...(demo && { demoVersion }), revision: 0, seq: 0, visualProfile: 'natural', events, media, anchors,
     session: { eventId: events[0]?.id ?? null, anchorId: anchors[0]?.id ?? null, view: 'explore', lens: demo ? 'all' : 'originals' },
     recollections: [], history: [], changes: [], requests: {}, previews: {}, jobs: [], worlds: [],
     capture: { sessions: [], observations: [] }
@@ -71,45 +85,110 @@ export const mediaById = (state, id) => state.media.find(item => item.id === id 
 export const isOriginal = item => item?.provenance === 'original';
 export const lensAllows = (item, lens) => Boolean(item && !item.revoked && (lens === 'all' || isOriginal(item)));
 
-export function eventDependencies(state, eventId, lens) {
+export function eventDependencies(state, eventId, lens, worldId = null) {
   const event = eventById(state, eventId);
   if (!event) return null;
-  const material = event.sourceIds.map(id => mediaById(state, id)).filter(item => lensAllows(item, lens));
-  const recollections = state.recollections.filter(item => item.eventId === eventId && (!item.audioMediaId || mediaById(state, item.audioMediaId)));
+  const time = value => Number.isFinite(Date.parse(value)) ? Date.parse(value) : Infinity;
+  const material = event.sourceIds.map(id => mediaById(state, id)).filter(item => !item?.pending && lensAllows(item, lens));
+  const recollections = state.recollections.filter(item => item.eventId === eventId && (!item.audioMediaId || mediaById(state, item.audioMediaId)))
+    .sort((a, b) => (time(a.at) - time(b.at) || a.id.localeCompare(b.id)));
+  const media = material.filter(item => item.mime.startsWith('image/') || item.mime.startsWith('video/'))
+    .sort((a, b) => (time(a.capturedAt) - time(b.capturedAt) || a.id.localeCompare(b.id)));
+  const available = new Set(media.map(item => item.id));
+  const worlds = lens === 'all' ? (state.worlds || []).filter(world => world.eventId === eventId && world.approved &&
+    !world.revoked && world.status === 'ready' && world.sourceIds.length && world.sourceIds.every(id => available.has(id)) &&
+    (!world.evidenceHash || world.evidenceHash === digest(generationDependencies(state, eventId, world.evidenceRefs)))) : [];
+  const world = worldId ? worlds.find(item => item.id === worldId) : worlds.filter(item => item.format === 'glb').at(-1) ?? worlds.at(-1);
+  const planned = world?.plan?.sourceIds?.filter(id => world.sourceIds.includes(id) && available.has(id)) || [];
+  const selected = [...new Set([...planned, ...media.filter(item => !world || world.sourceIds.includes(item.id)).map(item => item.id)])];
+  const sourceIds = [...selected, ...media.filter(item => !selected.includes(item.id)).map(item => item.id)];
+  const cut = selected.slice(0, 8);
+  const seconds = cut.length ? Math.max(4, Math.ceil(30 / cut.length)) : 0;
+  const usedAccounts = new Set();
+  const frames = cut.map(sourceId => {
+    const item = media.find(item => item.id === sourceId);
+    const account = recollections.find(item => !usedAccounts.has(item.id) && item.text?.trim() &&
+      item.anchorId && state.anchors.some(anchor => anchor.id === item.anchorId && anchor.sourceIds.includes(sourceId))) ??
+      recollections.find(item => !usedAccounts.has(item.id) && item.text?.trim() && !item.anchorId);
+    if (account) usedAccounts.add(account.id);
+    const accountText = Array.from(account?.text.replace(/\s+/g, ' ').trim() ?? '');
+    return { sourceId, seconds, caption: item.caption, provenance: item.provenance, capturedAt: item.capturedAt ?? null,
+      ...(account && { recollection: { id: account.id, contributor: 'You',
+        text: accountText.slice(0, 180).join('') + (accountText.length > 180 ? '…' : ''), excerpt: accountText.length > 180 } }) };
+  });
+  const narratedAccount = recollections.find(item => {
+    const audio = mediaById(state, item.audioMediaId);
+    return usedAccounts.has(item.id) && audio?.mime.startsWith('audio/') && !audio.pending && lensAllows(audio, lens);
+  });
+  const narration = narratedAccount ? mediaById(state, narratedAccount.audioMediaId) : null;
+  const narratedFrame = frames.findIndex(frame => frame.recollection?.id === narratedAccount?.id);
+  const narrationPlan = narration ? { sourceId: narration.id, recollectionId: narratedAccount.id,
+    startSeconds: frames.slice(0, narratedFrame).reduce((sum, frame) => sum + frame.seconds, 0),
+    seconds: Math.min(Number.isFinite(narration.duration) && narration.duration > 0 ? narration.duration : Infinity, frames[narratedFrame].seconds) } : null;
+  const cutPlan = { eventId, kind: 'source_montage', basis: planned.length ? 'world_plan' : world ? 'world_sources' : 'memory_sources',
+    worldId: world?.id ?? null, planId: planned.length ? world.planId ?? world.plan.id ?? null : null,
+    sourceIds, excludedSourceIds: sourceIds.slice(cut.length), frames, durationSeconds: cut.length * seconds, narration: narrationPlan,
+    omittedRecollections: recollections.filter(item => item.text?.trim() && !usedAccounts.has(item.id)).length };
   return {
     event, profile: state.visualProfile, lens,
-    media: material.filter(item => item.mime.startsWith('image/') || item.mime.startsWith('video/')),
+    media, storyboard: { id: digest(cutPlan), ...cutPlan },
+    world: world ? { id: world.id, inputHash: world.inputHash, contentHash: world.contentHash } : null,
     anchors: state.anchors.filter(anchor => anchor.eventId === eventId),
     recollections,
-    narration: recollections.map(item => mediaById(state, item.audioMediaId)).find(item => item && lensAllows(item, lens)) ?? null
+    narration
   };
 }
 
-export function sceneDependencies(state, eventId, sourceId) {
+export function filmDependencies(state, eventId, lens, recording = null) {
+  const manifest = eventDependencies(state, eventId, lens, recording?.worldId);
+  if (!recording) return manifest;
+  if (!manifest || manifest.world?.id !== recording.worldId) return null;
+  const { storage, ...sceneRecording } = recording;
+  const scale = recording.durationSeconds / manifest.storyboard.durationSeconds;
+  const frames = manifest.storyboard.frames.map(frame => ({ ...frame, seconds: frame.seconds * scale }));
+  const original = manifest.storyboard.narration;
+  const narration = original ? { ...original, startSeconds: original.startSeconds * scale,
+    seconds: Math.min(original.seconds, frames.find(frame => frame.recollection?.id === original.recollectionId).seconds) } : null;
+  const { id, ...sourcePlan } = manifest.storyboard;
+  const plan = { ...sourcePlan, kind: 'scene_recording', durationSeconds: recording.durationSeconds, frames, narration };
+  return { ...manifest, storyboard: { id: digest({ ...plan, path: recording.path.cameraPath }), ...plan }, sceneRecording };
+}
+
+// Only evidence affects a generated scene; approvals and camera waypoints do not.
+export function generationDependencies(state, eventId, selected) {
   const event = eventById(state, eventId);
-  const source = event?.sourceIds.includes(sourceId) ? mediaById(state, sourceId) : undefined;
-  return { eventId, sourceId, hash: source?.hash ?? null, provenance: source?.provenance ?? null };
+  if (!event) return null;
+  const { title, placeLabel, startAt, gps, story } = event;
+  const media = event.sourceIds.map(id => mediaById(state, id)).filter(item => item && !item.pending && (!selected || selected.mediaIds.includes(item.id)))
+    .map(({ id, hash, caption, mime, capturedAt, capturedLocal, gps, provenance }) => ({ id, hash, caption, mime, capturedAt, capturedLocal, gps, provenance }));
+  const recollections = state.recollections.filter(item => item.eventId === eventId && (!item.audioMediaId || mediaById(state, item.audioMediaId)) &&
+    (!selected || selected.recollectionIds.includes(item.id)))
+    .map(({ id, text, audioMediaId }) => ({ id, text, audioMediaId }));
+  return { eventId, title, placeLabel, startAt, gps, story, media, recollections };
 }
 
 export function invalidateJobs(state) {
-  for (const job of state.sceneJobs ?? []) {
-    if (['queued', 'interpreting', 'building', 'ready'].includes(job.status) && job.inputHash !== digest(sceneDependencies(state, job.eventId, job.sourceId))) {
-      job.status = 'stale';
-      job.error = 'The source memory changed. Generate a scene from its current version.';
-    }
-  }
-  for (const world of state.worlds ?? []) {
-    if (world.generation && world.generation.dependenciesHash !== digest(sceneDependencies(state, world.eventId, world.sourceIds[0]))) {
-      world.status = 'stale';
-      world.approved = false;
-    }
-  }
   for (const job of state.jobs) {
     if (!['queued', 'running', 'ready'].includes(job.status)) continue;
-    if (job.inputHash !== digest(eventDependencies(state, job.eventId, job.lens))) {
+    if (job.inputHash !== digest(filmDependencies(state, job.eventId, job.lens, job.manifest?.sceneRecording))) {
       job.status = 'stale';
       job.approved = false;
     }
+  }
+  for (const world of state.worlds || []) {
+    if (world.evidenceHash && world.evidenceHash !== digest(generationDependencies(state, world.eventId, world.evidenceRefs))) {
+      world.status = 'stale';
+      world.approved = false;
+      delete world.plan;
+    }
+  }
+  for (const [eventId, research] of Object.entries(state.locationResearch || {})) {
+    if (research.inputHash !== digest(generationDependencies(state, eventId))) delete state.locationResearch[eventId];
+  }
+  for (const [token, preview] of Object.entries(state.previews || {})) {
+    if (preview.kind === 'world' && preview.plan.inputHash !== digest(generationDependencies(state, preview.plan.eventId))) delete state.previews[token];
+    if (preview.kind === 'film' && preview.inputHash !== digest(eventDependencies(state, preview.eventId, preview.lens))) delete state.previews[token];
+    if (preview.kind === 'scene-film' && preview.inputHash !== digest(filmDependencies(state, preview.eventId, preview.lens, preview.recording))) delete state.previews[token];
   }
 }
 
@@ -196,7 +275,7 @@ export function applyCommand(state, command, actor, observationId) {
         409, 'ARTIFACT_CHANGED', 'This export is no longer ready for approval.');
       asset.approved = true;
       inverse = { type, targetId, id: asset.id };
-      label = world ? 'Approved a reconstructed scene' : 'Approved a film export';
+      label = world ? (world.provenance === 'imagined' ? 'Approved an imagined scene' : 'Approved a reconstructed scene') : 'Approved a film export';
       data = { artifactId: asset.id, contentHash: asset.contentHash };
       break;
     }

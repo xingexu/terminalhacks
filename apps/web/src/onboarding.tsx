@@ -22,7 +22,7 @@ const steps: { kicker: string; title: string; text: string; note?: string; view?
     text: 'Explore, Remember, Watch and Create. Each one is a different way into the same memory. The next steps open them one at a time.',
     view: 'explore', target: '.menu' },
   { kicker: 'Tab 1 of 4', title: 'This is Explore, your home.',
-    text: 'This is the sample memory, Lago di Braies. The picture is drawn in characters: move your cursor over it and the photograph shows through. Try it now.',
+    text: 'This is the sample memory, Place Saint-Bernard in Mont-Tremblant. The picture is drawn in characters: move your cursor over it and the photograph shows through. Try it now.',
     view: 'explore', target: '.hero' },
   { kicker: 'Explore', title: 'This is your journey timeline.',
     text: 'Every memory in the project, in order. Click one and Explore switches to it. New memory adds a moment with a title, place and date.',
@@ -39,17 +39,14 @@ const steps: { kicker: string; title: string; text: string; note?: string; view?
   { kicker: 'Your photo', title: 'Upload your own image.',
     text: 'Open Capture, tick the permission box and choose a photo. It waits in the review inbox: pick the memory it belongs to, or make a new one, then confirm the link.',
     view: 'explore', target: '.top-capture', action: 'capture', label: 'Open Capture' },
-  { kicker: 'Your words', title: 'Add what you remember.',
-    text: 'Choose Step inside this photo. Pick your photo as the reference, then describe the place in a few sentences. Hold Fn to dictate it with VoiceOS. Connect your Higgsfield account in the same dialog and tick the permission box.',
-    note: 'This needs a photo you captured yourself, and Ollama running on the Everwhere server with qwen3-vl:4b installed.',
-    view: 'explore', target: '.hero .hero-cta', action: 'generate', label: 'Open Step inside this photo' },
-  { kicker: 'Watch it form', title: 'Your memory takes shape.',
-    text: 'Progress appears in Explore while your photo is interpreted and the scene is built. You can keep browsing. When it finishes, review the reconstruction and choose Approve.',
-    view: 'explore', target: '.hero' },
-  { kicker: 'Walk through it', title: 'Step inside.',
-    text: 'Choose Walk in on the finished scene. Move with W A S D, drag to look around, hold Shift to sprint and press Space to jump. Enter photo album gives you the same walk through a memory\'s photographs.',
+  { kicker: 'Walk through it', title: 'Step inside the real place.',
+    text: 'Choose Enter memory world. Everwhere opens Google Street View at Place Saint-Bernard. W and S move along the street, A and D turn, and you can drag to look around.',
+    note: 'Street View needs a Google Maps key in apps/web/.env.local. Without one, Open photo album still shows the memory\'s pictures.',
+    view: 'explore', target: '.hero .hero-cta' },
+  { kicker: 'By voice', title: 'Ask VoiceOS to move.',
+    text: 'With VoiceOS paired, hold your Agent Mode shortcut and say "go forward", "turn left" or "stop". Name a stop, such as the lower village, to go straight there.',
     note: 'Remember, Watch and Create in the menu bar hold your stories, films and albums whenever you want them.',
-    view: 'explore', target: '.hero .hero-cta + .hero-cta' }
+    view: 'explore', target: '.hero' }
 ];
 
 export function Tour({ step, setStep, close, view, paused, ready, go, run }: {

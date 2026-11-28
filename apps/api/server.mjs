@@ -2,26 +2,31 @@ import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
 import staticFiles from '@fastify/static';
 import { createReadStream, existsSync } from 'node:fs';
-import { stat, rm } from 'node:fs/promises';
+import { stat, rm, readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { join, resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import Ajv from 'ajv';
 import formats from 'ajv-formats';
 import { createStore } from './store.mjs';
-import { createHiggsfield } from './higgsfield.mjs';
-import { createSceneWorker, queueScene, sceneInputHash } from './scene-jobs.mjs';
-import { visionReady } from './scene-plan.mjs';
 import { integrationManifest } from '../mcp/manifest.mjs';
 import {
   assertCapture, capturePreview, cleanMedia, commitCommand, createEvent, createFilmWorker, gapQuestion, getSnapshot,
-  inbox, observe, previewCommand, previewFilm, queueFilm, resolveEvent, revokeCapture, startCapture, updateSession
+  inbox, navigateAnchor, observe, previewCommand, previewFilm, queueFilm, resolveEvent, revokeCapture, startCapture, updateSession,
+  acknowledgeCameraAction, acknowledgeMovement, defaultWalkableWorld, movementSession, navigationGuide, normalizeSessionView, queueCameraAction, queueMovement, walkableWorlds
 } from './service.mjs';
 import { ingest, removeMedia } from '../../packages/media/local.mjs';
+import { normalizeAttribution, worldCredits } from '../../packages/media/attribution.mjs';
 import { storeSplat } from '../../packages/media/splat.mjs';
 import { storeMesh } from '../../packages/media/mesh.mjs';
+import { storeTour } from '../../packages/media/tour.mjs';
 import { sceneContext } from '../../packages/runtime/scene.mjs';
-import { appendChange, digest, eventById, mediaById, rank, requireCondition as check, uid } from '../../packages/runtime/memory.mjs';
+import { cancelSceneFilm, previewSceneFilm, queueSceneFilm, sceneFilmRequest } from './scene-film.mjs';
+import { storeSceneRecording } from '../../packages/media/scene-film.mjs';
+import { evidenceFor, handoffPlan, lookupPlace, previewWorld, voiceEvidence } from '../../packages/intelligence/scene-plan.mjs';
+import { generateWorld } from '../../packages/providers/world/procedural.mjs';
+import { appendChange, digest, eventById, generationDependencies, mediaById, rank, requireCondition as check, uid, addSampleRoute, createMemory, demoVersion } from '../../packages/runtime/memory.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const demoDir = join(root, 'apps/web/public/media');
@@ -58,15 +63,12 @@ async function streamFile(request, reply, path, mime) {
     .header('Content-Length', end - start + 1).send(createReadStream(path, { start, end }));
 }
 
-export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA || join(root, '.data')), serveWeb = true } = {}) {
+export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA || join(root, '.data')), serveWeb = true, contextFetch = fetch, sampleRoute = process.env.EVERWHERE_SAMPLE_ROUTE !== '0' } = {}) {
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 });
   const store = createStore(dataDir);
   const film = createFilmWorker(store, dataDir, demoDir);
-  const higgsfield = createHiggsfield(dataDir);
-  const scenes = createSceneWorker(store, dataDir, higgsfield);
   await app.register(multipart, { limits: { fileSize: 48 * 1024 ** 2, files: 1, fields: 0, parts: 1 } });
-  app.addHook('onReady', async () => { scenes.kick(); });
-  app.addHook('onClose', async () => { await Promise.all([film.stop(), scenes.stop()]); store.close(); });
+  app.addHook('onClose', async () => { await film.stop(); store.close(); });
   app.addHook('onRequest', async (req, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff').header('Referrer-Policy', 'same-origin')
       .header('X-Frame-Options', 'SAMEORIGIN');
@@ -80,7 +82,7 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
   });
   app.setErrorHandler((error, request, reply) => {
     const status = error.status || error.statusCode || 500;
-    const safe = error.status ? error.message : status === 413 ? 'Select a file smaller than 48 MB.' : status < 500 ? 'The request could not be read.' : 'Something went wrong. Try again.';
+    const safe = error.status ? error.message : status === 413 ? request.url.endsWith('/scene-film-preview') ? 'This camera path is too large. Record a simpler path.' : 'Select a file smaller than 48 MB.' : status < 500 ? 'The request could not be read.' : 'Something went wrong. Try again.';
     reply.code(status).send({ ok: false, code: error.status ? error.code : status === 413 ? 'FILE_TOO_LARGE' : 'REQUEST_FAILED', message: safe, ...error.details });
   });
   app.get('/health', async () => ({ ok: true }));
@@ -100,7 +102,8 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
   const scope = req => ({ actor: auth(req, req.params.p).actor, project: req.params.p });
   const read = (req, fn) => {
     const { actor, project } = scope(req);
-    const state = store.read(actor, project);
+    let state = store.read(actor, project);
+    if (normalizeSessionView(state)) state = store.update(actor, project, 'session.changed', normalizeSessionView).state;
     return { ok: true, revision: state.revision, data: fn(state, actor, project) };
   };
   const update = (req, kind, fn) => {
@@ -109,13 +112,107 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     return { ok: true, revision: state.revision, data };
   };
 
+  async function researchPlace(req, eventId, input) {
+    check(input?.consent === true, 400, 'CONSENT_REQUIRED', 'Confirm sharing this place and approximate coordinates with Wikipedia. Photos and conversation stay private.');
+    const { actor, project } = scope(req);
+    const before = store.read(actor, project);
+    check(before.revision === input.expectedRevision, 409, 'REVISION_CONFLICT', 'The memory changed. Review its location first.');
+    const evidence = evidenceFor(before, eventId);
+    if (evidence.research && Date.now() - Date.parse(evidence.research.fetchedAt) < 15 * 60_000) {
+      return { ok: true, revision: before.revision, data: evidence.research };
+    }
+    const result = await lookupPlace(evidence, contextFetch);
+    return update(req, 'context.changed', state => {
+      check(state.revision === before.revision && digest(generationDependencies(state, eventId)) === evidence.inputHash,
+        409, 'REVISION_CONFLICT', 'The memory changed during research. Review it and try again.');
+      (state.locationResearch ??= {})[eventId] = result;
+      return result;
+    });
+  }
+
+  function worldReplay(state, input) {
+    const request = state.requests['world:' + input.requestId];
+    if (!request) return null;
+    check(request.hash === digest(input), 409, 'REQUEST_ID_REUSED', 'This request ID was already used for another generation.');
+    const world = state.worlds.find(item => item.id === request.result.id);
+    check(world && !world.revoked && world.status === 'ready', 409, 'WORLD_UNAVAILABLE', 'This generated scene is no longer current. Review a new plan.');
+    return request.result;
+  }
+
+  async function confirmWorld(req, input) {
+    check(input && typeof input.requestId === 'string' && input.requestId.length > 0 && input.requestId.length <= 128 &&
+      typeof input.previewToken === 'string' && input.previewToken.length <= 128 && Number.isInteger(input.expectedRevision),
+      400, 'INVALID_COMMAND', 'A request ID, preview and current revision are required.');
+    const { actor, project } = scope(req);
+    const before = store.read(actor, project);
+    const replay = worldReplay(before, input);
+    if (replay) return { ok: true, revision: before.revision, data: replay };
+    const preview = before.previews[input.previewToken];
+    check(preview?.kind === 'world' && preview.actor === actor && preview.expires > Date.now(),
+      409, 'PREVIEW_EXPIRED', 'This scene preview expired. Review a new plan.');
+    const { plan } = preview;
+    check(before.revision === input.expectedRevision && plan.revision === before.revision &&
+      plan.inputHash === digest(generationDependencies(before, plan.eventId)),
+      409, 'REVISION_CONFLICT', 'The memory changed. Review a new scene plan.');
+    const photos = await Promise.all(plan.sourceIds.map(async id => {
+      const source = mediaById(before, id);
+      check(source && !source.pending && source.provenance === 'original' && eventById(before, plan.eventId)?.sourceIds.includes(id),
+        409, 'SOURCE_UNAVAILABLE', 'A scene source is no longer available.');
+      return { id, jpeg: await readFile(source.thumb) };
+    }));
+    const generated = await generateWorld(plan, photos);
+    const asset = await storeMesh(generated.buffer, 'Imagined memory.glb', join(dataDir, 'projects', project));
+    let retained = false;
+    try {
+      const result = update(req, 'revision.committed', state => {
+        const replay = worldReplay(state, input);
+        if (replay) return replay;
+        check(state.revision === before.revision && state.previews[input.previewToken]?.actor === actor &&
+          state.previews[input.previewToken].expires > Date.now() && plan.inputHash === digest(generationDependencies(state, plan.eventId)),
+          409, 'REVISION_CONFLICT', 'The memory changed during generation. Review a new plan.');
+        const anchors = generated.photoStops.map(stop => ({ id: uid(), worldId: asset.id, eventId: plan.eventId,
+          title: mediaById(state, stop.sourceId).caption, sourceIds: [stop.sourceId], position: stop.position }));
+        const manifest = { id: asset.id, planId: plan.id, revision: state.revision + 1, format: 'glb', assetId: asset.id,
+          collisionAssetId: asset.id, units: 'm', coordinateSystem: 'right-handed-y-up', scaleConfidence: null,
+          boundsMin: generated.boundsMin, boundsMax: generated.boundsMax, spawn: generated.spawn,
+          anchors: anchors.map(({ id, position, sourceIds }) => ({ id, position, sourceIds })), capability: 'free_roam', provenance: 'imagined' };
+        state.worlds.push({ ...asset, eventId: plan.eventId, title: plan.title + ' · imagined world', status: 'ready', planId: plan.id,
+          approval: 'pending', approved: false, provenance: 'imagined', sourceIds: plan.sourceIds, provider: plan.provider,
+          evidenceRefs: { mediaIds: plan.evidence.media.map(item => item.id), recollectionIds: plan.evidence.recollections.map(item => item.id) },
+          evidenceHash: plan.inputHash, inputHash: digest(plan), plan, sceneManifest: manifest });
+        state.anchors.push(...anchors);
+        delete state.previews[input.previewToken];
+        appendChange(state, 'Generated an imagined memory world', plan.eventId);
+        const data = { id: asset.id, status: 'ready', approved: false };
+        state.requests['world:' + input.requestId] = { hash: digest(input), result: data };
+        return data;
+      });
+      retained = result.data.id === asset.id;
+      return result;
+    } finally {
+      if (!retained) await rm(asset.storage, { force: true });
+    }
+  }
+
+  const newSample = actor => {
+    const { id } = store.create(actor, 'Mont-Tremblant', true);
+    if (sampleRoute) store.update(actor, id, null, state => { addSampleRoute(state); });
+  };
   app.get('/v1/bootstrap', async (req, reply) => {
     let identity = store.browser(cookie(req, 'ew_session'));
     if (!identity) {
       identity = store.newBrowser();
       const secure = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https';
       reply.header('Set-Cookie', 'ew_session=' + identity.token + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000' + (secure ? '; Secure' : ''));
-      store.create(identity.actor, 'The Dolomites', true);
+      newSample(identity.actor);
+    } else {
+      // Sample projects made before the Mont-Tremblant sample: refresh an untouched one, otherwise add the new sample beside it.
+      const samples = store.list(identity.actor).filter(item => item.demo).map(item => ({ ...item, state: store.read(identity.actor, item.id) }));
+      if (!samples.some(item => item.state.demoVersion === demoVersion)) {
+        const untouched = samples.find(item => item.state.revision === 0 && !item.state.capture.observations.length);
+        if (untouched) store.update(identity.actor, untouched.id, null, state => { Object.assign(state, createMemory('Mont-Tremblant', true)); if (sampleRoute) addSampleRoute(state); });
+        else newSample(identity.actor);
+      }
     }
     return { ok: true, data: store.list(identity.actor) };
   });
@@ -135,68 +232,67 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     return { ok: true, data: { deleted: true } };
   });
   app.get(projectPath + '/snapshot', async req => read(req, (state, actor, id) => getSnapshot(id, state)));
-  app.get(projectPath + '/higgsfield', async req => {
-    const { actor, project } = scope(req);
-    store.read(actor, project);
-    return { ok: true, data: { ...higgsfield.status(actor), visionReady: await visionReady() } };
-  });
-  app.post(projectPath + '/higgsfield/connect', async req => {
-    check(!req.headers.authorization, 403, 'BROWSER_REQUIRED', 'Connect Higgsfield from the Everwhere browser.');
-    const { actor, project } = scope(req);
-    const state = store.read(actor, project);
-    check(eventById(state, req.body?.eventId), 404, 'EVENT_NOT_FOUND', 'Choose an available memory.');
-    const origin = new URL(req.headers.origin || req.protocol + '://' + req.headers.host).origin;
-    const returnPath = '/p/' + project + '/explore?generate=' + encodeURIComponent(req.body.eventId);
-    return { ok: true, data: { url: await higgsfield.begin(actor, origin, returnPath) } };
-  });
-  app.get('/v1/higgsfield/callback', async (req, reply) => {
-    const { actor } = auth(req);
-    const returnPath = await higgsfield.finish(actor, req.query.code, req.query.state);
-    return reply.redirect(returnPath);
-  });
-  app.delete(projectPath + '/higgsfield', async req => {
-    check(!req.headers.authorization, 403, 'BROWSER_REQUIRED', 'Disconnect Higgsfield from the Everwhere browser.');
-    const { actor, project } = scope(req);
-    store.read(actor, project);
-    check(!store.all().some(entry => entry.actor === actor && (entry.state.sceneJobs ?? []).some(job => ['queued', 'interpreting', 'building'].includes(job.status))),
-      409, 'SCENE_BUSY', 'Let active scene jobs finish before disconnecting.');
-    higgsfield.disconnect(actor);
-    return { ok: true, data: { connected: false } };
-  });
-  app.post(projectPath + '/scene-jobs', async req => {
-    check(!req.headers.authorization, 403, 'BROWSER_REQUIRED', 'Generate scenes from the Everwhere browser.');
-    const { actor } = scope(req);
-    check(higgsfield.status(actor).connected, 401, 'HIGGSFIELD_AUTH', 'Connect Higgsfield before generating.');
-    check(await visionReady(), 503, 'VISION_UNAVAILABLE', 'Start Ollama and install qwen3-vl:4b on the Everwhere server.');
-    const result = update(req, 'scene.changed', state => {
-      const job = queueScene(state, req.body ?? {});
-      return { id: job.id, status: job.status };
-    });
-    scenes.kick();
-    return result;
-  });
-  app.post(projectPath + '/scene-jobs/:id/resume', async req => {
-    check(!req.headers.authorization, 403, 'BROWSER_REQUIRED', 'Resume scenes from the Everwhere browser.');
-    const result = update(req, 'scene.changed', state => {
-      const job = state.sceneJobs?.find(item => item.id === req.params.id);
-      check(job?.status === 'failed' && job.inputHash === sceneInputHash(state, job.eventId, job.sourceId), 409, 'SCENE_STALE', 'Create a new scene from the current memory.');
-      check(!state.sceneJobs.some(item => ['queued', 'interpreting', 'building'].includes(item.status)), 409, 'SCENE_BUSY', 'Wait for the active scene job to finish.');
-      Object.assign(job, { status: 'queued', error: undefined, retryRequested: true });
-      return { id: job.id, status: job.status };
-    });
-    scenes.kick();
-    return result;
-  });
   app.post(projectPath + '/memories', async req => update(req, 'revision.committed', state => {
     check(req.body?.expectedRevision === state.revision, 409, 'REVISION_CONFLICT', 'Refresh the project before adding a memory.', { revision: state.revision });
     return createEvent(state, req.body);
   }));
-  app.post(projectPath + '/session', async req => update(req, 'session.changed', state => updateSession(state, req.body ?? {})));
+  app.get(projectPath + '/memories/:id/evidence', async req => read(req, state => evidenceFor(state, req.params.id)));
+  app.post(projectPath + '/memories/:id/place-context', async req => researchPlace(req, req.params.id, req.body));
+  app.post(projectPath + '/world-preview', async req => update(req, null, (state, actor) => previewWorld(state, req.body ?? {}, actor)));
+  app.post(projectPath + '/world-jobs', async req => confirmWorld(req, req.body));
+  app.post(projectPath + '/session', async req => {
+    check(!req.headers.authorization || !['activeWorldId', 'viewerId', 'streetViewPlace', 'cameraViewerId', 'streetViewNavigation'].some(key => Object.hasOwn(req.body ?? {}, key)),
+      403, 'BROWSER_REQUIRED', 'Only the browser viewer can register and save an active scene.');
+    return update(req, 'session.changed', state => updateSession(state, req.body ?? {}));
+  });
+  app.post(projectPath + '/worlds/:id/movement-ack', async req => {
+    check(!req.headers.authorization, 403, 'BROWSER_REQUIRED', 'Only the browser viewer can report an executed movement.');
+    return update(req, 'session.changed', state => acknowledgeMovement(state, req.params.id, req.body));
+  });
+  app.post(projectPath + '/camera-action-ack', async req => {
+    check(!req.headers.authorization, 403, 'BROWSER_REQUIRED', 'Only the browser camera can report a camera action.');
+    return update(req, 'session.changed', state => acknowledgeCameraAction(state, req.body));
+  });
+  app.post(projectPath + '/navigate-anchor', async req => {
+    check(!req.headers.authorization, 403, 'BROWSER_REQUIRED', 'Use the browser to select a reviewed destination here.');
+    return update(req, 'session.changed', state => navigateAnchor(state, req.body ?? {}));
+  });
   app.get(projectPath + '/search', async req => read(req, state => rank(state, String(req.query.q || '').slice(0, 4000), req.query.eventId)));
   app.get(projectPath + '/gaps', async req => read(req, state => gapQuestion(state, req.query.eventId || state.session.eventId)));
   app.post(projectPath + '/previews', async req => update(req, null, (state, actor) => previewCommand(state, req.body ?? {}, actor)));
   app.post(projectPath + '/commands', async req => update(req, 'revision.committed', (state, actor) => commitCommand(state, req.body ?? {}, actor)));
   app.post(projectPath + '/film-preview', async req => update(req, null, (state, actor) => previewFilm(state, req.body ?? {}, actor)));
+  app.post(projectPath + '/scene-film-preview', { bodyLimit: 512 * 1024 }, async req =>
+    update(req, null, (state, actor, project) => previewSceneFilm(state, req.body ?? {}, actor, project)));
+  app.post(projectPath + '/scene-films/:token', async (req, reply) => {
+    const { actor, project } = scope(req);
+    const input = { previewToken: req.params.token, requestId: req.headers['x-request-id'] };
+    sceneFilmRequest(store.read(actor, project), input, actor, project);
+    const file = await req.file();
+    check(file, 400, 'FILE_REQUIRED', 'Record one scene video before uploading.');
+    const buffer = await file.toBuffer();
+    const contentHash = createHash('sha256').update(buffer).digest('hex');
+    const checked = sceneFilmRequest(store.read(actor, project), input, actor, project, contentHash);
+    if (checked.job) return { ok: true, revision: store.read(actor, project).revision, data: checked.job };
+    const asset = await storeSceneRecording(buffer, { dir: join(dataDir, 'projects', project), durationSeconds: checked.preview.recording.durationSeconds });
+    let retained = false;
+    try {
+      // A disconnect after the complete request body does not set IncomingMessage.aborted.
+      check(!req.raw.aborted && !reply.raw.destroyed, 409, 'UPLOAD_CANCELLED', 'The recording upload was cancelled.');
+      const result = update(req, 'job.changed', state => queueSceneFilm(state, input, asset, actor, project));
+      retained = result.data.retained;
+      film.start();
+      return { ok: true, revision: result.revision, data: result.data.job };
+    } finally {
+      if (!retained) await rm(asset.storage, { force: true });
+    }
+  });
+  app.post(projectPath + '/scene-films/:token/cancel', async req => {
+    const result = update(req, 'job.changed', (state, actor) => cancelSceneFilm(state,
+      { previewToken: req.params.token, requestId: req.body?.requestId }, actor));
+    await Promise.all(result.data.map(file => rm(file, { force: true })));
+    return { ok: true, revision: result.revision, data: { cancelled: true } };
+  });
   app.post(projectPath + '/jobs', async req => {
     const result = update(req, 'job.changed', (state, actor) => queueFilm(state, req.body ?? {}, actor));
     film.start();
@@ -269,7 +365,7 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
   const removeCapture = async (req, id, discard) => {
     const result = update(req, 'capture.changed', state => revokeCapture(state, id, discard));
     await Promise.all(result.data.files.map(removeMedia));
-    await Promise.all([...result.data.outputs.flatMap(job => [job.output, job.captions]), ...result.data.worlds.map(world => world.storage)]
+    await Promise.all([...result.data.outputs.flatMap(job => [job.output, job.captions, job.recording]), ...result.data.worlds.map(world => world.storage)]
       .filter(Boolean).map(file => rm(file, { force: true })));
     return { ok: true, revision: result.revision, data: { withdrawn: result.data.files.length } };
   };
@@ -279,19 +375,45 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     const { actor, project } = scope(req);
     const session = assertCapture(store.read(actor, project), req.params.s);
     check(session.source !== 'voiceos_text', 400, 'CAPTURE_SOURCE', 'This capture session expects text.');
-    const file = await req.file();
+    const provenance = req.query.provenance ?? 'original';
+    check(['original', 'imagined'].includes(provenance), 400, 'INVALID_PROVENANCE', 'Identify this image as original or imagined.');
+    check(provenance === 'original' || session.source === 'selected_file', 400, 'INVALID_PROVENANCE', 'Only selected images can be labeled imagined.');
+    let file, bytes, attribution;
+    for await (const part of req.parts({ limits: { fileSize: 48 * 1024 ** 2, files: 1, fields: 1, parts: 2, fieldSize: 8192 } })) {
+      if (part.type === 'file') {
+        check(part.fieldname === 'file', 400, 'FILE_REQUIRED', 'Select one media file.');
+        file = part;
+        bytes = await part.toBuffer();
+      } else {
+        check(part.fieldname === 'attribution' && !part.valueTruncated && typeof part.value === 'string',
+          400, 'INVALID_ATTRIBUTION', 'Provide one bounded public-photo attribution field.');
+        let value;
+        try { value = JSON.parse(part.value); }
+        catch { check(false, 400, 'INVALID_ATTRIBUTION', 'Public-photo attribution must be valid JSON.'); }
+        attribution = normalizeAttribution(value);
+      }
+    }
     check(file, 400, 'FILE_REQUIRED', 'Select one media file.');
+    check(!attribution || session.source === 'selected_file', 400, 'INVALID_ATTRIBUTION', 'Public-photo attribution belongs to a selected image.');
     const externalId = String(req.headers['x-capture-id'] || uid());
     check(externalId.length <= 128, 400, 'CAPTURE_ID', 'Invalid capture ID.');
-    const item = await ingest(await file.toBuffer(), { name: file.filename, audio: session.source === 'browser_audio',
+    const item = await ingest(bytes, { name: file.filename, audio: session.source === 'browser_audio',
       keepLocation: session.locationMode === 'precise', dir: join(dataDir, 'projects', project) });
     let retained = false;
     try {
+      check(provenance === 'original' || item.mime.startsWith('image/'), 400, 'INVALID_PROVENANCE', 'Only images can be labeled imagined.');
+      if (provenance === 'imagined') Object.assign(item, { provenance, caption: ('Imagined reference · ' + item.caption).slice(0, 180) });
+      check(!attribution || item.mime.startsWith('image/'), 400, 'INVALID_ATTRIBUTION', 'Public-photo attribution belongs to a selected image.');
+      if (attribution) item.attribution = attribution;
       return update(req, 'capture.changed', state => {
         assertCapture(state, session.id);
         const prior = state.capture.observations.find(entry => entry.sessionId === session.id && entry.externalId === externalId);
         const existing = prior ? mediaById(state, prior.mediaId) : state.media.find(media => !media.revoked && media.hash === item.hash);
         if (prior) check(existing?.hash === item.hash, 409, 'CAPTURE_CONFLICT', 'This capture ID refers to different content.');
+        if (existing) check(existing.provenance === item.provenance, 409, 'PROVENANCE_CONFLICT',
+          'This image is already classified differently. Keep its existing provenance, or withdraw it before reclassifying it.');
+        if (existing) check(digest(existing.attribution ?? null) === digest(item.attribution ?? null), 409,
+          'ATTRIBUTION_CONFLICT', 'This photo already has different source credits. Keep its existing credits, or withdraw it before uploading corrected credits.');
         if (existing) return { media: cleanMedia(existing), observationId: prior?.id ?? null, duplicate: true };
         Object.assign(item, { pending: true, captureGrant: session.grantId });
         state.media.push(item);
@@ -317,30 +439,61 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     return streamFile(req, reply, source.storage, source.mime);
   });
   app.post(projectPath + '/memories/:eventId/worlds', async req => {
-    check(req.query.consent === '1', 400, 'CONSENT_REQUIRED', 'Confirm you have permission to use this scene and its source.');
+    check(req.query.consent === '1', 400, 'CONSENT_REQUIRED', 'Confirm you have permission to use this scene and all its sources.');
     const { actor, project } = scope(req);
-    const sourceId = req.query.sourceId;
+    let sourceIds;
+    try { sourceIds = req.query.sourceIds === undefined ? [req.query.sourceId] : JSON.parse(req.query.sourceIds); }
+    catch { check(false, 400, 'INVALID_SOURCES', 'Choose the reviewed images used to create this scene.'); }
+    check(Array.isArray(sourceIds) && sourceIds.length > 0 && sourceIds.length <= 100 &&
+      sourceIds.every(id => typeof id === 'string' && id.length > 0 && id.length <= 128) && new Set(sourceIds).size === sourceIds.length,
+      400, 'INVALID_SOURCES', 'Choose between 1 and 100 distinct reviewed images used to create this scene.');
+    sourceIds.sort();
+    const provenance = req.query.provenance ?? 'imagined';
+    check(['imagined', 'reconstructed'].includes(provenance), 400, 'INVALID_PROVENANCE', 'Identify the scene as a generated interpretation or a reconstructed scan.');
+    for (const value of [req.query.provider, req.query.title]) {
+      check(value === undefined || (typeof value === 'string' && value.trim().length > 0 && value.length <= 120),
+        400, 'INVALID_WORLD_DETAILS', 'Scene title and provider must be between 1 and 120 characters.');
+    }
+    const provider = req.query.provider?.trim() || 'Imported scene';
     const state = store.read(actor, project);
     const event = eventById(state, req.params.eventId);
-    const source = mediaById(state, sourceId);
-    check(event?.sourceIds.includes(sourceId) && source?.provenance === 'original' && !source.pending && source.mime.startsWith('image/'),
-      400, 'ORIGINAL_REQUIRED', 'Choose an original image linked to this memory.');
+    const sources = sourceIds.map(id => mediaById(state, id));
+    const availableImage = (source, memory) => source && memory?.sourceIds.includes(source.id) && !source.pending &&
+      ['original', 'imagined'].includes(source.provenance) && source.mime.startsWith('image/');
+    check(sources.every(source => availableImage(source, event)),
+      400, 'ORIGINAL_REQUIRED', 'Every scene source must be an available reviewed image linked to this memory.');
     check(Number(req.query.expectedRevision) === state.revision, 409, 'REVISION_CONFLICT', 'Review the current memory before adding a world.');
     const file = await req.file();
-    check(file, 400, 'FILE_REQUIRED', 'Choose an SPZ splat or GLB mesh.');
-    const save = /\.glb$/i.test(file.filename) ? storeMesh : storeSplat;
+    check(file, 400, 'FILE_REQUIRED', 'Choose an SPZ splat, GLB mesh or .tour.json walkthrough.');
+    const isTour = /\.tour\.json$/i.test(file.filename);
+    check(!isTour || provenance === 'imagined', 400, 'INVALID_PROVENANCE', 'A photo walkthrough must be labeled as an imagined interpretation, not a measured reconstruction.');
+    const allowsImagined = provenance === 'imagined' && (isTour || /\.glb$/i.test(file.filename));
+    check(allowsImagined || sources.every(source => source.provenance === 'original'),
+      400, 'ORIGINAL_REQUIRED', 'Reconstructed scans and SPZ scenes require original source images. Imagined references require an imagined GLB or photo walkthrough.');
+    const save = isTour ? storeTour : /\.glb$/i.test(file.filename) ? storeMesh : storeSplat;
     const asset = await save(await file.toBuffer(), file.filename, join(dataDir, 'projects', project));
+    const title = req.query.title?.trim() || asset.title;
+    const inputHash = digest({ eventId: event.id, sources: sources.map(source => [source.id, source.hash]),
+      contentHash: asset.contentHash, provenance, provider, title });
     let retained = false;
     try {
+      if (isTour) check(asset.tour.nodes.every(node => (node.sourceIds ?? []).every(id => sourceIds.includes(id))),
+        400, 'INVALID_TOUR_SOURCES', 'Every viewpoint source must be one of the images selected for this walkthrough.');
       const result = update(req, 'revision.committed', current => {
         check(current.revision === state.revision, 409, 'REVISION_CONFLICT', 'The memory changed during upload. Review and try again.');
+        check(sourceIds.every(id => {
+          const source = mediaById(current, id);
+          return availableImage(source, eventById(current, event.id)) && (allowsImagined || source.provenance === 'original');
+        }), 409, 'SOURCE_UNAVAILABLE', 'A scene source is no longer available.');
         const worlds = current.worlds ??= [];
-        const existing = worlds.find(item => !item.revoked && item.contentHash === asset.contentHash && item.eventId === event.id);
+        const existing = worlds.find(item => !item.revoked && item.status === 'ready' && item.inputHash === inputHash && item.eventId === event.id);
         if (existing) return { id: existing.id, duplicate: true };
-        const world = { ...asset, eventId: event.id, status: 'ready', approval: 'pending', approved: false,
-          sourceIds: [source.id], provenance: 'reconstructed', inputHash: digest([event.id, source.id, source.hash, asset.contentHash]) };
+        const world = { ...asset, title, eventId: event.id, status: 'ready', approval: 'pending', approved: false,
+          sourceIds, provenance, provider, inputHash };
         worlds.push(world);
-        appendChange(current, 'Imported a 3D reconstruction', event.id);
+        if (isTour) current.anchors.push(...asset.tour.nodes.map(node => ({ id: uid(), eventId: event.id, worldId: asset.id,
+          nodeId: node.id, title: node.title, sourceIds: node.sourceIds ?? [], position: [0, 0, 0] })));
+        appendChange(current, provenance === 'imagined' ? 'Imported a generated interpretation' : 'Imported a reconstructed scan', event.id);
         return { id: asset.id, duplicate: false };
       });
       retained = !result.data.duplicate;
@@ -357,21 +510,46 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     const { actor, project } = scope(req);
     const state = store.read(actor, project);
     const world = state.worlds?.find(item => item.id === req.params.id);
-    check(world?.approved && !world.revoked && req.params.asset === (world.format === 'glb' ? 'scene.glb' : 'scene.spz') && state.session.lens === 'all' &&
-      world.sourceIds.every(id => mediaById(state, id) && eventById(state, world.eventId)?.sourceIds.includes(id)),
-      404, 'WORLD_UNAVAILABLE', 'This reconstruction is unavailable.');
+    check(world?.approved && !world.revoked && world.status === 'ready' && state.session.lens === 'all' &&
+      world.sourceIds.length > 0 && world.sourceIds.every(id => {
+        const source = mediaById(state, id);
+        return source && !source.pending && eventById(state, world.eventId)?.sourceIds.includes(id);
+      }),
+      404, 'WORLD_UNAVAILABLE', 'This scene is unavailable.');
+    if (req.params.asset === 'plan.json') {
+      check(world.plan && world.sceneManifest, 404, 'PLAN_UNAVAILABLE', 'This scene does not have a generation plan.');
+      return reply.header('Content-Disposition', 'attachment; filename="everwhere-scene-plan.json"').send({
+        version: 'everwhere-generation-1', contract: 'context and sceneManifest follow V3.1 definitions; this is not the full V3.1 exchange document',
+        context: sceneContext(state, project, world.eventId, world.sourceIds, world.id),
+        sceneManifest: { ...world.sceneManifest, revision: state.revision }, plan: handoffPlan(world.plan),
+        unrealHandoff: 'GLB is metres/right-handed Y-up. Convert units and axes on import to Unreal centimetres/left-handed Z-up. Validate materials, collision, spawn and scale in Unreal; native Unreal import is not verified.'
+      });
+    }
+    if (req.params.asset === 'credits.json') {
+      return reply.header('Content-Disposition', 'attachment; filename="everwhere-source-credits.json"')
+        .send(worldCredits(world, world.sourceIds.map(id => mediaById(state, id))));
+    }
+    if (world.format === 'tour') {
+      check(req.params.asset === 'tour.json', 404, 'WORLD_UNAVAILABLE', 'This walkthrough asset is unavailable.');
+      if (req.query.download === '1') reply.header('Content-Disposition', 'attachment; filename="everwhere-memory.tour.json"');
+      return streamFile(req, reply, world.demoFile ? join(demoDir, world.demoFile) : world.storage, 'application/json');
+    }
+    check(req.params.asset === (world.format === 'glb' ? 'scene.glb' : 'scene.spz'), 404, 'WORLD_UNAVAILABLE', 'This scene asset is unavailable.');
+    if (req.query.download === '1') reply.header('Content-Disposition', 'attachment; filename="everwhere-memory.' + (world.format === 'glb' ? 'glb' : 'spz') + '"');
     return streamFile(req, reply, world.storage, world.format === 'glb' ? 'model/gltf-binary' : 'application/octet-stream');
   });
   app.get(projectPath + '/artifacts/:id/access', async req => read(req, (state, actor, project) => {
     const job = state.jobs.find(item => item.id === req.params.id);
-    check(job?.status === 'ready' && job.approved, 404, 'ARTIFACT_UNAVAILABLE', 'Approve a current film before accessing it.');
+    check(job?.status === 'ready' && job.approved && (job.kind !== 'scene_recording' || state.session.lens === 'all'),
+      404, 'ARTIFACT_UNAVAILABLE', 'Approve a current film before accessing it.');
     return { url: '/v1/projects/' + project + '/artifacts/' + job.id + '/file' };
   }));
   app.get(projectPath + '/artifacts/:id/:file', async (req, reply) => {
     const { actor, project } = scope(req);
-    const job = store.read(actor, project).jobs.find(item => item.id === req.params.id);
+    const state = store.read(actor, project);
+    const job = state.jobs.find(item => item.id === req.params.id);
     const captions = req.params.file === 'captions';
-    check(job?.status === 'ready' && job.approved && ['file', 'captions'].includes(req.params.file), 404,
+    check(job?.status === 'ready' && job.approved && (job.kind !== 'scene_recording' || state.session.lens === 'all') && ['file', 'captions'].includes(req.params.file), 404,
       'ARTIFACT_UNAVAILABLE', 'This export is unavailable or awaiting approval.');
     if (req.query.download === '1') reply.header('Content-Disposition', 'attachment; filename="everwhere-film.mp4"');
     return streamFile(req, reply, captions ? job.captions : job.output, captions ? 'text/vtt; charset=utf-8' : 'video/mp4');
@@ -390,19 +568,31 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     }, actor));
     switch (tool) {
       case 'get_context': return read(req, state => ({
-        title: state.title, event: eventById(state, state.session.eventId)?.title ?? null, revision: state.revision, ...state.session,
-        anchors: state.anchors.filter(item => item.eventId === state.session.eventId).map(({ id, title }) => ({ id, title })),
+        title: state.title, event: eventById(state, state.session.eventId)?.title ?? null, revision: state.revision, ...movementSession(state),
+        defaultWalkableWorldId: defaultWalkableWorld(state)?.id ?? null,
+        navigation: navigationGuide(state),
+        walkableWorlds: walkableWorlds(state).map(({ id, title, format }) => ({ id, title, format })),
+        anchors: state.anchors.filter(item => item.eventId === state.session.eventId).map(({ id, title, worldId, nodeId }) => ({ id, title,
+          ...(worldId && { worldId }), ...(nodeId && { nodeId }) })),
         jobs: state.jobs.slice(0, 5).map(({ id, status }) => ({ id, status }))
       }));
       case 'retrieve_media': return read(req, state => rank(state, input.query, input.eventId));
       case 'select_event': return update(req, 'session.changed', state => updateSession(state, { eventId: resolveEvent(state, input.query).id }));
-      case 'navigate_anchor': return update(req, 'session.changed', state => updateSession(state, { anchorId: input.anchorId, view: 'explore' }));
+      case 'navigate_anchor': return update(req, 'session.changed', state => navigateAnchor(state, input));
+      case 'move_player': return update(req, 'session.changed', state => queueMovement(state, input));
+      case 'camera_action': return update(req, 'session.changed', state => queueCameraAction(state, input));
       case 'switch_view': return update(req, 'session.changed', state => updateSession(state, { view: input.view }));
       case 'set_lens': {
         check(input.mode !== 'dream', 400, 'LENS_UNAVAILABLE', 'Dream mode is unavailable.');
         return update(req, 'session.changed', state => updateSession(state, { lens: input.mode === 'original' ? 'originals' : 'all' }));
       }
       case 'get_gap_question': return read(req, state => gapQuestion(state, active(state)));
+      case 'get_scene_evidence': return read(req, state => voiceEvidence(evidenceFor(state, active(state))));
+      case 'research_place': return researchPlace(req, read(req, active).data, input);
+      case 'preview_memory_world': return update(req, null, (state, actor) => {
+        const preview = previewWorld(state, { ...input, eventId: active(state) }, actor);
+        return { ...preview, plan: handoffPlan(preview.plan) };
+      });
       case 'preview_recollection': return prepare('recollection.add', () => ({ text: input.text, ...(input.anchorId && { anchorId: input.anchorId }) }));
       case 'preview_correction': return prepare('event.correct', () => ({ patch: input.patch }));
       case 'preview_style': return prepare('profile.set', () => ({ preset: input.preset }));
@@ -415,7 +605,8 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
         return previewFilm(state, { eventId: state.session.eventId, expectedRevision: input.expectedRevision }, actor);
       });
       case 'confirm_change': {
-        const previewKind = read(req, state => state.previews[input.previewToken]?.kind || (state.requests['film:' + input.requestId] ? 'film' : null)).data;
+        const previewKind = read(req, state => state.previews[input.previewToken]?.kind || (state.requests['film:' + input.requestId] ? 'film' : state.requests['world:' + input.requestId] ? 'world' : null)).data;
+        if (previewKind === 'world') return confirmWorld(req, input);
         if (previewKind === 'film') {
           const result = update(req, 'job.changed', (state, actor) => {
             check(state.revision === input.expectedRevision || state.requests['film:' + input.requestId], 409, 'REVISION_CONFLICT', 'Review the current revision first.');

@@ -6,8 +6,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 type Position = [number, number, number];
 
-export default function Spatial({ url, position, onClose, onWaypoint }: {
-  url: string; position?: Position; onClose: () => void; onWaypoint: (position: Position) => void;
+export default function Spatial({ url, provenance = 'reconstructed', position, onClose, onWaypoint }: {
+  url: string; provenance?: 'imagined' | 'reconstructed'; position?: Position; onClose: () => void; onWaypoint: (position: Position) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<{ move: (position: Position) => void; read: () => Position; orbit: (key: string) => void } | null>(null);
@@ -109,9 +109,9 @@ export default function Spatial({ url, position, onClose, onWaypoint }: {
       }
     }}>
     <div className="spatial-canvas" ref={host} />
-    <div className="spatial-bar"><span className="glass-pill"><Box size={15} /> Imported SPZ · Guided inspection · Scale unverified</span>
+    <div className="spatial-bar"><span className="glass-pill"><Box size={15} /> {provenance === 'imagined' ? 'Generated interpretation' : 'Reconstructed scan'} · Guided inspection · Scale unverified</span>
       <button className="glass-icon" onClick={onClose} aria-label="Close 3D scene"><X size={18} /></button></div>
-    {phase === 'load' && <div className="spatial-state" role="status">Loading the reconstruction…</div>}
+    {phase === 'load' && <div className="spatial-state" role="status">Loading the scene…</div>}
     {phase === 'error' && <div className="spatial-state" role="status"><p>The 3D scene could not be loaded on this device.</p><button className="btn" onClick={onClose}>Return to photo trail</button></div>}
     {phase === 'ready' && <div className="spatial-help"><span>Drag to orbit · Scroll to zoom · Walking requires a collision mesh</span><button className="btn compact" onClick={() => {
       const point = controlsRef.current?.read();

@@ -11,7 +11,7 @@
     "start": "node apps/api/server.mjs",
     "mcp": "node apps/mcp/index.mjs",
     "voiceos:manifest": "node apps/mcp/manifest.mjs",
-    "test": "node --test tests/*.test.mjs",
+    "test": "EVERWHERE_SAMPLE_ROUTE=0 node --test tests/*.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

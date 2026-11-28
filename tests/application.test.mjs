@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { gzipSync, zstdCompressSync } from 'node:zlib';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -17,9 +17,10 @@ import { integrationManifest } from '../apps/mcp/manifest.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { createStore } from '../apps/api/store.mjs';
 
-async function setup(t) {
+async function setup(t, configure) {
   const dir = await mkdtemp(join(tmpdir(), 'everwhere-test-'));
   const app = await createApp({ dataDir: dir, serveWeb: false });
+  configure?.(app);
   t.after(async () => { await app.close(); await rm(dir, { recursive: true, force: true }); });
   const root = await app.listen({ port: 0, host: '127.0.0.1' });
   async function browser() {
@@ -42,27 +43,6 @@ async function setup(t) {
   }
   return { dir, root, ...first, p, browser, request, snap: () => request(p + '/snapshot') };
 }
-
-test('scene generation requires a browser session before provider readiness checks', async t => {
-  const { p, request } = await setup(t);
-  const { token } = await request(p + '/pairing', { confirm: true });
-  const originalFetch = globalThis.fetch;
-  let readinessChecks = 0;
-  globalThis.fetch = (...args) => {
-    if (String(args[0]) === 'http://127.0.0.1:11434/api/tags') readinessChecks++;
-    return originalFetch(...args);
-  };
-  try {
-    const headers = { Authorization: 'Bearer ' + token };
-    const create = await request(p + '/scene-jobs', {}, { cookie: '', headers, status: 403 });
-    assert.equal(create.code, 'BROWSER_REQUIRED');
-    const resume = await request(p + '/scene-jobs/not-a-job/resume', {}, { cookie: '', headers, status: 403 });
-    assert.equal(resume.code, 'BROWSER_REQUIRED');
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-  assert.equal(readinessChecks, 0);
-});
 
 async function makeImage(color = '#557764') {
   return sharp({ create: { width: 48, height: 32, channels: 3, background: color } }).jpeg().toBuffer();
@@ -188,13 +168,77 @@ test('revision conflicts, exact replay, independent story accounts, undo, and du
     await request(p + '/session', { view, eventId: 'e-lake' });
     const fresh = await snap();
     assert.equal(fresh.session.eventId, 'e-lake');
-    assert.equal(fresh.session.view, view);
+    assert.equal(fresh.session.view, view === 'archive' ? 'explore' : view);
     assert.equal(fresh.events[0].placeLabel, 'A lakeside pier');
   }
   assert.deepEqual((await snap()).media, original);
   await request(p + '/commands', await propose(ctx, 'undo', 'e-lake', { revisionToUndo: 3 }));
   assert.equal((await snap()).recollections.length, 1);
   assert.equal((await snap()).revision, 4);
+});
+
+test('retired views normalize consistently without changing lens or accepting unknown modes', async t => {
+  const { dir, p, demo, request, snap } = await setup(t);
+  const db = new DatabaseSync(join(dir, 'everwhere.sqlite'));
+  t.after(() => db.close());
+  const readState = () => JSON.parse(db.prepare('SELECT state FROM projects WHERE id = ?').get(demo.id).state);
+  const { token } = await request(p + '/pairing', { confirm: true });
+  const voice = (name, body, status = 200) => request(p + '/voice/' + name, body,
+    { cookie: '', headers: { Authorization: 'Bearer ' + token }, status });
+  for (const alias of ['universe', 'archive']) {
+    const legacy = readState();
+    legacy.session.view = alias;
+    legacy.session.lens = 'originals';
+    legacy.session.anchorNavigationId = 'legacy-navigation';
+    db.prepare('UPDATE projects SET state = ? WHERE id = ?').run(JSON.stringify(legacy), demo.id);
+    assert.equal((await voice('switch_view', { view: alias })).anchorNavigationId, 'legacy-navigation');
+    db.prepare('UPDATE projects SET state = ? WHERE id = ?').run(JSON.stringify(legacy), demo.id);
+    const actual = alias === 'universe' ? (await snap()).session : await voice('get_context', {});
+    assert.equal(actual.view, 'explore');
+    assert.equal(actual.lens, 'originals');
+    assert.equal(readState().session.view, 'explore');
+    assert.equal(readState().session.lens, 'originals');
+    const selected = await voice('switch_view', { view: alias });
+    assert.equal(selected.view, 'explore');
+    assert.equal(selected.lens, 'originals');
+    assert.equal((await snap()).session.view, 'explore');
+  }
+  const before = readState();
+  assert.equal((await request(p + '/session', { view: 'unknown' }, { status: 400 })).code, 'INVALID_MODE');
+  assert.equal((await voice('switch_view', { view: 'unknown' }, 400)).code, 'INVALID_TOOL_INPUT');
+  assert.deepEqual(readState(), before);
+});
+
+test('MCP stdio exposes tools before setup and rejects missing or unsafe configuration without API access', async t => {
+  let requests = 0;
+  const ctx = await setup(t, app => app.addHook('onRequest', async () => { requests++; }));
+  const baseline = requests;
+  const base = { EVERWHERE_API: ctx.root, EVERWHERE_PROJECT: ctx.demo.id, EVERWHERE_PAIRING_TOKEN: 'test-secret' };
+  const cases = [
+    ['missing project', { EVERWHERE_PROJECT: '' }],
+    ['missing token', { EVERWHERE_PAIRING_TOKEN: '' }],
+    ['malformed origin', { EVERWHERE_API: 'not a URL' }],
+    ['URL credentials', { EVERWHERE_API: ctx.root.replace('://', '://test-secret:password@') }],
+    ['non-loopback HTTP', { EVERWHERE_API: 'http://example.invalid' }],
+    ['non-HTTP protocol', { EVERWHERE_API: 'file:///tmp/everwhere' }]
+  ];
+  for (const [name, env] of cases) await t.test(name, async () => {
+    const client = new Client({ name: 'everwhere-setup-test', version: '1.0.0' });
+    try {
+      await client.connect(new StdioClientTransport({ command: process.execPath,
+        args: [fileURLToPath(new URL('../apps/mcp/index.mjs', import.meta.url))], env: { ...base, ...env } }));
+      assert.equal((await client.listTools()).tools.length, 21);
+      const result = await client.callTool({ name: 'get_context', arguments: {} });
+      assert.equal(result.isError, true);
+      const data = JSON.parse(result.content[0].text);
+      assert.equal(data.code, 'EVERWHERE_SETUP_REQUIRED');
+      assert.match(data.message, /reload/);
+      assert.equal(data._voiceos_glance.blocks[0].trailing, 'Needs attention');
+      assert.equal(data._voiceos_glance.blocks[1].pairs[0][1], data.message);
+      assert.equal(JSON.stringify(result).includes('test-secret'), false);
+      assert.equal(requests, baseline);
+    } finally { await client.close(); }
+  });
 });
 
 test('MCP stdio uses the real API, applies a correction and recollection, and pushes an SSE update', async t => {
@@ -222,7 +266,7 @@ test('MCP stdio uses the real API, applies a correction and recollection, and pu
   try {
     await client.connect(transport);
     const tools = await client.listTools();
-    assert.equal(tools.tools.length, 16);
+    assert.equal(tools.tools.length, 21);
     assert.deepEqual(manifest.tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
       tools.tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })));
     async function voice(name, args = {}, expectsError = false) {
@@ -232,11 +276,19 @@ test('MCP stdio uses the real API, applies a correction and recollection, and pu
       assert.equal(data._voiceos_glance.blocks.length, 2);
       return data;
     }
-    assert.equal((await voice('get_context')).data.event, 'Lago di Braies');
+    assert.equal((await voice('get_context')).data.event, 'Place Saint-Bernard');
+    await request(p + '/session', { cameraViewerId: 'mcp-camera-test' });
+    const camera = await voice('camera_action', { action: 'open' });
+    assert.equal(camera.data.status, 'queued');
+    assert.equal(camera.data.command.viewerId, 'mcp-camera-test');
+    assert.equal(camera._voiceos_glance.blocks[0].trailing, 'Queued');
+    assert.match(camera._voiceos_glance.blocks[1].pairs[0][1], /Waiting for/);
+    assert.equal((await voice('get_context')).data.cameraReceipt, undefined);
+    await request(p + '/session', { cameraViewerId: null, viewerId: 'mcp-camera-test' });
     assert.ok(tools.tools.find(tool => tool.name === 'switch_view').inputSchema.properties.view.enum.includes('universe'));
     await voice('switch_view', { view: 'universe' });
-    assert.equal((await snap()).session.view, 'universe');
-    assert.equal((await voice('get_context')).data.view, 'universe');
+    assert.equal((await snap()).session.view, 'explore');
+    assert.equal((await voice('get_context')).data.view, 'explore');
     await voice('navigate_anchor', { anchorId: 'a-boats' });
     const navigation = (await snap()).session;
     assert.equal(navigation.view, 'explore');
@@ -245,12 +297,14 @@ test('MCP stdio uses the real API, applies a correction and recollection, and pu
     await voice('navigate_anchor', { anchorId: 'a-boats' });
     const repeatedNavigationId = (await snap()).session.anchorNavigationId;
     assert.notEqual(repeatedNavigationId, navigation.anchorNavigationId);
-    await voice('select_event', { query: 'Lago di Braies' });
+    await voice('select_event', { query: 'Place Saint-Bernard' });
     assert.equal((await snap()).session.anchorNavigationId, repeatedNavigationId);
     await voice('switch_view', { view: 'explore' });
     assert.equal((await snap()).session.view, 'explore');
     assert.equal((await snap()).session.anchorNavigationId, repeatedNavigationId);
     await voice('switch_view', { view: 'universe' });
+    assert.equal((await snap()).session.anchorNavigationId, repeatedNavigationId);
+    await voice('switch_view', { view: 'remember' });
     assert.equal((await snap()).session.anchorNavigationId, null);
     await voice('switch_view', { view: 'explore' });
     assert.ok((await request(p + '/pairing')).lastSeen > 0);
@@ -318,12 +372,21 @@ test('real 1080p MP4 plays over range requests and dependency staleness blocks d
   const jobPreview = await request(p + '/film-preview', { eventId: 'e-lake', expectedRevision: 1 });
   assert.equal(jobPreview.diff.containsImagined, true);
   assert.equal(jobPreview.diff.narration, true);
+  const storyboard = jobPreview.diff.storyboard;
+  assert.deepEqual(storyboard, (await snap()).storyboards['e-lake']);
+  assert.deepEqual(storyboard.frames.map(frame => frame.sourceId), ['m-boats', 'm-lake']);
+  assert.equal(storyboard.frames.find(frame => frame.sourceId === 'm-lake').recollection.text, 'My account of the lakeshore.');
+  assert.equal(storyboard.frames.find(frame => frame.sourceId === 'm-boats').recollection, undefined);
+  assert.equal(storyboard.narration.sourceId, audio.media.id);
+  assert.equal(storyboard.narration.startSeconds, storyboard.frames[0].seconds);
   const job = await request(p + '/jobs', { requestId: randomUUID(), previewToken: jobPreview.previewToken });
+  assert.deepEqual(job.storyboard, storyboard);
   const artifact = p + '/artifacts/' + job.id;
   await request(artifact + '/access', undefined, { status: 404 });
   await request(p + '/commands', await propose(ctx, 'event.correct', 'e-cabin', { patch: { title: 'Unaffected by the lake film' } }));
   const ready = await waitForJob(ctx, job.id);
   assert.equal(ready.status, 'ready', ready.error);
+  assert.deepEqual(ready.storyboard, storyboard);
   await request(artifact + '/access', undefined, { status: 404 });
   await request(p + '/commands', await propose(ctx, 'artifact.approve', 'e-lake', { artifactId: job.id, dependencyHash: job.inputHash }));
   const approved = await request(artifact + '/access');
@@ -338,14 +401,27 @@ test('real 1080p MP4 plays over range requests and dependency staleness blocks d
   assert.equal(media.streams[1].codec_name, 'aac');
   assert.equal(media.streams[2].codec_name, 'mov_text');
   assert.ok(Number(media.format.duration) >= 30 && Number(media.format.duration) <= 60);
-  const audioTrack = execFileSync('ffmpeg', ['-v', 'error', '-i', file, '-map', '0:a:0', '-t', '1', '-f', 's16le', '-']);
-  assert.ok(audioTrack.some(byte => byte !== 0), 'The approved voice note is audible');
+  assert.ok(Math.abs(Number(media.format.duration) - storyboard.durationSeconds) < 0.1);
+  const audioEnergy = start => {
+    const samples = execFileSync('ffmpeg', ['-v', 'error', '-i', file, '-ss', String(start), '-map', '0:a:0', '-t', '0.5', '-f', 's16le', '-']);
+    assert.ok(samples.length > 0);
+    let squared = 0;
+    for (let offset = 0; offset < samples.length; offset += 2) squared += samples.readInt16LE(offset) ** 2;
+    return Math.sqrt(squared / (samples.length / 2));
+  };
+  assert.ok(audioEnergy(storyboard.narration.startSeconds) > 100, 'The approved note is audible at its planned shot');
+  if (storyboard.narration.startSeconds > 0) assert.ok(audioEnergy(0) < 1, 'Earlier shots must not play another source’s narration');
   const captions = await fetch(root + artifact + '/captions', { headers: { Cookie: cookie } });
-  assert.match(await captions.text(), /Imagined demo imagery/);
+  const captionText = await captions.text();
+  assert.match(captionText, /Imagined demo imagery/);
+  assert.match(captionText, /My account of the lakeshore\./);
+  const boathouseCaption = captionText.indexOf('Gondolas over the slopes');
+  assert.ok(boathouseCaption >= 0 && boathouseCaption < captionText.indexOf('The pedestrian village'));
   t.diagnostic('FFprobe: 1920×1080 H.264 + AAC + captions, ' + media.format.duration + ' seconds');
   await request(p + '/capture/grants/' + session.grantId + '/revoke', {});
   assert.equal((await snap()).recollections.length, 0);
   assert.equal((await request(p + '/jobs/' + job.id)).status, 'stale');
+  assert.equal((await request(p + '/jobs/' + job.id)).storyboard, undefined);
   await request(artifact + '/access', undefined, { status: 404 });
   const nextPreview = await request(p + '/film-preview', { eventId: 'e-lake', expectedRevision: (await snap()).revision });
   const next = await request(p + '/jobs', { requestId: randomUUID(), previewToken: nextPreview.previewToken });
@@ -388,6 +464,7 @@ test('imported SPZ delivery requires its approval, current lens, and linked orig
   const world = (await snap()).worlds.find(item => item.id === saved.id);
   assert.equal(world.id, saved.id);
   assert.equal(world.approved, false);
+  assert.equal(world.provenance, 'imagined', 'Legacy imports must not assert measured reconstruction');
   const asset = p + '/worlds/' + world.id + '/scene.spz';
   const headers = { Cookie: cookie };
   assert.equal((await fetch(root + asset, { headers })).status, 404);
@@ -425,12 +502,13 @@ test('GLB scans keep private source approval and revocation gates and reject ext
     binaryHeader.writeUInt32LE(positions.length); binaryHeader.writeUInt32LE(0x004e4942, 4);
     return Buffer.concat([header, padded, binaryHeader, positions]);
   }
-  const endpoint = p + '/memories/e-lake/worlds?consent=1&expectedRevision=1&sourceId=' + upload.media.id;
+  const endpoint = p + '/memories/e-lake/worlds?consent=1&expectedRevision=1&provenance=reconstructed&sourceId=' + upload.media.id;
   await request(endpoint, asUpload(glb(true), 'External.glb'), { status: 400 });
   await request(endpoint, asUpload(glb().subarray(0, -1), 'Truncated.glb'), { status: 400 });
   const saved = await request(endpoint, asUpload(glb(), 'Room.glb'));
   const world = (await snap()).worlds.find(item => item.id === saved.id);
   assert.equal(world.format, 'glb');
+  assert.equal(world.provenance, 'reconstructed');
   const asset = p + '/worlds/' + world.id + '/scene.glb';
   const headers = { Cookie: cookie };
   assert.equal((await fetch(root + asset, { headers })).status, 404);
@@ -447,4 +525,90 @@ test('GLB scans keep private source approval and revocation gates and reject ext
   await request(p + '/capture/grants/' + session.grantId + '/revoke', {});
   assert.equal((await fetch(root + asset, { headers })).status, 404);
   assert.equal((await snap()).worlds.length, 0);
+});
+
+test('imported interpretations retain every source and separate provenance variants through approval and revocation', async t => {
+  const ctx = await setup(t);
+  const { p, request, root, cookie, snap } = ctx;
+  const photos = [];
+  for (const [color, name] of [['#b87345', 'First source'], ['#527ab4', 'Second source']]) {
+    const session = await request(p + '/capture/sessions', { consent: true, source: 'selected_file' });
+    const upload = await request(p + '/capture/sessions/' + session.id + '/files', asUpload(await makeImage(color), name + '.jpg'));
+    const preview = await request(p + '/capture/observations/' + upload.observationId + '/preview', { eventId: 'e-lake', expectedRevision: (await snap()).revision });
+    await request(p + '/commands', { ...preview.command, requestId: randomUUID(), previewToken: preview.previewToken });
+    photos.push({ id: upload.media.id, grantId: session.grantId });
+  }
+  const plain = Buffer.alloc(56);
+  plain.write('NGSP'); plain.writeUInt32LE(3, 4); plain.writeUInt32LE(2, 8); plain[13] = 12;
+  const bytes = gzipSync(plain);
+  async function importScene(extra = {}, status = 200) {
+    const query = new URLSearchParams({ consent: '1', expectedRevision: String((await snap()).revision),
+      sourceIds: JSON.stringify(photos.map(item => item.id)), provenance: 'imagined', provider: 'Test author', title: 'A shared place', ...extra });
+    return request(p + '/memories/e-lake/worlds?' + query, asUpload(bytes, 'Synthetic multi-source.spz'), { status });
+  }
+  for (const extra of [{ sourceIds: 'broken' }, { sourceIds: '[]' }, { sourceIds: JSON.stringify([photos[0].id, photos[0].id]) },
+    { provenance: 'original' }, { provider: 'x'.repeat(121) }]) {
+    await importScene(extra, 400);
+  }
+  const invalid = await importScene({ sourceIds: JSON.stringify([photos[0].id, 'm-lake']) }, 400);
+  assert.equal(invalid.code, 'ORIGINAL_REQUIRED', 'Imagined demo media cannot back an imported scene');
+  assert.equal((await snap()).worlds.length, 0);
+
+  const saved = await importScene();
+  const duplicate = await importScene({ sourceIds: JSON.stringify(photos.map(item => item.id).reverse()) });
+  assert.equal(duplicate.id, saved.id);
+  assert.equal(duplicate.duplicate, true, 'Source order alone must not create a duplicate world');
+  const scan = await importScene({ provenance: 'reconstructed' });
+  assert.notEqual(scan.id, saved.id, 'A changed provenance declaration requires a new review');
+  const extraSource = await importScene({ sourceIds: JSON.stringify([photos[0].id]), provider: 'local-procedural-v1' });
+  assert.notEqual(extraSource.id, saved.id, 'Different source dependencies cannot silently reuse prior approval');
+  const world = (await snap()).worlds.find(item => item.id === saved.id);
+  assert.deepEqual(world.sourceIds, photos.map(item => item.id).sort());
+  assert.equal(world.provider, 'Test author');
+  assert.equal(world.title, 'A shared place');
+  assert.equal(world.provenance, 'imagined');
+  assert.equal(world.approved, false);
+  const url = root + p + '/worlds/' + world.id + '/scene.spz';
+  const headers = { Cookie: cookie };
+  assert.equal((await fetch(url, { headers })).status, 404);
+  await request(p + '/commands', await propose(ctx, 'artifact.approve', 'e-lake', { artifactId: world.id, dependencyHash: world.inputHash }));
+  assert.equal((await fetch(url, { headers })).status, 200);
+  assert.equal((await fetch(root + p + '/worlds/' + scan.id + '/scene.spz', { headers })).status, 404);
+  await request(p + '/commands', await propose(ctx, 'anchor.add', 'e-lake', { worldId: world.id, sourceIds: [photos[0].id], position: [0, 1.6, 0] }));
+  const anchor = (await snap()).anchors.find(item => item.worldId === world.id);
+  await request(p + '/session', { anchorId: anchor.id });
+
+  await request(p + '/capture/grants/' + photos[1].grantId + '/revoke', {});
+  assert.equal((await fetch(url, { headers })).status, 404, 'Withdrawal of the second source retires the multi-source asset');
+  const remaining = (await snap()).worlds;
+  assert.deepEqual(remaining.map(item => item.id), [extraSource.id]);
+  assert.equal(remaining[0].status, 'ready', 'A free-text provider label must not control evidence invalidation');
+  assert.equal((await snap()).anchors.some(item => item.id === anchor.id), false, 'A revoked world cannot leave a selectable waypoint backed by its surviving source');
+  assert.equal((await snap()).session.anchorId, null);
+});
+
+test('revocation during scene upload rejects the late asset and removes its stored file', async t => {
+  const started = Promise.withResolvers();
+  const resume = Promise.withResolvers();
+  const ctx = await setup(t, app => app.addHook('preHandler', async req => {
+    if (!req.url.includes('/worlds?')) return;
+    const file = req.file.bind(req);
+    req.file = async (...args) => { started.resolve(); await resume.promise; return file(...args); };
+  }));
+  const { p, request, snap, dir, demo } = ctx;
+  const session = await request(p + '/capture/sessions', { consent: true, source: 'selected_file' });
+  const upload = await request(p + '/capture/sessions/' + session.id + '/files', asUpload(await makeImage(), 'Withdraw during import.jpg'));
+  const preview = await request(p + '/capture/observations/' + upload.observationId + '/preview', { eventId: 'e-lake', expectedRevision: 0 });
+  await request(p + '/commands', { ...preview.command, requestId: randomUUID(), previewToken: preview.previewToken });
+  const plain = Buffer.alloc(56);
+  plain.write('NGSP'); plain.writeUInt32LE(3, 4); plain.writeUInt32LE(2, 8); plain[13] = 12;
+  const pending = request(p + '/memories/e-lake/worlds?' + new URLSearchParams({ consent: '1', expectedRevision: '1', sourceId: upload.media.id }),
+    asUpload(gzipSync(plain), 'Delayed scene.spz'), { status: 409 });
+  try {
+    await started.promise;
+    await request(p + '/capture/grants/' + session.grantId + '/revoke', {});
+  } finally { resume.resolve(); }
+  assert.equal((await pending).code, 'REVISION_CONFLICT');
+  assert.equal((await snap()).worlds.length, 0);
+  assert.equal((await readdir(join(dir, 'projects', demo.id))).some(file => file.endsWith('.spz')), false);
 });
