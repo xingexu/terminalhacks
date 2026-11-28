@@ -80,7 +80,7 @@ export default function Spatial({ url, position, onClose, onWaypoint }: {
           }
         };
         scene.add(mesh);
-        renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+        renderer.setAnimationLoop(() => { if (document.hidden) return; controls.update(); renderer.render(scene, camera); });
         setPhase('ready');
       } catch { if (active) setPhase('error'); }
     })();
@@ -109,11 +109,11 @@ export default function Spatial({ url, position, onClose, onWaypoint }: {
       }
     }}>
     <div className="spatial-canvas" ref={host} />
-    <div className="spatial-bar"><span className="glass-pill"><Box size={15} /> Reconstructed · Imported SPZ</span>
+    <div className="spatial-bar"><span className="glass-pill"><Box size={15} /> Imported SPZ · Guided inspection · Scale unverified</span>
       <button className="glass-icon" onClick={onClose} aria-label="Close 3D scene"><X size={18} /></button></div>
     {phase === 'load' && <div className="spatial-state" role="status">Loading the reconstruction…</div>}
     {phase === 'error' && <div className="spatial-state" role="status"><p>The 3D scene could not be loaded on this device.</p><button className="btn" onClick={onClose}>Return to photo trail</button></div>}
-    {phase === 'ready' && <div className="spatial-help"><span>Drag to orbit · Scroll to zoom</span><button className="btn compact" onClick={() => {
+    {phase === 'ready' && <div className="spatial-help"><span>Drag to orbit · Scroll to zoom · Walking requires a collision mesh</span><button className="btn compact" onClick={() => {
       const point = controlsRef.current?.read();
       if (point) onWaypoint(point);
     }}><Plus size={16} /> Add waypoint</button></div>}

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowDownToLine, ArrowLeft, ArrowRight, AudioLines, BookOpen, Box, Camera, Check, ChevronLeft, ChevronRight, CircleHelp,
   Clapperboard, Compass, Eye, Film, Image, LocateFixed, Map, MapPin, Maximize, Pause, Play, Plus, Search, Sparkles, X
@@ -83,6 +83,11 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
   const [spatial, setSpatial] = useState<string | null>(null);
   const activeEvent = event?.id;
   const selectedAnchor = state.anchors.find(item => item.id === state.session.anchorId);
+  const lastAnchor = useRef(state.session.anchorId);
+  useEffect(() => {
+    if (lastAnchor.current !== state.session.anchorId && selectedAnchor?.worldId === 'trail-' + activeEvent) setEntered(true);
+    lastAnchor.current = state.session.anchorId;
+  }, [state.session.anchorId, activeEvent]);
   const worlds = state.worlds.filter(item => item.eventId === activeEvent && item.approved && state.session.lens === 'all' &&
     item.sourceIds.every(id => event?.sourceIds.includes(id)));
   const world = worlds.find(item => item.id === spatial) ?? worlds.at(-1);
@@ -123,6 +128,7 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
     {spatial && world?.id === spatial ? <div className="spatial-frame">
       <Suspense fallback={<div className="spatial-state">Loading 3D viewer…</div>}>
         {world.format === 'glb' ? <Scan url={'/v1/projects/' + state.projectId + '/worlds/' + spatial + '/scene.glb'}
+          projectId={state.projectId} eventId={event.id} worldId={world.id} revision={state.revision}
           position={selectedAnchor?.worldId === spatial ? selectedAnchor.position : undefined}
           anchors={state.anchors.filter(item => item.worldId === spatial)}
           selectedAnchor={selectedAnchor?.worldId === spatial ? selectedAnchor : undefined}

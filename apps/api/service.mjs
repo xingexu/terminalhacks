@@ -82,7 +82,17 @@ export function updateSession(state, input) {
   }
   if (anchorId !== undefined) {
     const anchor = state.anchors.find(item => item.id === anchorId);
-    check(anchor, 404, 'ANCHOR_NOT_FOUND', 'That waypoint is unavailable.');
+    const event = anchor && eventById(state, anchor.eventId);
+    check(anchor && event && anchor.sourceIds.length > 0 && anchor.sourceIds.every(id => {
+      const source = mediaById(state, id);
+      return source && !source.pending && event.sourceIds.includes(id) && lensAllows(source, state.session.lens);
+    }), 404, 'ANCHOR_NOT_FOUND', 'That waypoint is unavailable.');
+    if (anchor.worldId !== 'trail-' + event.id) {
+      const world = state.worlds?.find(item => item.id === anchor.worldId && item.eventId === event.id);
+      check(world?.approved && !world.revoked && state.session.lens === 'all' &&
+        world.sourceIds.every(id => mediaById(state, id) && event.sourceIds.includes(id)),
+      404, 'ANCHOR_NOT_FOUND', 'That waypoint is unavailable.');
+    }
     Object.assign(state.session, { anchorId, eventId: anchor.eventId });
   }
   return state.session;

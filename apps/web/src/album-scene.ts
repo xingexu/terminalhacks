@@ -8,14 +8,20 @@ import { Octree } from 'three/addons/math/Octree.js';
 import { Walker } from './walking';
 import { albumEnd, nearbyPhoto, photoStops, type PhotoStop } from './album-layout';
 import { sourceURL, type Source } from './model';
+import { loadEnvironment } from './gameplay/environment';
+import { PathRecorder } from './gameplay/path';
+import { FrameMetrics } from './gameplay/performance';
+import { safeCameraPosition } from './collision';
+import type { RuntimeControls } from './gameplay/tools';
 
-export type AlbumFrame = { x: number; z: number; yaw: number; nearby?: string };
+export type AlbumFrame = { x: number; z: number; yaw: number; nearby?: string; environment?: boolean };
 export type AlbumControls = {
   keys: Set<string>;
   pause: (value: boolean) => void;
   visit: (index: number) => void;
   reset: () => void;
   dispose: () => void;
+  runtime: RuntimeControls;
 };
 
 export function createAlbumScene(host: HTMLElement, project: string, photos: Source[], onFrame: (frame: AlbumFrame) => void, onError: () => void): AlbumControls {
@@ -52,7 +58,9 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
   const failures = new Set<string>();
   const frames = new Map<string, Mesh>();
   const solids: Mesh[] = [];
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let manuallyPaused = false;
+  const metrics = new FrameMetrics();
 
   function material(color: string, emissive = false) {
     const result = new MeshStandardMaterial({ color, roughness: 0.72, metalness: 0.12,
@@ -126,6 +134,8 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
   const stone = material('#d8b5a6');
   const dark = material('#253b42');
   const concrete = material('#ebd6c2');
+  let environmentReady = false;
+  const disposeEnvironment = loadEnvironment(scene, concrete, [3.85, length / 2], ready => { environmentReady = ready; });
   const brass = material('#917a62');
   const pink = material('#ee91b5', true);
   const teal = material('#7ce4d4', true);
@@ -264,8 +274,17 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
     }
   }
 
-  function reset() { walker.place(new Vector3(0, 0.05, 6)); camera.position.copy(walker.eye); yaw = 0; pitch = -0.02; keys.clear(); }
+  const recorder = new PathRecorder(camera, {
+    id: 'album-' + photos.map(photo => photo.id).join('-'), planId: 'designed-coastal-album-v1', revision: 0,
+    format: 'original_trail', assetId: 'coastal-album-v1', collisionAssetId: 'coastal-album-collision-v1',
+    units: 'm', coordinateSystem: 'right-handed-y-up', scaleConfidence: 1,
+    boundsMin: [-7, 0, end + 0.8], boundsMax: [7, 8, 11.1], spawn: [0, 1.65, 6],
+    anchors: stops.map(stop => ({ id: stop.sourceId, position: [stop.x < 0 ? -1.5 : 1.5, 1.6, stop.z], sourceIds: [stop.sourceId] })),
+    capability: 'free_roam', provenance: 'imagined'
+  }, point => safeCameraPosition(collisionWorld, point));
+  function reset() { recorder.interrupt(); walker.place(new Vector3(0, 0.05, 6)); camera.position.copy(walker.eye); yaw = 0; pitch = -0.02; keys.clear(); }
   function visit(index: number) {
+    recorder.interrupt();
     const stop = stops[index];
     if (!stop) return;
     walker.place(new Vector3(stop.x < 0 ? -1.8 : 1.8, 0.05, stop.z + 0.1));
@@ -283,13 +302,13 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
   });
   resize.observe(host);
   const pointerDown = (event: PointerEvent) => {
-    if (paused || event.button !== 0) return;
+    if (paused || manuallyPaused || recorder.playing || event.button !== 0) return;
     dragging = { id: event.pointerId, x: event.clientX, y: event.clientY };
     canvas.setPointerCapture(event.pointerId);
     host.focus();
   };
   const pointerMove = (event: PointerEvent) => {
-    if (!dragging || paused) return;
+    if (!dragging || paused || manuallyPaused || recorder.playing) return;
     yaw -= (event.clientX - dragging.x) * 0.003;
     pitch = Math.max(-0.9, Math.min(0.9, pitch - (event.clientY - dragging.y) * 0.003));
     dragging.x = event.clientX;
@@ -307,30 +326,58 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
   document.addEventListener('visibilitychange', clear);
 
   renderer.setAnimationLoop(time => {
-    const delta = Math.min((time - previous) / 1000, 0.15);
+    const elapsed = previous ? time - previous : 0;
+    const delta = Math.min(elapsed / 1000, 0.15);
     previous = time;
-    if (!paused && !document.hidden) {
+    if (document.hidden) { recorder.interrupt(); return; }
+    if (!paused && !manuallyPaused) metrics.record(elapsed);
+    const replaying = recorder.playing;
+    if (replaying && !paused && !manuallyPaused) {
+      recorder.advanceReplay(delta);
+      if (!recorder.playing) {
+        walker.place(camera.position.clone().add(new Vector3(0, -1.6, 0)));
+        yaw = camera.rotation.y; pitch = camera.rotation.x;
+      }
+    }
+    else if (!paused && !manuallyPaused) {
       yaw += (Number(keys.has('arrowleft')) - Number(keys.has('arrowright'))) * delta * 1.5;
       camera.position.copy(walker.update(delta, yaw, keys));
     }
-    camera.rotation.set(pitch, yaw, 0, 'YXZ');
+    if (!replaying) camera.rotation.set(pitch, yaw, 0, 'YXZ');
+    if (!paused && !manuallyPaused) recorder.update(delta);
     sky.position.copy(camera.position);
     sun.position.set(camera.position.x - 90, 18, camera.position.z - 170);
     water.position.z = camera.position.z - 50;
-    if (!reducedMotion && !paused) waterMaterial.uniforms.time.value = time / 1000;
+    if (!reducedMotion && !paused && !manuallyPaused) waterMaterial.uniforms.time.value = time / 1000;
     if (time - lastReport > 120) {
       lastReport = time;
       const nearby = nearbyPhoto(camera.position, stops);
-      onFrame({ x: camera.position.x, z: camera.position.z, yaw, nearby: nearby?.sourceId });
+      onFrame({ x: camera.position.x, z: camera.position.z, yaw, nearby: nearby?.sourceId, environment: environmentReady });
       updatePhotos();
     }
     renderer.render(scene, camera);
   });
   return {
+    runtime: {
+      recorder, metrics,
+      canRecord: () => active && !paused && !manuallyPaused && !recorder.playing,
+      replay: () => { clear(); recorder.replay(); },
+      stopReplay: () => { recorder.playing = false; reset(); },
+      setPaused: value => { manuallyPaused = value; recorder.interrupt(); clear(); },
+      setReducedMotion: value => { reducedMotion = value; },
+      setCreativeLighting: value => {
+        sunLight.color.set(value === 'daylight' ? '#fff5df' : '#ffd2a4');
+        sunLight.intensity = value === 'daylight' ? 4.5 : 3.5;
+        scene.environmentIntensity = value === 'daylight' ? 1 : 0.5;
+      },
+      setQuality: value => { renderer.setPixelRatio(value === 'low' ? 0.75 : Math.min(devicePixelRatio, 1.5)); metrics.reset(); },
+      details: () => ({ renderer: renderer.getContext().getParameter(renderer.getContext().RENDERER), width: canvas.width, height: canvas.height,
+        geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures })
+    },
     keys,
     reset,
     visit,
-    pause(value) { paused = value; clear(); },
+    pause(value) { paused = value; if (value) recorder.interrupt(); clear(); },
     dispose() {
       active = false;
       renderer.setAnimationLoop(null);
@@ -346,6 +393,7 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
       loaded.forEach(item => { item.texture.dispose(); item.bitmap.close(); });
       geometries.forEach(geometry => geometry.dispose());
       materials.forEach(surface => surface.dispose());
+      disposeEnvironment();
       collisionWorld.clear();
       sunLight.shadow.map?.dispose();
       renderer.dispose();

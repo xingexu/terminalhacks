@@ -65,4 +65,6 @@ export class Walker {
     this.eye.copy(this.capsule.end).add(this.offset.set(0, 0.15, 0));
     return this.eye;
   }
+
+  reset() { this.place(this.spawn.clone()); }
 }

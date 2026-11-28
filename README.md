@@ -23,6 +23,24 @@ Open `http://localhost:4173`. Set `PORT` to change the port and `EVERWHERE_DATA`
 5. **Memories → Import 3D scene** accepts prebuilt `.spz` reconstructions or self-contained `.glb` meshes from LiDAR/photogrammetry. Link an original photo documenting the place, import the scene, and approve it. Turn off **Originals only** to open the reconstruction. For GLB, choose **Choose floor to walk**, then click an open floor surface. WASD, mouse/touch look, Shift sprint and Space jump use capsule collisions, gravity and fixed physics steps against the actual mesh. Scans need meter units, Y-up orientation, embedded textures, at most 250,000 triangles, and a file size below 48 MB. The walkable album lays out photos in a designed environment. Reconstruction of the photographed place requires a separately produced scene.
 6. Use **Project settings** to revoke a capture grant or delete a project.
 
+## Immersive runtime and V3.1 camera paths
+
+In a single-memory album or an approved GLB, open **Scene tools** to pause, reduce motion, change artistic lighting or lower rendering resolution. Walk to a safe position, select **Record camera path**, explore for at least ten seconds, then stop. **Replay path** uses timestamped position and quaternion interpolation. **Export path** downloads a V3.1 envelope containing `context`, `sceneManifest` and `cameraPath`, each matching its definition in `packages/contracts/engine-exchange.schema.json`. This is the camera-path subset of the exchange, ready for Arin's renderer. It contains virtual movement and source IDs. Imported-scene scale remains unverified. Whole-project albums require choosing one memory before path export.
+
+The runtime derives bounds and collision from loaded, approved geometry and records the user-selected safe spawn. Existing imports have no provider-supplied scene plan, so their runtime manifests identify the import and report null scale confidence. It samples at up to 20 Hz, simplifies within 2 cm / 0.01 rad, checks interpolated capsule clearance, and binds exports to the current server-authorized revision and input hash. Changing permissions or graph state requires a new recording. The current owner-only authorization policy has version 1. Source revocation and current authorization are checked again before export. Downloaded files remain on the recipient's computer.
+
+**Performance** displays actual frame intervals, nearest-rank median FPS, p95 frame time, canvas resolution and GPU allocation counts. Restart measurement after loading. Paused and hidden frames are excluded. A guided SPZ inspection remains available when no collision mesh exists. Original photos remain available after a WebGL failure. Shared-world portals and skiing are P1 follow-ups, gated as described in the execution package. Provider reconstruction belongs to the scene-generation workstream.
+
+The designed coast uses CC0 Poly Haven HDR lighting and concrete PBR maps, bundled locally. Run `node scripts/fetch-polyhaven.mjs` to refresh the four pinned asset selections through the documented public API. The script identifies Everwhere, verifies sizes and hashes, and records licenses, source pages and SHA-256 hashes in `apps/web/public/environment/provenance.json`. Private media stays on Everwhere. These materials enhance the designed environment and are independent of the photographed location.
+
+Reusable implementations are Three.js `Octree`, `Capsule`, `GLTFLoader`, `HDRLoader` and `OrbitControls`, plus the existing Spark splat renderer. Poly Haven assets are CC0. Three.js and Spark retain their dependency licenses. Unreal Pixel Streaming requires a separately hosted engine application and streaming infrastructure.
+
+- https://polyhaven.com/our-api
+- https://polyhaven.com/license
+- https://threejs.org/docs/pages/HDRLoader.html
+- https://github.com/mrdoob/three.js/blob/dev/examples/games_fps.html
+- https://dev.epicgames.com/documentation/unreal-engine/pixel-streaming-in-unreal-engine
+
 ## VoiceOS
 
 1. On the Mac running VoiceOS, clone this repository and complete **Run locally** above. Keep the API running. Open its local address in your browser, then **VoiceOS** in the sidebar.

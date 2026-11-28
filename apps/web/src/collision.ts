@@ -1,5 +1,13 @@
 import { InstancedMesh, Matrix3, Matrix4, Mesh, Triangle, Vector3, type Object3D } from 'three';
 import { Octree } from 'three/addons/math/Octree.js';
+import { Capsule } from 'three/addons/math/Capsule.js';
+
+export function safeCameraPosition(world: Octree, point: [number, number, number]) {
+  const eye = new Vector3().fromArray(point);
+  const capsule = new Capsule(eye.clone().add(new Vector3(0, -1.3, 0)), eye.clone().add(new Vector3(0, -0.15, 0)), 0.3);
+  const overlap = world.capsuleIntersect(capsule);
+  return !overlap || overlap.depth < 0.025;
+}
 
 export function worldSurfaceNormal(object: Object3D, localNormal: Vector3, instanceId?: number) {
   object.updateWorldMatrix(true, false);

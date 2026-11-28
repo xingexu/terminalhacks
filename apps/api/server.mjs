@@ -17,6 +17,7 @@ import {
 import { ingest, removeMedia } from '../../packages/media/local.mjs';
 import { storeSplat } from '../../packages/media/splat.mjs';
 import { storeMesh } from '../../packages/media/mesh.mjs';
+import { sceneContext } from '../../packages/runtime/scene.mjs';
 import { appendChange, digest, eventById, mediaById, rank, requireCondition as check, uid } from '../../packages/runtime/memory.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -290,6 +291,10 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
       if (!retained) await rm(asset.storage, { force: true });
     }
   });
+  app.get(projectPath + '/memories/:id/scene-context', async req => read(req, (state, actor, project) => {
+    const ids = typeof req.query.sources === 'string' ? req.query.sources.split(',') : [];
+    return sceneContext(state, project, req.params.id, ids, req.query.world);
+  }));
   app.get(projectPath + '/worlds/:id/:asset', async (req, reply) => {
     const { actor, project } = scope(req);
     const state = store.read(actor, project);

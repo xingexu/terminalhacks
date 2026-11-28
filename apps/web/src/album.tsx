@@ -5,6 +5,7 @@ import { createAlbumScene, type AlbumControls, type AlbumFrame } from './album-s
 import { albumEnd, photoStops } from './album-layout';
 import { displayDate, sourceURL, type Snapshot, type Source } from './model';
 import './album.css';
+import { RuntimeTools } from './gameplay/tools';
 
 export default function WalkableAlbum({ state, photos, title, onClose, onWaypoint }: {
   state: Snapshot; photos: Source[]; title: string; onClose: () => void;
@@ -36,6 +37,9 @@ export default function WalkableAlbum({ state, photos, title, onClose, onWaypoin
   const end = albumEnd(photos.length);
   const nearby = photos.find(photo => photo.id === frame.nearby);
   const complete = photos.length > 0 && visitedCount === photos.length;
+  const pathMemory = state.events.find(item => photos.every(photo => item.sourceIds.includes(photo.id)));
+  const contextURL = pathMemory ? '/projects/' + state.projectId + '/memories/' + pathMemory.id +
+    '/scene-context?sources=' + encodeURIComponent(photos.map(photo => photo.id).join(',')) : undefined;
 
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
@@ -57,6 +61,12 @@ export default function WalkableAlbum({ state, photos, title, onClose, onWaypoin
     } catch { setPhase('error'); }
     return () => { controls.current?.dispose(); controls.current = null; };
   }, [state.projectId, photoKey]);
+
+  useEffect(() => {
+    const anchor = state.anchors.find(item => item.id === state.session.anchorId && item.worldId === 'trail-' + item.eventId);
+    const index = photos.findIndex(photo => anchor?.sourceIds.includes(photo.id));
+    if (index >= 0) controls.current?.visit(index);
+  }, [state.session.anchorId, photoKey]);
 
   useEffect(() => {
     controls.current?.pause(Boolean(inspected || help));
@@ -129,6 +139,7 @@ export default function WalkableAlbum({ state, photos, title, onClose, onWaypoin
         <button className="walk-exit" onClick={onClose}><X size={16} /> Exit</button>
       </div>
     </header>
+    <RuntimeTools runtime={controls.current?.runtime ?? null} contextURL={contextURL} focus={() => host.current?.focus()} />
     <section className="walk-mission" aria-label="Album progress">
       <span className="walk-kicker">{complete ? 'Album explored' : 'Explore your album'}</span>
       <h1>{title}</h1>
@@ -160,7 +171,7 @@ export default function WalkableAlbum({ state, photos, title, onClose, onWaypoin
           onLostPointerCapture={() => controls.current?.keys.delete(key)}
           onKeyDown={event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); controls.current?.keys.add(key); } }}
           onKeyUp={() => controls.current?.keys.delete(key)} onBlur={() => controls.current?.keys.delete(key)}><Icon size={19} /></button>)}</div>
-      <footer className="walk-footer"><span><kbd>W A S D</kbd> move <kbd>Shift</kbd> sprint <kbd>Space</kbd> jump <span>Drag to look</span></span><span>Designed coastal setting</span></footer>
+      <footer className="walk-footer"><span><kbd>W A S D</kbd> move <kbd>Shift</kbd> sprint <kbd>Space</kbd> jump <span>Drag to look</span></span><span>Designed coast · {frame.environment ? <a href="https://polyhaven.com" target="_blank" rel="noreferrer">Poly Haven lighting &amp; materials</a> : 'Base materials'}</span></footer>
     </>}
     {phase !== 'ready' && <div className="walk-overlay walk-loading" role="status"><div>
       <Compass size={30} /><h2>{phase === 'loading' ? 'Opening your album…' : 'This device could not open the 3D album'}</h2>

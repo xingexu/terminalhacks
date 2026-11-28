@@ -3,18 +3,22 @@ import { createPortal } from 'react-dom';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Footprints, MapPin, MoveUpRight, X } from 'lucide-react';
 import {
   ACESFilmicToneMapping, Box3, Color, DirectionalLight, HemisphereLight, LoadingManager,
-  Material, Mesh, PerspectiveCamera, Raycaster, Scene, SRGBColorSpace, Texture, Vector2, Vector3, WebGLRenderer
+  Material, Mesh, PerspectiveCamera, Ray, Raycaster, Scene, SRGBColorSpace, Texture, Vector2, Vector3, WebGLRenderer
 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Octree } from 'three/addons/math/Octree.js';
-import { collisionFromObject, worldSurfaceNormal } from './collision';
+import { collisionFromObject, safeCameraPosition, worldSurfaceNormal } from './collision';
+import { PathRecorder } from './gameplay/path';
+import { FrameMetrics } from './gameplay/performance';
+import { RuntimeTools, type RuntimeControls } from './gameplay/tools';
 import { Walker } from './walking';
 import type { Anchor, Recollection } from './model';
 import './album.css';
 
 type Position = [number, number, number];
-export default function Scan({ url, position, onClose, onWaypoint, anchors, selectedAnchor, recollections, onSelectAnchor, onRecollect }: {
+export default function Scan({ url, projectId, eventId, worldId, revision, position, onClose, onWaypoint, anchors, selectedAnchor, recollections, onSelectAnchor, onRecollect }: {
+  projectId: string; eventId: string; worldId: string; revision: number;
   url: string; position?: Position; onClose: () => void; onWaypoint: (position: Position) => void;
   anchors: Anchor[]; selectedAnchor?: Anchor; recollections: Recollection[];
   onSelectAnchor: (id: string) => void; onRecollect: () => void;
@@ -26,6 +30,7 @@ export default function Scan({ url, position, onClose, onWaypoint, anchors, sele
   const actions = useRef<{ choose: () => void; selectFloor: () => void; overview: () => void; read: () => Position; move: (point: Position) => void } | null>(null);
   const [phase, setPhase] = useState<'loading' | 'overview' | 'choose' | 'walk' | 'error'>('loading');
   const [notice, setNotice] = useState('');
+  const [runtime, setRuntime] = useState<RuntimeControls | null>(null);
   useEffect(() => {
     appliedPosition.current = '';
     const element = host.current!;
@@ -59,6 +64,11 @@ export default function Scan({ url, position, onClose, onWaypoint, anchors, sele
     let yaw = 0;
     let pitch = 0;
     let last = 0;
+    let paused = false;
+    let reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const metrics = new FrameMetrics();
+    let recorder: PathRecorder | null = null;
+    const sceneBounds = new Box3();
     let drag: { id: number; x: number; y: number } | null = null;
     const download = new AbortController();
     const pick = new Raycaster();
@@ -76,6 +86,7 @@ export default function Scan({ url, position, onClose, onWaypoint, anchors, sele
       });
     });
     const setMode = (value: typeof mode) => {
+      recorder?.interrupt();
       mode = value;
       orbit.enabled = value === 'overview';
       keys.current.clear();
@@ -90,6 +101,11 @@ export default function Scan({ url, position, onClose, onWaypoint, anchors, sele
       orbit.update();
     };
     function place(point: Vector3) {
+      recorder?.interrupt();
+      const floor = collision.rayIntersect(new Ray(point.clone().add(new Vector3(0, 0.3, 0)), new Vector3(0, -1, 0)));
+      if (!floor || floor.distance > 0.5 || floor.triangle.getNormal(normal).y < 0.55) {
+        setNotice('This saved position has no safe floor. Choose a clear floor surface.'); return;
+      }
       const candidate = new Walker(collision, point.clone().add(new Vector3(0, 0.03, 0)));
       const overlap = collision.capsuleIntersect(candidate.capsule);
       if (overlap && overlap.depth > 0.05) {
@@ -126,6 +142,7 @@ export default function Scan({ url, position, onClose, onWaypoint, anchors, sele
         if (!active) { disposeModel(gltf.scene); materials.forEach(item => item.dispose()); textures.forEach(item => item.dispose()); return; }
         scene.add(gltf.scene);
         const bounds = new Box3().setFromObject(gltf.scene);
+        sceneBounds.copy(bounds); sceneBounds.max.y += 2;
         const center = bounds.getCenter(new Vector3());
         const size = bounds.getSize(new Vector3());
         if (!Number.isFinite(size.length()) || size.length() <= 0) throw new Error('This scene has no usable geometry.');
@@ -136,6 +153,30 @@ export default function Scan({ url, position, onClose, onWaypoint, anchors, sele
         orbit.target.copy(center);
         orbit.update();
         collision = collisionFromObject(gltf.scene);
+        recorder = new PathRecorder(camera, {
+          id: worldId, planId: 'import-' + worldId, revision, format: 'glb', assetId: worldId, collisionAssetId: worldId,
+          units: 'm', coordinateSystem: 'right-handed-y-up', scaleConfidence: null,
+          boundsMin: sceneBounds.min.toArray(), boundsMax: sceneBounds.max.toArray(), spawn: center.toArray(),
+          anchors: anchors.map(anchor => ({ id: anchor.id, position: anchor.position, sourceIds: anchor.sourceIds })),
+          capability: 'free_roam', provenance: 'reconstructed'
+        }, point => safeCameraPosition(collision, point));
+        const pathRecorder = recorder;
+        setRuntime({
+          recorder: pathRecorder, metrics,
+          canRecord: () => active && mode === 'walk' && !paused && !pathRecorder.playing,
+          replay: () => { keys.current.clear(); pathRecorder.replay(); },
+          stopReplay: () => {
+            pathRecorder.playing = false;
+            walker?.place(camera.position.clone().add(new Vector3(0, -1.6, 0)));
+            yaw = camera.rotation.y; pitch = camera.rotation.x;
+          },
+          setPaused: value => { paused = value; keys.current.clear(); pathRecorder.interrupt(); orbit.enabled = !value && mode === 'overview'; },
+          setReducedMotion: value => { reducedMotion = value; },
+          setCreativeLighting: value => { sun.color.set(value === 'daylight' ? '#ffffff' : '#ffe7c6'); sun.intensity = value === 'daylight' ? 3 : 2; },
+          setQuality: value => { renderer.setPixelRatio(value === 'low' ? 0.75 : Math.min(devicePixelRatio, 1.5)); metrics.reset(); },
+          details: () => ({ renderer: renderer.getContext().getParameter(renderer.getContext().RENDERER), width: canvas.width, height: canvas.height,
+            geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures })
+        });
         actions.current = {
           choose: () => { setMode('choose'); setNotice('Click a clear floor, or aim with arrow keys and press Enter.'); element.focus(); },
           selectFloor: () => selectFloor(new Vector2()),
@@ -147,7 +188,7 @@ export default function Scan({ url, position, onClose, onWaypoint, anchors, sele
           }
         };
         setPhase('overview');
-        setNotice('Drag to inspect the scan, then choose a clear floor to begin walking.');
+        setNotice('Scale is unverified. Inspect the scan, then choose a clear floor to begin walking.');
       } catch (error) {
         if (active) { setNotice((error as Error).message); setPhase('error'); }
       }
@@ -160,6 +201,7 @@ export default function Scan({ url, position, onClose, onWaypoint, anchors, sele
     });
     resize.observe(element);
     const pointerDown = (event: PointerEvent) => {
+      if (paused || recorder?.playing) return;
       element.focus();
       if (mode === 'choose') {
         const rect = canvas.getBoundingClientRect();
@@ -188,21 +230,34 @@ export default function Scan({ url, position, onClose, onWaypoint, anchors, sele
     window.addEventListener('blur', clear);
     document.addEventListener('visibilitychange', clear);
     renderer.setAnimationLoop(time => {
-      const delta = Math.min((time - last) / 1000, 0.15);
+      const elapsed = last ? time - last : 0;
+      const delta = Math.min(elapsed / 1000, 0.15);
       last = time;
-      if (mode === 'walk' && walker && !document.hidden) {
-        yaw += (Number(keys.current.has('arrowleft')) - Number(keys.current.has('arrowright'))) * delta * 1.5;
+      if (document.hidden) { recorder?.interrupt(); return; }
+      if (!paused) metrics.record(elapsed);
+      if (recorder?.playing && !paused) {
+        recorder.advanceReplay(delta);
+        if (!recorder.playing) {
+          walker?.place(camera.position.clone().add(new Vector3(0, -1.6, 0)));
+          yaw = camera.rotation.y; pitch = camera.rotation.x;
+        }
+      } else if (mode === 'walk' && walker && !paused) {
+        yaw += (Number(keys.current.has('arrowleft')) - Number(keys.current.has('arrowright'))) * delta * (reducedMotion ? 0.8 : 1.5);
         camera.position.copy(walker.update(delta, yaw, keys.current));
+        if (!sceneBounds.containsPoint(camera.position)) { walker.reset(); camera.position.copy(walker.eye); recorder?.interrupt(); }
         camera.rotation.set(pitch, yaw, 0, 'YXZ');
-      } else if (mode === 'choose') {
+      } else if (mode === 'choose' && !paused) {
         yaw += (Number(keys.current.has('arrowleft')) - Number(keys.current.has('arrowright'))) * delta;
         pitch = Math.max(-1.5, Math.min(1.5, pitch + (Number(keys.current.has('arrowup')) - Number(keys.current.has('arrowdown'))) * delta));
         camera.rotation.set(pitch, yaw, 0, 'YXZ');
       }
+      if (!paused && mode === 'walk') recorder?.update(delta);
       renderer.render(scene, camera);
     });
     return () => {
       active = false;
+      recorder?.interrupt();
+      setRuntime(null);
       actions.current = null;
       download.abort();
       renderer.setAnimationLoop(null);
@@ -224,7 +279,7 @@ export default function Scan({ url, position, onClose, onWaypoint, anchors, sele
       document.body.style.overflow = overflow;
       previousFocus?.focus();
     };
-  }, [url]);
+  }, [url, revision]);
   useEffect(() => {
     const key = JSON.stringify(position);
     if (position && actions.current && key !== appliedPosition.current) {
@@ -254,6 +309,7 @@ export default function Scan({ url, position, onClose, onWaypoint, anchors, sele
     }}>
     <div className="walk-canvas" ref={host} tabIndex={0} aria-label="Reconstruction. Choose a floor, then use WASD to walk and drag to look." onBlur={() => keys.current.clear()} />
     <header className="walk-header"><div className="walk-brand">everwhere<span>Reconstructed · imported mesh</span></div><div className="walk-header-actions"><button onClick={onClose}><X size={16} /> Exit</button></div></header>
+    <RuntimeTools runtime={runtime} contextURL={'/projects/' + projectId + '/memories/' + eventId + '/scene-context?world=' + worldId} focus={() => host.current?.focus()} />
     {anchors.length > 0 && <aside className="scan-waypoints" aria-label="Saved places">
       <h2>Saved places</h2>
       {anchors.map(anchor => <button key={anchor.id} aria-pressed={selectedAnchor?.id === anchor.id} onClick={() => onSelectAnchor(anchor.id)}><MapPin size={14} /> {anchor.title}</button>)}
