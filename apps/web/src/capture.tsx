@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AudioLines, Camera, Check, FolderOpen, Image, Mic, Square, Trash2, Upload, X } from 'lucide-react';
+import { AudioLines, Camera, Check, FolderOpen, Image, MapPin, Mic, Square, Trash2, Upload, X } from 'lucide-react';
 import { api, displayDate, sourceURL, type Observation, type Snapshot } from './model';
 import { CameraPanel, type CameraViewer } from './camera-action';
 
@@ -8,13 +8,14 @@ type CaptureProps = {
   visible: boolean;
   cameraViewer?: CameraViewer | null; cameraNotice?: string;
   reload: () => Promise<void>;
+  onNavigated: (message: string) => void;
   preview: (item: Observation, eventId: string, text?: string) => Promise<void>;
   renderMemoryForm: (onCreated: () => void) => ReactNode;
 };
 
 const emptyCredit = { title: '', creator: '', sourceUrl: '', license: '', licenseUrl: '', reportedDate: '', dateNote: '' };
 
-export function Capture({ state, base, items, visible, cameraViewer = null, cameraNotice, reload, preview, renderMemoryForm }: CaptureProps) {
+export function Capture({ state, base, items, visible, cameraViewer = null, cameraNotice, reload, onNavigated, preview, renderMemoryForm }: CaptureProps) {
   const [consent, setConsent] = useState(false);
   const [keepLocation, setKeepLocation] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
@@ -29,6 +30,9 @@ export function Capture({ state, base, items, visible, cameraViewer = null, came
   const [error, setError] = useState('');
   const [failures, setFailures] = useState<string[]>([]);
   const [creatingMemory, setCreatingMemory] = useState(false);
+  const [place, setPlace] = useState('');
+  const [finding, setFinding] = useState(false);
+  const [placeError, setPlaceError] = useState('');
   const recorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const timer = useRef<number | undefined>(undefined);
@@ -144,6 +148,17 @@ export function Capture({ state, base, items, visible, cameraViewer = null, came
       setQueued(false);
     }
   }
+  async function findPlace() {
+    setFinding(true);
+    setPlaceError('');
+    try {
+      // The server matches the typed description against approved route stops; nothing is saved and no image is analysed.
+      const result = await api<{ message?: string }>(base + '/navigate-anchor', { query: place.trim() });
+      await reload().catch(() => {});
+      if (mounted.current) onNavigated(result.message || 'Selected a reviewed stop. Arrival is not confirmed until the scene loads.');
+    } catch (err) { if (mounted.current) setPlaceError((err as Error).message); }
+    finally { if (mounted.current) setFinding(false); }
+  }
   async function uploadFrame(frame: File, captureId: string) {
     if (!consent) throw new Error('Confirm you have permission to keep sources, then take the photo again.');
     setQueued(true);
@@ -166,6 +181,13 @@ export function Capture({ state, base, items, visible, cameraViewer = null, came
   }
   return <div className="capture-content" ref={content}>
     <div className="capture-info"><Camera size={23} /><p>Choose photos, clips, or a voice note. Review each source before it becomes part of a memory.</p></div>
+    <form className="form-stack" onSubmit={e => { e.preventDefault(); void findPlace(); }}>
+      <label>Where in Mont-Tremblant?<input maxLength={500} value={place} disabled={finding} aria-describedby="place-hint"
+        onChange={e => { setPlace(e.target.value); setPlaceError(''); }} placeholder="Describe the place in your own words" /></label>
+      <small className="muted" id="place-hint">Matches your description to a reviewed route stop. Photos are not analysed and still need review before linking.</small>
+      <div className="button-row"><button className="btn compact" type="submit" disabled={!place.trim() || finding}><MapPin size={15} /> {finding ? 'Finding…' : 'Find this place'}</button></div>
+      {placeError && <p className="form-error" role="alert">{placeError}</p>}
+    </form>
     <label className="check-row"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} disabled={busy} />
       <span>I have permission to keep these sources in this private project.</span></label>
     <div className="capture-inputs">
