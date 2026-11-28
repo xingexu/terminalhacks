@@ -177,6 +177,38 @@ test('revision conflicts, exact replay, independent story accounts, undo, and du
   assert.equal((await snap()).revision, 4);
 });
 
+test('MCP stdio exposes tools before setup and rejects missing or unsafe configuration without API access', async t => {
+  let requests = 0;
+  const ctx = await setup(t, app => app.addHook('onRequest', async () => { requests++; }));
+  const baseline = requests;
+  const base = { EVERWHERE_API: ctx.root, EVERWHERE_PROJECT: ctx.demo.id, EVERWHERE_PAIRING_TOKEN: 'test-secret' };
+  const cases = [
+    ['missing project', { EVERWHERE_PROJECT: '' }],
+    ['missing token', { EVERWHERE_PAIRING_TOKEN: '' }],
+    ['malformed origin', { EVERWHERE_API: 'not a URL' }],
+    ['URL credentials', { EVERWHERE_API: ctx.root.replace('://', '://test-secret:password@') }],
+    ['non-loopback HTTP', { EVERWHERE_API: 'http://example.invalid' }],
+    ['non-HTTP protocol', { EVERWHERE_API: 'file:///tmp/everwhere' }]
+  ];
+  for (const [name, env] of cases) await t.test(name, async () => {
+    const client = new Client({ name: 'everwhere-setup-test', version: '1.0.0' });
+    try {
+      await client.connect(new StdioClientTransport({ command: process.execPath,
+        args: [fileURLToPath(new URL('../apps/mcp/index.mjs', import.meta.url))], env: { ...base, ...env } }));
+      assert.equal((await client.listTools()).tools.length, 19);
+      const result = await client.callTool({ name: 'get_context', arguments: {} });
+      assert.equal(result.isError, true);
+      const data = JSON.parse(result.content[0].text);
+      assert.equal(data.code, 'EVERWHERE_SETUP_REQUIRED');
+      assert.match(data.message, /reload/);
+      assert.equal(data._voiceos_glance.blocks[0].trailing, 'Needs attention');
+      assert.equal(data._voiceos_glance.blocks[1].pairs[0][1], data.message);
+      assert.equal(JSON.stringify(result).includes('test-secret'), false);
+      assert.equal(requests, baseline);
+    } finally { await client.close(); }
+  });
+});
+
 test('MCP stdio uses the real API, applies a correction and recollection, and pushes an SSE update', async t => {
   const ctx = await setup(t);
   const { p, request, root, cookie, demo, snap } = ctx;
