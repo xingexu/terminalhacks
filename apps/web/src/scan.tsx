@@ -319,8 +319,8 @@ export default function Scan({ url, projectId, eventId, worldId, revision, prove
     }} onKeyUp={event => {
       if (event.key !== ' ') keys.current.delete(event.key.toLowerCase());
     }}>
-    <div className="walk-canvas" ref={host} tabIndex={0} aria-label={(provenance === 'imagined' ? 'Imagined procedural world. ' : 'Reconstruction. ') + 'Choose a floor, then use WASD to walk and drag to look.'} onBlur={() => keys.current.clear()} />
-    <header className="walk-header"><div className="walk-brand">everwhere<span>{provenance === 'imagined' ? 'Imagined · procedural world' : 'Reconstructed · imported mesh'}</span></div><div className="walk-header-actions"><button onClick={onClose}><X size={16} /> Exit</button></div></header>
+    <div className="walk-canvas" ref={host} tabIndex={0} aria-label={(provenance === 'imagined' ? 'Imagined world. ' : 'Reconstruction. ') + 'Choose a floor, then use WASD to walk and drag to look.'} onBlur={() => keys.current.clear()} />
+    <header className="walk-header"><div className="walk-brand">everwhere<span>{provenance === 'imagined' ? 'Imagined · generated interpretation' : 'Reconstructed · imported mesh'}</span></div><div className="walk-header-actions"><button onClick={onClose}><X size={16} /> Exit</button></div></header>
     <RuntimeTools runtime={runtime} contextURL={'/projects/' + projectId + '/memories/' + eventId + '/scene-context?world=' + worldId} focus={() => host.current?.focus()} />
     {anchors.length > 0 && <aside className="scan-waypoints" aria-label="Saved places">
       <h2>Saved places</h2>

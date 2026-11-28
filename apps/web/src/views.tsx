@@ -92,6 +92,7 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
   const worlds = state.worlds.filter(item => item.eventId === activeEvent && item.approved && item.status !== 'stale' && state.session.lens === 'all' &&
     item.sourceIds.every(id => event?.sourceIds.includes(id)));
   const world = worlds.find(item => item.id === spatial) ?? worlds.at(-1);
+  const walkableWorld = worlds.filter(item => item.format === 'glb').at(-1);
   useEffect(() => { setSpatial(worlds.some(item => item.id === selectedAnchor?.worldId) ? selectedAnchor!.worldId : null); },
     [activeEvent, selectedAnchor?.worldId, state.session.lens]);
   useEffect(() => { setEntered(false); setShowStory(false); }, [activeEvent, state.session.lens]);
@@ -140,6 +141,7 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
           recollections={state.recollections} onSelectAnchor={anchorId => actions.select({ anchorId })} onRecollect={actions.openRecollection}
           onClose={() => setSpatial(null)} onWaypoint={position => actions.addWaypoint(position, world.sourceIds[0], spatial)} /> :
         <Spatial url={'/v1/projects/' + state.projectId + '/worlds/' + spatial + '/scene.spz'}
+          provenance={world.provenance ?? 'reconstructed'}
           position={selectedAnchor?.worldId === spatial ? selectedAnchor.position : undefined}
           onClose={() => setSpatial(null)} onWaypoint={position => actions.addWaypoint(position, world.sourceIds[0], spatial)} />}
       </Suspense>
@@ -170,8 +172,9 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
           <h2>{event.title}</h2>
           <div className="hero-location"><MapPin size={15} /> {event.placeLabel}{anchor && <><span className="dot-separator" /> {anchor.title}</>}</div>
           <div className="button-row">
-            {photos.length > 0 ? <button className="btn hero-cta" onClick={openAlbum}><Compass size={17} /> Enter memory <ArrowRight size={16} /></button> :
+            {walkableWorld ? <button className="btn hero-cta" onClick={() => setSpatial(walkableWorld.id)}><Compass size={17} /> Enter memory world <ArrowRight size={16} /></button> : photos.length > 0 ? <button className="btn hero-cta" onClick={openAlbum}><Compass size={17} /> Enter memory <ArrowRight size={16} /></button> :
               <button className="btn hero-cta" onClick={actions.openCapture}><Camera size={16} /> Add photos</button>}
+            {walkableWorld && photos.length > 0 && <button className="btn compact" onClick={openAlbum}>Open photo album</button>}
             {active && <button className="glass-icon" aria-label="Waypoint story" onClick={() => setShowStory(!showStory)}><BookOpen size={17} /></button>}
           </div>
         </div>
@@ -195,12 +198,13 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
       })}
       {originalPhoto && <button className="btn compact subtle" onClick={actions.openWorld}><Plus size={15} aria-hidden="true" /> Import 3D scene</button>}
     </div>
+    {world && <p className="muted">{world.provenance === 'imagined' ? 'Generated interpretation' : 'Reconstructed scan'} · {world.planId && world.provider === 'local-procedural-v1' ? 'Everwhere procedural generation' : world.provider || 'Imported scene'} · {world.sourceIds.length} linked source {world.sourceIds.length === 1 ? 'photo' : 'photos'}</p>}
     {hiddenWorlds && <div className="notice"><p>Originals only hides 3D worlds. Show all to enter an approved world.</p><button className="btn compact" onClick={() => actions.select({ lens: 'all' })}>Show all</button></div>}
     {!!staleWorlds.length && <p className="muted">A previous generated world is out of date because its evidence changed. Generate and review a new world to use the current memory.</p>}
     {world?.provenance === 'imagined' && world.format === 'glb' && <div className="button-row generation-export">
       <a className="btn compact" href={'/v1/projects/' + state.projectId + '/worlds/' + world.id + '/scene.glb?download=1'}><ArrowDownToLine size={15} aria-hidden="true" /> Download imagined world GLB</a>
-      <a className="btn compact" href={'/v1/projects/' + state.projectId + '/worlds/' + world.id + '/plan.json'} download><ArrowDownToLine size={15} aria-hidden="true" /> Download scene plan</a>
-      <p>GLB and plan for 3D-tool import. A native Unreal project is not included; Unreal import has not been verified.</p>
+      {world.planId && <a className="btn compact" href={'/v1/projects/' + state.projectId + '/worlds/' + world.id + '/plan.json'} download><ArrowDownToLine size={15} aria-hidden="true" /> Download scene plan</a>}
+      <p>GLB{world.planId ? ' and plan' : ''} for 3D-tool import. A native Unreal project is not included; Unreal import has not been verified.</p>
     </div>}
     <Timeline state={state} event={event} actions={actions} />
   </>;

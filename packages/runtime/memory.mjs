@@ -107,7 +107,7 @@ export function invalidateJobs(state) {
     }
   }
   for (const world of state.worlds || []) {
-    if (world.provider === 'local-procedural-v1' && world.evidenceHash !== digest(generationDependencies(state, world.eventId, world.evidenceRefs))) {
+    if (world.evidenceHash && world.evidenceHash !== digest(generationDependencies(state, world.eventId, world.evidenceRefs))) {
       world.status = 'stale';
       world.approved = false;
       delete world.plan;

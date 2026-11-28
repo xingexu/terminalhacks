@@ -316,7 +316,7 @@ export function revokeCapture(state, id, discard = false) {
   state.recollections = state.recollections.filter(item => !withdrawnRecollections.has(item.id));
   state.changes = state.changes.filter(item => !observationRevisions.has(item.revision) && !ids.has(item.mediaId) && !audioRecollections.has(item.id));
   for (const anchor of state.anchors) anchor.sourceIds = anchor.sourceIds.filter(id => !ids.has(id));
-  const removedAnchors = new Set(state.anchors.filter(anchor => anchor.sourceIds.length === 0).map(anchor => anchor.id));
+  const removedAnchors = new Set(state.anchors.filter(anchor => anchor.sourceIds.length === 0 || revokedArtifacts.has(anchor.worldId)).map(anchor => anchor.id));
   state.anchors = state.anchors.filter(anchor => !removedAnchors.has(anchor.id));
   if (removedAnchors.has(state.session.anchorId)) state.session.anchorId = null;
   for (const recollection of state.recollections) if (removedAnchors.has(recollection.anchorId)) delete recollection.anchorId;

@@ -178,30 +178,64 @@ function Confirmation({ value, commit, back }: { value: Extract<Dialog, { kind: 
 
 function WorldForm({ state, event, base, done }: { state: Snapshot; event: Memory; base: string; done: () => Promise<void> }) {
   const [consent, setConsent] = useState(false);
+  const [sourceIds, setSourceIds] = useState<string[]>([]);
+  const [provenance, setProvenance] = useState<'imagined' | 'reconstructed'>('imagined');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const sceneInput = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (error) errorRef.current?.focus(); }, [error]);
   const sources = state.media.filter(item => event.sourceIds.includes(item.id) && item.mime.startsWith('image/') && item.provenance === 'original');
-  return <form className="form-stack" onSubmit={async e => {
+  const selectedSources = sourceIds.filter(id => sources.some(item => item.id === id));
+  useEffect(() => {
+    if (!sourceIds.some(id => !sources.some(item => item.id === id))) return;
+    setSourceIds([]); setConsent(false);
+    if (sceneInput.current) sceneInput.current.value = '';
+    setError('A selected source is no longer available. Select the current sources and a scene made without withdrawn content, then confirm again.');
+  }, [sourceIds, state.media, event.sourceIds]);
+  return <form className="form-stack" aria-busy={busy} onSubmit={async e => {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
     const file = form.get('scene');
-    if (!(file instanceof File) || !file.size || !consent) return;
+    if (busy || !(file instanceof File) || !file.size || !consent || !selectedSources.length || selectedSources.length !== sourceIds.length) return;
     setBusy(true); setError('');
     try {
       const upload = new FormData(); upload.append('file', file);
-      const query = new URLSearchParams({ sourceId: String(form.get('source')), consent: '1', expectedRevision: String(state.revision) });
+      const query = new URLSearchParams({ sourceIds: JSON.stringify(selectedSources), provenance,
+        consent: '1', expectedRevision: String(state.revision) });
+      for (const key of ['provider', 'title']) {
+        const value = String(form.get(key) || '').trim();
+        if (value) query.set(key, value);
+      }
       await api(base + '/memories/' + event.id + '/worlds?' + query, upload);
       await done();
     } catch (err) { setError((err as Error).message); }
     finally { setBusy(false); }
-  }}><p className="muted">Upload a GLB mesh from a LiDAR or photogrammetry scan to walk on its actual surfaces, or an SPZ splat to explore its viewpoints. Link an original photo of the scanned place, then approve the import.</p>
-    <label>Original source<select name="source" required>{sources.map(item => <option key={item.id} value={item.id}>{item.caption}</option>)}</select></label>
-    <label>3D scene<input type="file" name="scene" accept=".spz,.glb" required /></label>
+  }}><p className="muted">Import an existing GLB mesh for walking, or an SPZ splat for viewpoint inspection. The file is uploaded to this private Everwhere project; this form does not send photos to a generation provider. You will review and approve the scene before entering it.</p>
+    <label>How was this scene made?<select name="provenance" value={provenance} disabled={busy} onChange={e => setProvenance(e.target.value as 'imagined' | 'reconstructed')}>
+      <option value="imagined">Generated or authored interpretation</option>
+      <option value="reconstructed">Reconstructed from a scan or photogrammetry</option>
+    </select></label>
+    <p className="muted">{provenance === 'imagined' ? 'Generated or invented surroundings remain labeled as imagined, even when they look realistic.' : 'Choose reconstruction only for geometry derived from measurements or overlapping photographs of this place.'}</p>
+    <label>Creator or provider (optional)<input name="provider" maxLength={120} disabled={busy} placeholder="Who made the scene?" /></label>
+    <label>Scene title (optional)<input name="title" maxLength={120} disabled={busy} placeholder="Uses the file name if left blank" /></label>
+    <div className="form-stack" role="group" aria-labelledby="world-source-title" aria-describedby="world-source-help">
+      <strong id="world-source-title">Original source photos</strong>
+      <p className="muted" id="world-source-help">Select every original photo used to create or document this scene. Withdrawing a selected source will also make this scene unavailable.</p>
+      {sources.map(item => <label className="check-row" key={item.id} style={{ minHeight: 44 }}><input type="checkbox" name="source" value={item.id}
+        checked={selectedSources.includes(item.id)} disabled={busy || (selectedSources.length >= 100 && !selectedSources.includes(item.id))}
+        onChange={e => setSourceIds(ids => e.target.checked ? [...ids, item.id] : ids.filter(id => id !== item.id))} />
+        <span>{item.caption || 'Untitled photo'} · {displayDate(item.capturedAt)}</span></label>)}
+      {!sources.length && <p className="notice">Link an original photo to this memory through Capture before importing a scene.</p>}
+      {selectedSources.length >= 100 && <p className="muted" role="status">100 photos selected. Each import supports up to 100 source photos.</p>}
+    </div>
+    <label>3D scene<input ref={sceneInput} type="file" name="scene" accept=".spz,.glb" required disabled={busy} /></label>
     <p className="muted">GLB exports need embedded textures, meter units, Y-up orientation, and at most 250,000 triangles. Upload limit 48 MB.</p>
-    <label className="check-row"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} />
-      <span>I have permission to use this reconstruction and the selected photo documents this place.</span></label>
-    {error && <p className="form-error" role="alert">{error}</p>}
-    <button className="btn primary self-start" disabled={!consent || busy || !sources.length}><Box size={16} /> {busy ? 'Uploading…' : 'Import reconstruction'}</button>
+    <label className="check-row" style={{ minHeight: 44 }}><input type="checkbox" checked={consent} disabled={busy} onChange={e => setConsent(e.target.checked)} />
+      <span>I have permission to keep this scene in this project, and I have selected all of its source photos.</span></label>
+    {error && <p className="form-error" ref={errorRef} tabIndex={-1} role="alert">{error}</p>}
+    {busy && <p className="muted" role="status">Uploading and validating the scene…</p>}
+    <button className="btn primary self-start" disabled={!consent || busy || !selectedSources.length}><Box size={16} aria-hidden="true" /> {busy ? 'Uploading…' : 'Import scene for review'}</button>
   </form>;
 }
 
@@ -220,7 +254,7 @@ function SettingsPanel({ base, state, reload, deleteProject }: { base: string; s
     {state.capture.sessions.filter(item => item.status !== 'revoked').map(item => <div className="result-row" key={item.id}>
       <strong>{item.source === 'browser_audio' ? 'Voice note' : item.source === 'voiceos_text' ? 'VoiceOS text' : 'Selected files'} · {item.status}</strong>
       <button className="btn compact" disabled={busy} onClick={() => setConfirm(item.grantId)}>Revoke</button>
-      {confirm === item.grantId && <div className="permission-confirm"><p>Withdraw the sources captured in this session and make dependent films unavailable?</p>
+      {confirm === item.grantId && <div className="permission-confirm"><p>Withdraw the sources captured in this session and make dependent worlds and films unavailable?</p>
         <button className="btn compact danger" onClick={() => perform(() => api(base + '/capture/grants/' + item.grantId + '/revoke', {}))} disabled={busy}>Withdraw sources</button></div>}
     </div>)}
     <hr />
@@ -423,8 +457,15 @@ function App() {
           if (!isCurrentDialog()) return;
           dismiss(); setNotice('Imagined world generated. Select Approve imagined world to review it before entering.');
         }} />}
-      {state && current && dialog.kind === 'world' && <WorldForm state={state} event={current} base={base}
-        done={async () => { await refresh(); dismiss(); setNotice('Reconstruction uploaded for approval.'); }} />}
+      {state && current && dialog.kind === 'world' && <WorldForm key={project + current.id} state={state} event={current} base={base}
+        done={async () => {
+          const isCurrentDialog = () => activeContext.current.dialog === dialog &&
+            activeContext.current.project === project && activeContext.current.eventId === current.id;
+          if (!isCurrentDialog()) return;
+          await refresh();
+          if (!isCurrentDialog()) return;
+          dismiss(); setNotice('Scene imported for approval.');
+        }} />}
       {hasMedia && state && captureOpen && <div hidden={dialog.kind === 'confirm'}><Capture state={state} base={base} items={items} visible={dialog.kind === 'capture'} reload={refresh}
         renderMemoryForm={done => <EventForm name="Create memory" onSubmit={async body => {
           await api(base + '/memories', { ...body, expectedRevision: state.revision }); await refresh(); done();

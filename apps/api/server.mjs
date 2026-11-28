@@ -347,30 +347,50 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     return streamFile(req, reply, source.storage, source.mime);
   });
   app.post(projectPath + '/memories/:eventId/worlds', async req => {
-    check(req.query.consent === '1', 400, 'CONSENT_REQUIRED', 'Confirm you have permission to use this scene and its source.');
+    check(req.query.consent === '1', 400, 'CONSENT_REQUIRED', 'Confirm you have permission to use this scene and all its sources.');
     const { actor, project } = scope(req);
-    const sourceId = req.query.sourceId;
+    let sourceIds;
+    try { sourceIds = req.query.sourceIds === undefined ? [req.query.sourceId] : JSON.parse(req.query.sourceIds); }
+    catch { check(false, 400, 'INVALID_SOURCES', 'Choose the original images used to create this scene.'); }
+    check(Array.isArray(sourceIds) && sourceIds.length > 0 && sourceIds.length <= 100 &&
+      sourceIds.every(id => typeof id === 'string' && id.length > 0 && id.length <= 128) && new Set(sourceIds).size === sourceIds.length,
+      400, 'INVALID_SOURCES', 'Choose between 1 and 100 distinct original images used to create this scene.');
+    sourceIds.sort();
+    const provenance = req.query.provenance ?? 'imagined';
+    check(['imagined', 'reconstructed'].includes(provenance), 400, 'INVALID_PROVENANCE', 'Identify the scene as a generated interpretation or a reconstructed scan.');
+    for (const value of [req.query.provider, req.query.title]) {
+      check(value === undefined || (typeof value === 'string' && value.trim().length > 0 && value.length <= 120),
+        400, 'INVALID_WORLD_DETAILS', 'Scene title and provider must be between 1 and 120 characters.');
+    }
+    const provider = req.query.provider?.trim() || 'Imported scene';
     const state = store.read(actor, project);
     const event = eventById(state, req.params.eventId);
-    const source = mediaById(state, sourceId);
-    check(event?.sourceIds.includes(sourceId) && source?.provenance === 'original' && !source.pending && source.mime.startsWith('image/'),
-      400, 'ORIGINAL_REQUIRED', 'Choose an original image linked to this memory.');
+    const sources = sourceIds.map(id => mediaById(state, id));
+    check(sources.every(source => event?.sourceIds.includes(source?.id) && source?.provenance === 'original' && !source.pending && source.mime.startsWith('image/')),
+      400, 'ORIGINAL_REQUIRED', 'Every scene source must be an available original image linked to this memory.');
     check(Number(req.query.expectedRevision) === state.revision, 409, 'REVISION_CONFLICT', 'Review the current memory before adding a world.');
     const file = await req.file();
     check(file, 400, 'FILE_REQUIRED', 'Choose an SPZ splat or GLB mesh.');
     const save = /\.glb$/i.test(file.filename) ? storeMesh : storeSplat;
     const asset = await save(await file.toBuffer(), file.filename, join(dataDir, 'projects', project));
+    const title = req.query.title?.trim() || asset.title;
+    const inputHash = digest({ eventId: event.id, sources: sources.map(source => [source.id, source.hash]),
+      contentHash: asset.contentHash, provenance, provider, title });
     let retained = false;
     try {
       const result = update(req, 'revision.committed', current => {
         check(current.revision === state.revision, 409, 'REVISION_CONFLICT', 'The memory changed during upload. Review and try again.');
+        check(sourceIds.every(id => {
+          const source = mediaById(current, id);
+          return eventById(current, event.id)?.sourceIds.includes(id) && source?.provenance === 'original' && !source.pending;
+        }), 409, 'SOURCE_UNAVAILABLE', 'A scene source is no longer available.');
         const worlds = current.worlds ??= [];
-        const existing = worlds.find(item => !item.revoked && item.contentHash === asset.contentHash && item.eventId === event.id);
+        const existing = worlds.find(item => !item.revoked && item.status === 'ready' && item.inputHash === inputHash && item.eventId === event.id);
         if (existing) return { id: existing.id, duplicate: true };
-        const world = { ...asset, eventId: event.id, status: 'ready', approval: 'pending', approved: false,
-          sourceIds: [source.id], provenance: 'reconstructed', inputHash: digest([event.id, source.id, source.hash, asset.contentHash]) };
+        const world = { ...asset, title, eventId: event.id, status: 'ready', approval: 'pending', approved: false,
+          sourceIds, provenance, provider, inputHash };
         worlds.push(world);
-        appendChange(current, 'Imported a 3D reconstruction', event.id);
+        appendChange(current, provenance === 'imagined' ? 'Imported a generated interpretation' : 'Imported a reconstructed scan', event.id);
         return { id: asset.id, duplicate: false };
       });
       retained = !result.data.duplicate;
@@ -389,7 +409,7 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     const world = state.worlds?.find(item => item.id === req.params.id);
     check(world?.approved && !world.revoked && world.status === 'ready' && state.session.lens === 'all' &&
       world.sourceIds.every(id => mediaById(state, id) && eventById(state, world.eventId)?.sourceIds.includes(id)),
-      404, 'WORLD_UNAVAILABLE', 'This reconstruction is unavailable.');
+      404, 'WORLD_UNAVAILABLE', 'This scene is unavailable.');
     if (req.params.asset === 'plan.json') {
       check(world.plan && world.sceneManifest, 404, 'PLAN_UNAVAILABLE', 'This scene does not have a generation plan.');
       return reply.header('Content-Disposition', 'attachment; filename="everwhere-scene-plan.json"').send({

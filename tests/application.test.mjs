@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { gzipSync, zstdCompressSync } from 'node:zlib';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -17,9 +17,10 @@ import { integrationManifest } from '../apps/mcp/manifest.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { createStore } from '../apps/api/store.mjs';
 
-async function setup(t) {
+async function setup(t, configure) {
   const dir = await mkdtemp(join(tmpdir(), 'everwhere-test-'));
   const app = await createApp({ dataDir: dir, serveWeb: false });
+  configure?.(app);
   t.after(async () => { await app.close(); await rm(dir, { recursive: true, force: true }); });
   const root = await app.listen({ port: 0, host: '127.0.0.1' });
   async function browser() {
@@ -347,6 +348,7 @@ test('imported SPZ delivery requires its approval, current lens, and linked orig
   const world = (await snap()).worlds.find(item => item.id === saved.id);
   assert.equal(world.id, saved.id);
   assert.equal(world.approved, false);
+  assert.equal(world.provenance, 'imagined', 'Legacy imports must not assert measured reconstruction');
   const asset = p + '/worlds/' + world.id + '/scene.spz';
   const headers = { Cookie: cookie };
   assert.equal((await fetch(root + asset, { headers })).status, 404);
@@ -384,12 +386,13 @@ test('GLB scans keep private source approval and revocation gates and reject ext
     binaryHeader.writeUInt32LE(positions.length); binaryHeader.writeUInt32LE(0x004e4942, 4);
     return Buffer.concat([header, padded, binaryHeader, positions]);
   }
-  const endpoint = p + '/memories/e-lake/worlds?consent=1&expectedRevision=1&sourceId=' + upload.media.id;
+  const endpoint = p + '/memories/e-lake/worlds?consent=1&expectedRevision=1&provenance=reconstructed&sourceId=' + upload.media.id;
   await request(endpoint, asUpload(glb(true), 'External.glb'), { status: 400 });
   await request(endpoint, asUpload(glb().subarray(0, -1), 'Truncated.glb'), { status: 400 });
   const saved = await request(endpoint, asUpload(glb(), 'Room.glb'));
   const world = (await snap()).worlds.find(item => item.id === saved.id);
   assert.equal(world.format, 'glb');
+  assert.equal(world.provenance, 'reconstructed');
   const asset = p + '/worlds/' + world.id + '/scene.glb';
   const headers = { Cookie: cookie };
   assert.equal((await fetch(root + asset, { headers })).status, 404);
@@ -406,4 +409,90 @@ test('GLB scans keep private source approval and revocation gates and reject ext
   await request(p + '/capture/grants/' + session.grantId + '/revoke', {});
   assert.equal((await fetch(root + asset, { headers })).status, 404);
   assert.equal((await snap()).worlds.length, 0);
+});
+
+test('imported interpretations retain every source and separate provenance variants through approval and revocation', async t => {
+  const ctx = await setup(t);
+  const { p, request, root, cookie, snap } = ctx;
+  const photos = [];
+  for (const [color, name] of [['#b87345', 'First source'], ['#527ab4', 'Second source']]) {
+    const session = await request(p + '/capture/sessions', { consent: true, source: 'selected_file' });
+    const upload = await request(p + '/capture/sessions/' + session.id + '/files', asUpload(await makeImage(color), name + '.jpg'));
+    const preview = await request(p + '/capture/observations/' + upload.observationId + '/preview', { eventId: 'e-lake', expectedRevision: (await snap()).revision });
+    await request(p + '/commands', { ...preview.command, requestId: randomUUID(), previewToken: preview.previewToken });
+    photos.push({ id: upload.media.id, grantId: session.grantId });
+  }
+  const plain = Buffer.alloc(56);
+  plain.write('NGSP'); plain.writeUInt32LE(3, 4); plain.writeUInt32LE(2, 8); plain[13] = 12;
+  const bytes = gzipSync(plain);
+  async function importScene(extra = {}, status = 200) {
+    const query = new URLSearchParams({ consent: '1', expectedRevision: String((await snap()).revision),
+      sourceIds: JSON.stringify(photos.map(item => item.id)), provenance: 'imagined', provider: 'Test author', title: 'A shared place', ...extra });
+    return request(p + '/memories/e-lake/worlds?' + query, asUpload(bytes, 'Synthetic multi-source.spz'), { status });
+  }
+  for (const extra of [{ sourceIds: 'broken' }, { sourceIds: '[]' }, { sourceIds: JSON.stringify([photos[0].id, photos[0].id]) },
+    { provenance: 'original' }, { provider: 'x'.repeat(121) }]) {
+    await importScene(extra, 400);
+  }
+  const invalid = await importScene({ sourceIds: JSON.stringify([photos[0].id, 'm-lake']) }, 400);
+  assert.equal(invalid.code, 'ORIGINAL_REQUIRED', 'Imagined demo media cannot back an imported scene');
+  assert.equal((await snap()).worlds.length, 0);
+
+  const saved = await importScene();
+  const duplicate = await importScene({ sourceIds: JSON.stringify(photos.map(item => item.id).reverse()) });
+  assert.equal(duplicate.id, saved.id);
+  assert.equal(duplicate.duplicate, true, 'Source order alone must not create a duplicate world');
+  const scan = await importScene({ provenance: 'reconstructed' });
+  assert.notEqual(scan.id, saved.id, 'A changed provenance declaration requires a new review');
+  const extraSource = await importScene({ sourceIds: JSON.stringify([photos[0].id]), provider: 'local-procedural-v1' });
+  assert.notEqual(extraSource.id, saved.id, 'Different source dependencies cannot silently reuse prior approval');
+  const world = (await snap()).worlds.find(item => item.id === saved.id);
+  assert.deepEqual(world.sourceIds, photos.map(item => item.id).sort());
+  assert.equal(world.provider, 'Test author');
+  assert.equal(world.title, 'A shared place');
+  assert.equal(world.provenance, 'imagined');
+  assert.equal(world.approved, false);
+  const url = root + p + '/worlds/' + world.id + '/scene.spz';
+  const headers = { Cookie: cookie };
+  assert.equal((await fetch(url, { headers })).status, 404);
+  await request(p + '/commands', await propose(ctx, 'artifact.approve', 'e-lake', { artifactId: world.id, dependencyHash: world.inputHash }));
+  assert.equal((await fetch(url, { headers })).status, 200);
+  assert.equal((await fetch(root + p + '/worlds/' + scan.id + '/scene.spz', { headers })).status, 404);
+  await request(p + '/commands', await propose(ctx, 'anchor.add', 'e-lake', { worldId: world.id, sourceIds: [photos[0].id], position: [0, 1.6, 0] }));
+  const anchor = (await snap()).anchors.find(item => item.worldId === world.id);
+  await request(p + '/session', { anchorId: anchor.id });
+
+  await request(p + '/capture/grants/' + photos[1].grantId + '/revoke', {});
+  assert.equal((await fetch(url, { headers })).status, 404, 'Withdrawal of the second source retires the multi-source asset');
+  const remaining = (await snap()).worlds;
+  assert.deepEqual(remaining.map(item => item.id), [extraSource.id]);
+  assert.equal(remaining[0].status, 'ready', 'A free-text provider label must not control evidence invalidation');
+  assert.equal((await snap()).anchors.some(item => item.id === anchor.id), false, 'A revoked world cannot leave a selectable waypoint backed by its surviving source');
+  assert.equal((await snap()).session.anchorId, null);
+});
+
+test('revocation during scene upload rejects the late asset and removes its stored file', async t => {
+  const started = Promise.withResolvers();
+  const resume = Promise.withResolvers();
+  const ctx = await setup(t, app => app.addHook('preHandler', async req => {
+    if (!req.url.includes('/worlds?')) return;
+    const file = req.file.bind(req);
+    req.file = async (...args) => { started.resolve(); await resume.promise; return file(...args); };
+  }));
+  const { p, request, snap, dir, demo } = ctx;
+  const session = await request(p + '/capture/sessions', { consent: true, source: 'selected_file' });
+  const upload = await request(p + '/capture/sessions/' + session.id + '/files', asUpload(await makeImage(), 'Withdraw during import.jpg'));
+  const preview = await request(p + '/capture/observations/' + upload.observationId + '/preview', { eventId: 'e-lake', expectedRevision: 0 });
+  await request(p + '/commands', { ...preview.command, requestId: randomUUID(), previewToken: preview.previewToken });
+  const plain = Buffer.alloc(56);
+  plain.write('NGSP'); plain.writeUInt32LE(3, 4); plain.writeUInt32LE(2, 8); plain[13] = 12;
+  const pending = request(p + '/memories/e-lake/worlds?' + new URLSearchParams({ consent: '1', expectedRevision: '1', sourceId: upload.media.id }),
+    asUpload(gzipSync(plain), 'Delayed scene.spz'), { status: 409 });
+  try {
+    await started.promise;
+    await request(p + '/capture/grants/' + session.grantId + '/revoke', {});
+  } finally { resume.resolve(); }
+  assert.equal((await pending).code, 'REVISION_CONFLICT');
+  assert.equal((await snap()).worlds.length, 0);
+  assert.equal((await readdir(join(dir, 'projects', demo.id))).some(file => file.endsWith('.spz')), false);
 });
