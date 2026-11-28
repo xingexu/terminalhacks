@@ -50,6 +50,22 @@ test('path validation checks interpolated collision, bounds, time and quaternion
   assert.equal(simplifyPath(corner).length, 3);
 });
 
+test('automatic path stop caps an overshooting frame at the 60-second scene-film limit', () => {
+  const camera = new PerspectiveCamera(65);
+  camera.position.set(0, 1.6, 0);
+  const recorder = new PathRecorder(camera, manifest(), () => true);
+  recorder.start(context);
+  recorder.update(59.98);
+  camera.position.x = 0.01;
+  recorder.update(0.15);
+  assert.equal(recorder.recording, false);
+  assert.ok(recorder.path, recorder.message);
+  const exported = recorder.export(context);
+  assert.equal(exported.cameraPath.keyframes.at(-1).t, 60);
+  assert.deepEqual(exported.cameraPath.keyframes.at(-1).position, [0.01, 1.6, 0]);
+  validatePath(exported.cameraPath, exported.sceneManifest, () => true);
+});
+
 test('frame metrics use nearest-rank median and p95 measured frame intervals', () => {
   const metrics = new FrameMetrics();
   for (let i = 0; i < 95; i++) metrics.record(20);

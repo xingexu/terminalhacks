@@ -6,6 +6,7 @@ import { stat, rm, readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { join, resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import Ajv from 'ajv';
 import formats from 'ajv-formats';
 import { createStore } from './store.mjs';
@@ -18,6 +19,8 @@ import { ingest, removeMedia } from '../../packages/media/local.mjs';
 import { storeSplat } from '../../packages/media/splat.mjs';
 import { storeMesh } from '../../packages/media/mesh.mjs';
 import { sceneContext } from '../../packages/runtime/scene.mjs';
+import { cancelSceneFilm, previewSceneFilm, queueSceneFilm, sceneFilmRequest } from './scene-film.mjs';
+import { storeSceneRecording } from '../../packages/media/scene-film.mjs';
 import { evidenceFor, handoffPlan, lookupPlace, previewWorld, voiceEvidence } from '../../packages/intelligence/scene-plan.mjs';
 import { generateWorld } from '../../packages/providers/world/procedural.mjs';
 import { appendChange, digest, eventById, generationDependencies, mediaById, rank, requireCondition as check, uid } from '../../packages/runtime/memory.mjs';
@@ -76,7 +79,7 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
   });
   app.setErrorHandler((error, request, reply) => {
     const status = error.status || error.statusCode || 500;
-    const safe = error.status ? error.message : status === 413 ? 'Select a file smaller than 48 MB.' : status < 500 ? 'The request could not be read.' : 'Something went wrong. Try again.';
+    const safe = error.status ? error.message : status === 413 ? request.url.endsWith('/scene-film-preview') ? 'This camera path is too large. Record a simpler path.' : 'Select a file smaller than 48 MB.' : status < 500 ? 'The request could not be read.' : 'Something went wrong. Try again.';
     reply.code(status).send({ ok: false, code: error.status ? error.code : status === 413 ? 'FILE_TOO_LARGE' : 'REQUEST_FAILED', message: safe, ...error.details });
   });
   app.get('/health', async () => ({ ok: true }));
@@ -227,6 +230,37 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
   app.post(projectPath + '/previews', async req => update(req, null, (state, actor) => previewCommand(state, req.body ?? {}, actor)));
   app.post(projectPath + '/commands', async req => update(req, 'revision.committed', (state, actor) => commitCommand(state, req.body ?? {}, actor)));
   app.post(projectPath + '/film-preview', async req => update(req, null, (state, actor) => previewFilm(state, req.body ?? {}, actor)));
+  app.post(projectPath + '/scene-film-preview', { bodyLimit: 512 * 1024 }, async req =>
+    update(req, null, (state, actor, project) => previewSceneFilm(state, req.body ?? {}, actor, project)));
+  app.post(projectPath + '/scene-films/:token', async (req, reply) => {
+    const { actor, project } = scope(req);
+    const input = { previewToken: req.params.token, requestId: req.headers['x-request-id'] };
+    sceneFilmRequest(store.read(actor, project), input, actor, project);
+    const file = await req.file();
+    check(file, 400, 'FILE_REQUIRED', 'Record one scene video before uploading.');
+    const buffer = await file.toBuffer();
+    const contentHash = createHash('sha256').update(buffer).digest('hex');
+    const checked = sceneFilmRequest(store.read(actor, project), input, actor, project, contentHash);
+    if (checked.job) return { ok: true, revision: store.read(actor, project).revision, data: checked.job };
+    const asset = await storeSceneRecording(buffer, { dir: join(dataDir, 'projects', project), durationSeconds: checked.preview.recording.durationSeconds });
+    let retained = false;
+    try {
+      // A disconnect after the complete request body does not set IncomingMessage.aborted.
+      check(!req.raw.aborted && !reply.raw.destroyed, 409, 'UPLOAD_CANCELLED', 'The recording upload was cancelled.');
+      const result = update(req, 'job.changed', state => queueSceneFilm(state, input, asset, actor, project));
+      retained = result.data.retained;
+      film.start();
+      return { ok: true, revision: result.revision, data: result.data.job };
+    } finally {
+      if (!retained) await rm(asset.storage, { force: true });
+    }
+  });
+  app.post(projectPath + '/scene-films/:token/cancel', async req => {
+    const result = update(req, 'job.changed', (state, actor) => cancelSceneFilm(state,
+      { previewToken: req.params.token, requestId: req.body?.requestId }, actor));
+    await Promise.all(result.data.map(file => rm(file, { force: true })));
+    return { ok: true, revision: result.revision, data: { cancelled: true } };
+  });
   app.post(projectPath + '/jobs', async req => {
     const result = update(req, 'job.changed', (state, actor) => queueFilm(state, req.body ?? {}, actor));
     film.start();
@@ -299,7 +333,7 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
   const removeCapture = async (req, id, discard) => {
     const result = update(req, 'capture.changed', state => revokeCapture(state, id, discard));
     await Promise.all(result.data.files.map(removeMedia));
-    await Promise.all([...result.data.outputs.flatMap(job => [job.output, job.captions]), ...result.data.worlds.map(world => world.storage)]
+    await Promise.all([...result.data.outputs.flatMap(job => [job.output, job.captions, job.recording]), ...result.data.worlds.map(world => world.storage)]
       .filter(Boolean).map(file => rm(file, { force: true })));
     return { ok: true, revision: result.revision, data: { withdrawn: result.data.files.length } };
   };
@@ -425,14 +459,16 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
   });
   app.get(projectPath + '/artifacts/:id/access', async req => read(req, (state, actor, project) => {
     const job = state.jobs.find(item => item.id === req.params.id);
-    check(job?.status === 'ready' && job.approved, 404, 'ARTIFACT_UNAVAILABLE', 'Approve a current film before accessing it.');
+    check(job?.status === 'ready' && job.approved && (job.kind !== 'scene_recording' || state.session.lens === 'all'),
+      404, 'ARTIFACT_UNAVAILABLE', 'Approve a current film before accessing it.');
     return { url: '/v1/projects/' + project + '/artifacts/' + job.id + '/file' };
   }));
   app.get(projectPath + '/artifacts/:id/:file', async (req, reply) => {
     const { actor, project } = scope(req);
-    const job = store.read(actor, project).jobs.find(item => item.id === req.params.id);
+    const state = store.read(actor, project);
+    const job = state.jobs.find(item => item.id === req.params.id);
     const captions = req.params.file === 'captions';
-    check(job?.status === 'ready' && job.approved && ['file', 'captions'].includes(req.params.file), 404,
+    check(job?.status === 'ready' && job.approved && (job.kind !== 'scene_recording' || state.session.lens === 'all') && ['file', 'captions'].includes(req.params.file), 404,
       'ARTIFACT_UNAVAILABLE', 'This export is unavailable or awaiting approval.');
     if (req.query.download === '1') reply.header('Content-Disposition', 'attachment; filename="everwhere-film.mp4"');
     return streamFile(req, reply, captions ? job.captions : job.output, captions ? 'text/vtt; charset=utf-8' : 'video/mp4');

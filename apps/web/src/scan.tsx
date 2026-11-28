@@ -32,11 +32,13 @@ export default function Scan({ url, projectId, eventId, worldId, revision, prove
   const [phase, setPhase] = useState<'loading' | 'overview' | 'choose' | 'walk' | 'error'>('loading');
   const [notice, setNotice] = useState('');
   const [runtime, setRuntime] = useState<RuntimeControls | null>(null);
+  const [filmBusy, setFilmBusy] = useState(false);
   useEffect(() => {
     if (!runtime) return;
     const recorder = runtime.recorder;
     recorder.manifest.anchors = anchors.map(anchor => ({ id: anchor.id, position: anchor.position, sourceIds: anchor.sourceIds }));
     if (recorder.manifest.revision !== revision) {
+      runtime.cancelFilm?.('The memory changed. Record and review a new path.');
       recorder.interrupt();
       recorder.path = null;
       recorder.manifest.revision = revision;
@@ -80,6 +82,7 @@ export default function Scan({ url, projectId, eventId, worldId, revision, prove
     let reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const metrics = new FrameMetrics();
     let recorder: PathRecorder | null = null;
+    let capture: { started: number; elapsed: number; duration: number; media: MediaRecorder; progress: (seconds: number) => void; cancel: (message: string) => void } | null = null;
     const sceneBounds = new Box3();
     let drag: { id: number; x: number; y: number } | null = null;
     const download = new AbortController();
@@ -98,6 +101,7 @@ export default function Scan({ url, projectId, eventId, worldId, revision, prove
       });
     });
     const setMode = (value: typeof mode) => {
+      if (capture) return;
       recorder?.interrupt();
       mode = value;
       orbit.enabled = value === 'overview';
@@ -113,6 +117,7 @@ export default function Scan({ url, projectId, eventId, worldId, revision, prove
       orbit.update();
     };
     function place(point: Vector3) {
+      if (capture) return;
       recorder?.interrupt();
       const floor = collision.rayIntersect(new Ray(point.clone().add(new Vector3(0, 0.3, 0)), new Vector3(0, -1, 0)));
       if (!floor || floor.distance > 0.5 || floor.triangle.getNormal(normal).y < 0.55) {
@@ -175,17 +180,87 @@ export default function Scan({ url, projectId, eventId, worldId, revision, prove
         const pathRecorder = recorder;
         setRuntime({
           recorder: pathRecorder, metrics,
-          canRecord: () => active && mode === 'walk' && !paused && !pathRecorder.playing,
+          canRecord: () => active && mode === 'walk' && !paused && !capture && !pathRecorder.playing,
+          captureFilm: async (signal, progress) => {
+            const duration = pathRecorder.path?.keyframes.at(-1)?.t ?? 0;
+            if (!active || document.hidden || capture || paused || mode !== 'walk' || duration < 30 || duration > 60 || signal.aborted) throw new Error('Return to a visible, unpaused scene with a reviewed 30–60 second path.');
+            if (typeof MediaRecorder === 'undefined' || !canvas.captureStream) throw new Error('This browser cannot record the scene. Use a current desktop Chrome browser.');
+            const mimeType = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(type => MediaRecorder.isTypeSupported(type));
+            if (!mimeType) throw new Error('This browser cannot encode a WebM scene recording. Use desktop Chrome.');
+            const pixelRatio = renderer.getPixelRatio();
+            const originalAspect = camera.aspect;
+            const originalPosition = camera.position.clone();
+            const originalQuaternion = camera.quaternion.clone();
+            const originalFov = camera.fov;
+            const fit = canvas.style.objectFit;
+            let stream: MediaStream | undefined;
+            let media: MediaRecorder | undefined;
+            let abort = () => {};
+            let timer = 0;
+            keys.current.clear(); drag = null; orbit.enabled = false;
+            try {
+              renderer.setPixelRatio(1); renderer.setSize(1920, 1080, false);
+              camera.aspect = 1920 / 1080; camera.updateProjectionMatrix();
+              canvas.style.objectFit = 'contain';
+              pathRecorder.replay(); pathRecorder.advanceReplay(0);
+              renderer.render(scene, camera);
+              stream = canvas.captureStream(24);
+              const recording = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 6_000_000 });
+              media = recording;
+              return await new Promise<Blob>((resolve, reject) => {
+                const chunks: Blob[] = [];
+                let bytes = 0;
+                let failure = '';
+                const cancel = (message: string) => {
+                  if (failure) return;
+                  failure = message;
+                  reject(new Error(message));
+                  if (recording.state !== 'inactive') recording.stop();
+                };
+                capture = { started: Infinity, elapsed: 0, duration, media: recording, progress, cancel };
+                abort = () => cancel('Scene recording cancelled. Review and try again.');
+                signal.addEventListener('abort', abort, { once: true });
+                recording.onstart = () => { if (capture) capture.started = performance.now(); };
+                recording.ondataavailable = event => {
+                  if (!event.data.size) return;
+                  chunks.push(event.data); bytes += event.data.size;
+                  if (bytes > 47 * 1024 ** 2 && recording.state !== 'inactive') cancel('This recording exceeded the upload limit. Record a shorter path and try again.');
+                };
+                recording.onerror = () => cancel('The browser could not record the scene. Review and try again.');
+                recording.onstop = () => failure ? reject(new Error(failure)) : bytes ? resolve(new Blob(chunks, { type: mimeType })) : reject(new Error('The scene recording was empty. Try again.'));
+                timer = window.setTimeout(() => cancel('Scene recording stalled. Keep this page visible and try again.'), (duration + 8) * 1000);
+                recording.start(500);
+              });
+            } finally {
+              signal.removeEventListener('abort', abort); window.clearTimeout(timer);
+              if (media && media.state !== 'inactive') media.stop();
+              capture = null;
+              stream?.getTracks().forEach(track => track.stop());
+              pathRecorder.playing = false;
+              camera.position.copy(originalPosition); camera.quaternion.copy(originalQuaternion); camera.fov = originalFov;
+              camera.aspect = originalAspect; camera.updateProjectionMatrix();
+              canvas.style.objectFit = fit;
+              if (active) {
+                renderer.setPixelRatio(pixelRatio); renderer.setSize(element.clientWidth || 1, element.clientHeight || 1);
+                camera.aspect = (element.clientWidth || 1) / (element.clientHeight || 1); camera.updateProjectionMatrix();
+                walker?.place(camera.position.clone().add(new Vector3(0, -1.6, 0)));
+                yaw = camera.rotation.y; pitch = camera.rotation.x;
+                orbit.enabled = false;
+                renderer.render(scene, camera);
+              }
+            }
+          },
+          cancelFilm: message => capture?.cancel(message),
           replay: () => { keys.current.clear(); pathRecorder.replay(); },
           stopReplay: () => {
             pathRecorder.playing = false;
             walker?.place(camera.position.clone().add(new Vector3(0, -1.6, 0)));
             yaw = camera.rotation.y; pitch = camera.rotation.x;
           },
-          setPaused: value => { paused = value; keys.current.clear(); pathRecorder.interrupt(); orbit.enabled = !value && mode === 'overview'; },
-          setReducedMotion: value => { reducedMotion = value; },
-          setCreativeLighting: value => { sun.color.set(value === 'daylight' ? '#ffffff' : '#ffe7c6'); sun.intensity = value === 'daylight' ? 3 : 2; },
-          setQuality: value => { renderer.setPixelRatio(value === 'low' ? 0.5 : Math.min(devicePixelRatio, 1)); metrics.reset(); },
+          setPaused: value => { if (capture) return; paused = value; keys.current.clear(); pathRecorder.interrupt(); orbit.enabled = !value && mode === 'overview'; },
+          setReducedMotion: value => { if (!capture) reducedMotion = value; },
+          setCreativeLighting: value => { if (capture) return; sun.color.set(value === 'daylight' ? '#ffffff' : '#ffe7c6'); sun.intensity = value === 'daylight' ? 3 : 2; },
+          setQuality: value => { if (capture) return; renderer.setPixelRatio(value === 'low' ? 0.5 : Math.min(devicePixelRatio, 1)); metrics.reset(); },
           details: () => ({ renderer: renderer.getContext().getParameter(renderer.getContext().RENDERER), width: canvas.width, height: canvas.height,
             geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures })
         });
@@ -206,14 +281,14 @@ export default function Scan({ url, projectId, eventId, worldId, revision, prove
       }
     })();
     const resize = new ResizeObserver(() => {
-      if (!element.clientWidth || !element.clientHeight) return;
+      if (capture || !element.clientWidth || !element.clientHeight) return;
       renderer.setSize(element.clientWidth, element.clientHeight);
       camera.aspect = element.clientWidth / element.clientHeight;
       camera.updateProjectionMatrix();
     });
     resize.observe(element);
     const pointerDown = (event: PointerEvent) => {
-      if (paused || recorder?.playing) return;
+      if (capture || paused || recorder?.playing) return;
       element.focus();
       if (mode === 'choose') {
         const rect = canvas.getBoundingClientRect();
@@ -225,15 +300,15 @@ export default function Scan({ url, projectId, eventId, worldId, revision, prove
       }
     };
     const pointerMove = (event: PointerEvent) => {
-      if (!drag || mode !== 'walk') return;
+      if (capture || !drag || mode !== 'walk') return;
       yaw -= (event.clientX - drag.x) * 0.003;
       pitch = Math.max(-1.2, Math.min(1.2, pitch - (event.clientY - drag.y) * 0.003));
       drag.x = event.clientX;
       drag.y = event.clientY;
     };
     const pointerUp = () => { drag = null; };
-    const clear = () => { keys.current.clear(); drag = null; };
-    const lost = (event: Event) => { event.preventDefault(); renderer.setAnimationLoop(null); setPhase('error'); setNotice('The graphics context was lost. Reopen the scene to try again.'); };
+    const clear = () => { keys.current.clear(); drag = null; if (document.hidden) capture?.cancel('Recording stopped because the page was hidden. Keep this page visible and try again.'); };
+    const lost = (event: Event) => { event.preventDefault(); capture?.cancel('The graphics context was lost. Reopen the scene and try again.'); recorder?.interrupt(); setRuntime(null); renderer.setAnimationLoop(null); setPhase('error'); setNotice('The graphics context was lost. Reopen the scene to try again.'); };
     canvas.addEventListener('pointerdown', pointerDown);
     canvas.addEventListener('pointermove', pointerMove);
     canvas.addEventListener('pointerup', pointerUp);
@@ -246,6 +321,15 @@ export default function Scan({ url, projectId, eventId, worldId, revision, prove
       const delta = Math.min(elapsed / 1000, 0.15);
       last = time;
       if (document.hidden) { recorder?.interrupt(); return; }
+      if (capture) {
+        const seconds = Math.max(0, Math.min(capture.duration, (performance.now() - capture.started) / 1000));
+        recorder?.advanceReplay(Math.max(0, seconds - capture.elapsed));
+        capture.elapsed = seconds;
+        renderer.render(scene, camera);
+        capture.progress(seconds);
+        if (seconds >= capture.duration && capture.media.state === 'recording') capture.media.stop();
+        return;
+      }
       if (!paused) metrics.record(elapsed);
       if (recorder?.playing && !paused) {
         recorder.advanceReplay(delta);
@@ -268,6 +352,7 @@ export default function Scan({ url, projectId, eventId, worldId, revision, prove
     });
     return () => {
       active = false;
+      capture?.cancel('The scene was closed. The unfinished recording was discarded.');
       recorder?.interrupt();
       setRuntime(null);
       actions.current = null;
@@ -303,11 +388,13 @@ export default function Scan({ url, projectId, eventId, worldId, revision, prove
     onKeyDown={event => {
       if (event.key === 'Escape') { event.stopPropagation(); onClose(); return; }
       if (event.key === 'Tab') {
-        const items = [...(wrapper.current?.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex="0"]') || [])];
+        const items = [...(wrapper.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), summary, audio[controls], [tabindex="0"]') || [])]
+          .filter(item => item.getClientRects().length > 0);
         if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items.at(-1)?.focus(); }
         if (!event.shiftKey && document.activeElement === items.at(-1)) { event.preventDefault(); items[0]?.focus(); }
       }
       const key = event.key.toLowerCase();
+      if (filmBusy && event.target === host.current) return;
       if (event.target === host.current && phase === 'choose' && key === 'enter') {
         event.preventDefault();
         actions.current?.selectFloor();
@@ -321,11 +408,12 @@ export default function Scan({ url, projectId, eventId, worldId, revision, prove
     }}>
     <div className="walk-canvas" ref={host} tabIndex={0} aria-label={(provenance === 'imagined' ? 'Imagined world. ' : 'Reconstruction. ') + 'Choose a floor, then use WASD to walk and drag to look.'} onBlur={() => keys.current.clear()} />
     <header className="walk-header"><div className="walk-brand">everwhere<span>{provenance === 'imagined' ? 'Imagined · generated interpretation' : 'Reconstructed · imported mesh'}</span></div><div className="walk-header-actions"><button onClick={onClose}><X size={16} /> Exit</button></div></header>
-    <RuntimeTools runtime={runtime} contextURL={'/projects/' + projectId + '/memories/' + eventId + '/scene-context?world=' + worldId} focus={() => host.current?.focus()} />
+    <RuntimeTools runtime={runtime} contextURL={'/projects/' + projectId + '/memories/' + eventId + '/scene-context?world=' + worldId}
+      revision={revision} filmBase={'/projects/' + projectId} onFilmBusy={setFilmBusy} focus={() => host.current?.focus()} />
     {anchors.length > 0 && <aside className="scan-waypoints" aria-label="Saved places">
       <h2>Saved places</h2>
-      {anchors.map(anchor => <button key={anchor.id} aria-pressed={selectedAnchor?.id === anchor.id} onClick={() => onSelectAnchor(anchor.id)}><MapPin size={14} /> {anchor.title}</button>)}
-      {selectedAnchor && <><button onClick={onRecollect}>Add a recollection here</button>
+      {anchors.map(anchor => <button disabled={filmBusy} key={anchor.id} aria-pressed={selectedAnchor?.id === anchor.id} onClick={() => onSelectAnchor(anchor.id)}><MapPin size={14} /> {anchor.title}</button>)}
+      {selectedAnchor && <><button disabled={filmBusy} onClick={onRecollect}>Add a recollection here</button>
         {recollections.filter(item => item.anchorId === selectedAnchor.id).map(item => <blockquote key={item.id}><p>{item.text}</p><cite>{item.contributor} · Recollection</cite></blockquote>)}
       </>}
     </aside>}
@@ -333,15 +421,15 @@ export default function Scan({ url, projectId, eventId, worldId, revision, prove
       {phase === 'loading' ? <p role="status">Loading the world and its walking surfaces…</p> : <p role="status">{notice}</p>}
       {phase === 'overview' && <button className="walk-primary" onClick={() => actions.current?.choose()}><Footprints size={16} /> Choose floor to walk</button>}
       {phase === 'choose' && <button onClick={() => actions.current?.overview()}>Cancel placement</button>}
-      {phase === 'walk' && <><button onClick={() => actions.current?.overview()}><MoveUpRight size={16} /> Inspect scene</button>
-        <button onClick={() => { const point = actions.current?.read(); if (point) onWaypoint(point); }}><MapPin size={16} /> Save waypoint</button></>}
+      {phase === 'walk' && <><button disabled={filmBusy} onClick={() => actions.current?.overview()}><MoveUpRight size={16} /> Inspect scene</button>
+        <button disabled={filmBusy} onClick={() => { const point = actions.current?.read(); if (point) onWaypoint(point); }}><MapPin size={16} /> Save waypoint</button></>}
       {phase === 'error' && <button onClick={onClose}>Return to memory</button>}
     </div>
     {(phase === 'walk' || phase === 'choose') && <div className="walk-reticle" aria-hidden="true" />}
     {phase === 'walk' && <div className="walk-movement" aria-label="Movement controls">
       {[['w', 'Walk forward', ArrowUp], ['a', 'Step left', ArrowLeft], ['s', 'Walk backward', ArrowDown], ['d', 'Step right', ArrowRight]].map(([key, name, Icon]) => {
         const Direction = Icon as typeof ArrowUp;
-        return <button key={String(key)} className={'walk-key-' + key} aria-label={String(name)}
+        return <button disabled={filmBusy} key={String(key)} className={'walk-key-' + key} aria-label={String(name)}
           onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); keys.current.add(String(key)); }}
           onPointerUp={() => keys.current.delete(String(key))} onPointerCancel={() => keys.current.delete(String(key))}
           onLostPointerCapture={() => keys.current.delete(String(key))}

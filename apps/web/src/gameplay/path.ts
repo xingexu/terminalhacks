@@ -81,13 +81,14 @@ export class PathRecorder {
   }
   update(delta: number) {
     if (!this.recording) return;
-    this.time += delta;
-    if (this.time - this.frames[this.frames.length - 1].t >= 0.05 - 1e-6) this.capture(this.time);
+    this.time = Math.min(60, this.time + delta);
+    if (this.time - this.frames[this.frames.length - 1].t >= 0.05 - 1e-6 || this.time === 60) this.capture(this.time);
     if (this.time >= 60) this.stop();
   }
   stop() {
     if (!this.recording) return;
     this.recording = false;
+    if (this.time > this.frames[this.frames.length - 1].t) this.capture(this.time);
     try {
       const path: CameraPath = { id: crypto.randomUUID(), sceneId: this.manifest.id, revision: this.manifest.revision,
         provenance: this.manifest.provenance, keyframes: this.frames };

@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { createReadStream, readdirSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
-  appendChange, applyCommand, digest, eventById, eventDependencies, invalidateJobs,
+  appendChange, applyCommand, digest, eventById, eventDependencies, filmDependencies, invalidateJobs,
   lensAllows, mediaById, now, rank, requireCondition as check, uid, validateCommand, validateObservation, views
 } from '../../packages/runtime/memory.mjs';
 import { renderFilm } from '../../packages/media/local.mjs';
+import { renderSceneFilm } from '../../packages/media/scene-film.mjs';
 
 const twoHours = 2 * 3600_000;
 const text = (value, max = 4000) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
@@ -32,7 +33,7 @@ export function cleanMedia(media) {
   return item;
 }
 
-function cleanJob(job) {
+export function cleanJob(job) {
   const { manifest, output, captions, storyboard, ...details } = job;
   return { ...details, ...(['queued', 'running', 'ready'].includes(job.status) && manifest?.storyboard && { storyboard: manifest.storyboard }) };
 }
@@ -100,13 +101,13 @@ export function updateSession(state, input) {
   return state.session;
 }
 
-function savePreview(state, entry) {
+export function savePreview(state, entry) {
   for (const [key, prior] of Object.entries(state.previews)) {
     if (prior.expires <= Date.now()) delete state.previews[key];
   }
   check(Object.keys(state.previews).length < 100, 429, 'TOO_MANY_PREVIEWS', 'Finish or wait for an existing preview.');
   const token = uid();
-  const expires = Date.now() + 5 * 60_000;
+  const expires = Date.now() + (entry.kind === 'scene-film' ? 15 : 5) * 60_000;
   state.previews[token] = { ...entry, expires };
   return { previewToken: token, diff: entry.diff, expires: new Date(expires).toISOString() };
 }
@@ -123,7 +124,7 @@ export function previewCommand(state, input, actor, observation = null) {
   });
 }
 
-function resolvePreview(state, token, actor, kind) {
+export function resolvePreview(state, token, actor, kind) {
   const preview = state.previews[token];
   check(preview?.kind === kind && preview.actor === actor && preview.expires > Date.now(),
     409, 'PREVIEW_EXPIRED', 'This preview expired. Review the change again.');
@@ -293,12 +294,14 @@ export function revokeCapture(state, id, discard = false) {
     const manifest = job.manifest;
     if (!manifest || !(manifest.media.some(item => ids.has(item.id)) || worlds.some(world => world.id === manifest.world?.id) || ids.has(manifest.narration?.id) ||
       manifest.recollections.some(item => withdrawnRecollections.has(item.id) || ids.has(item.audioMediaId)))) continue;
-    outputs.push({ id: job.id, output: job.output, captions: job.captions });
+    outputs.push({ id: job.id, output: job.output, captions: job.captions,
+      ...(job.manifest?.sceneRecording?.storage && { recording: job.manifest.sceneRecording.storage }) });
     Object.assign(job, { status: 'stale', approved: false });
     delete job.manifest;
     delete job.output;
     delete job.captions;
     delete job.contentHash;
+    delete job.recording;
   }
   const revokedArtifacts = new Set([...worlds, ...outputs].map(item => item.id));
   for (const request of Object.values(state.requests)) {
@@ -372,11 +375,40 @@ export function queueFilm(state, input, actor) {
 export function createFilmWorker(store, dataDir, demoDir) {
   let promise = null;
   let stopped = false;
-  for (const { id, actor, state } of store.all()) {
+  const startupFiles = new Set();
+  const projects = store.all();
+  const queuedInputs = new Set(projects.flatMap(project => project.state.jobs
+    .filter(job => job.status === 'queued' && job.manifest?.storyboard).map(job => job.manifest?.sceneRecording?.storage).filter(Boolean)));
+  const projectsDir = join(dataDir, 'projects');
+  let directories = [];
+  try { directories = readdirSync(projectsDir, { withFileTypes: true }).filter(entry => entry.isDirectory()); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  // Snapshot names before accepting uploads; a later upload must not be swept as an orphan.
+  for (const directory of directories) {
+    const dir = join(projectsDir, directory.name);
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isFile() && /\.scene\.(mp4|webm)$/.test(entry.name) && !queuedInputs.has(path)) startupFiles.add(path);
+    }
+  }
+  for (const { id, actor, state } of projects) {
+    for (const job of state.jobs.filter(item => ['running', 'failed'].includes(item.status) || (item.status === 'stale' && !item.output))) {
+      for (const path of [job.output, job.captions, ...['.mp4', '.vtt', '-work', '-scene-work'].map(suffix => join(projectsDir, id, job.id + suffix))]) {
+        if (path) startupFiles.add(path);
+      }
+    }
     if (state.jobs.some(job => job.status === 'running' || (['queued', 'ready'].includes(job.status) && !job.manifest?.storyboard))) store.update(actor, id, 'job.changed', current => {
       for (const job of current.jobs.filter(item => item.status === 'running')) {
         job.status = 'failed';
+        job.approved = false;
         job.error = 'The server restarted during this render. Start a new render to retry.';
+        delete job.output;
+        delete job.captions;
+        delete job.contentHash;
+        if (job.manifest?.sceneRecording?.storage) {
+          startupFiles.add(job.manifest.sceneRecording.storage);
+          delete job.manifest.sceneRecording.storage;
+        }
       }
       for (const job of current.jobs.filter(item => ['queued', 'ready'].includes(item.status) && !item.manifest?.storyboard)) {
         Object.assign(job, { status: 'stale', approved: false, error: 'Review the current storyboard and render a new film.' });
@@ -384,7 +416,18 @@ export function createFilmWorker(store, dataDir, demoDir) {
     });
   }
   async function drain() {
+    await Promise.all([...startupFiles].map(file => rm(file, { recursive: true, force: true })));
+    startupFiles.clear();
     while (!stopped) {
+      for (const project of store.all()) {
+        const stale = project.state.jobs.filter(job => !['queued', 'running'].includes(job.status) && job.manifest?.sceneRecording?.storage);
+        if (stale.length) {
+          await Promise.all(stale.map(job => rm(job.manifest.sceneRecording.storage, { force: true })));
+          if (store.read(project.actor, project.id, false)) store.update(project.actor, project.id, null, current => {
+            for (const job of current.jobs) if (stale.some(item => item.id === job.id) && job.manifest?.sceneRecording) delete job.manifest.sceneRecording.storage;
+          });
+        }
+      }
       const next = store.all().find(project => project.state.jobs.some(job => job.status === 'queued'));
       if (!next) return;
       const { actor, id, state } = next;
@@ -393,7 +436,7 @@ export function createFilmWorker(store, dataDir, demoDir) {
       store.update(actor, id, 'job.changed', current => { current.jobs.find(item => item.id === job.id).status = 'running'; });
       let result;
       try {
-        result = await renderFilm(job.manifest, dir, job.id, demoDir);
+        result = job.kind === 'scene_recording' ? await renderSceneFilm(job.manifest, dir, job.id) : await renderFilm(job.manifest, dir, job.id, demoDir);
         const hash = createHash('sha256');
         for await (const chunk of createReadStream(result.output)) hash.update(chunk);
         if (!store.read(actor, id, false)) {
@@ -402,7 +445,7 @@ export function createFilmWorker(store, dataDir, demoDir) {
         }
         const accepted = store.update(actor, id, 'job.changed', current => {
           const target = current.jobs.find(item => item.id === job.id);
-          if (target.status !== 'running' || target.inputHash !== digest(eventDependencies(current, target.eventId, target.lens))) {
+          if (target.status !== 'running' || target.inputHash !== digest(filmDependencies(current, target.eventId, target.lens, target.manifest?.sceneRecording))) {
             target.status = 'stale';
             return false;
           }
@@ -415,6 +458,14 @@ export function createFilmWorker(store, dataDir, demoDir) {
           const target = current.jobs.find(item => item.id === job.id);
           if (target.status === 'running') Object.assign(target, { status: 'failed', error: 'Film rendering failed. Check FFmpeg and try again.' });
         });
+      } finally {
+        if (job.manifest?.sceneRecording?.storage) {
+          await rm(job.manifest.sceneRecording.storage, { force: true });
+          if (store.read(actor, id, false)) store.update(actor, id, null, current => {
+            const target = current.jobs.find(item => item.id === job.id);
+            if (target?.manifest?.sceneRecording) delete target.manifest.sceneRecording.storage;
+          });
+        }
       }
     }
   }

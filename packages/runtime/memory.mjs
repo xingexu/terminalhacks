@@ -71,7 +71,7 @@ export const mediaById = (state, id) => state.media.find(item => item.id === id 
 export const isOriginal = item => item?.provenance === 'original';
 export const lensAllows = (item, lens) => Boolean(item && !item.revoked && (lens === 'all' || isOriginal(item)));
 
-export function eventDependencies(state, eventId, lens) {
+export function eventDependencies(state, eventId, lens, worldId = null) {
   const event = eventById(state, eventId);
   if (!event) return null;
   const time = value => Number.isFinite(Date.parse(value)) ? Date.parse(value) : Infinity;
@@ -84,7 +84,7 @@ export function eventDependencies(state, eventId, lens) {
   const worlds = lens === 'all' ? (state.worlds || []).filter(world => world.eventId === eventId && world.approved &&
     !world.revoked && world.status === 'ready' && world.sourceIds.length && world.sourceIds.every(id => available.has(id)) &&
     (!world.evidenceHash || world.evidenceHash === digest(generationDependencies(state, eventId, world.evidenceRefs)))) : [];
-  const world = worlds.filter(item => item.format === 'glb').at(-1) ?? worlds.at(-1);
+  const world = worldId ? worlds.find(item => item.id === worldId) : worlds.filter(item => item.format === 'glb').at(-1) ?? worlds.at(-1);
   const planned = world?.plan?.sourceIds?.filter(id => world.sourceIds.includes(id) && available.has(id)) || [];
   const selected = [...new Set([...planned, ...media.filter(item => !world || world.sourceIds.includes(item.id)).map(item => item.id)])];
   const sourceIds = [...selected, ...media.filter(item => !selected.includes(item.id)).map(item => item.id)];
@@ -125,6 +125,21 @@ export function eventDependencies(state, eventId, lens) {
   };
 }
 
+export function filmDependencies(state, eventId, lens, recording = null) {
+  const manifest = eventDependencies(state, eventId, lens, recording?.worldId);
+  if (!recording) return manifest;
+  if (!manifest || manifest.world?.id !== recording.worldId) return null;
+  const { storage, ...sceneRecording } = recording;
+  const scale = recording.durationSeconds / manifest.storyboard.durationSeconds;
+  const frames = manifest.storyboard.frames.map(frame => ({ ...frame, seconds: frame.seconds * scale }));
+  const original = manifest.storyboard.narration;
+  const narration = original ? { ...original, startSeconds: original.startSeconds * scale,
+    seconds: Math.min(original.seconds, frames.find(frame => frame.recollection?.id === original.recollectionId).seconds) } : null;
+  const { id, ...sourcePlan } = manifest.storyboard;
+  const plan = { ...sourcePlan, kind: 'scene_recording', durationSeconds: recording.durationSeconds, frames, narration };
+  return { ...manifest, storyboard: { id: digest({ ...plan, path: recording.path.cameraPath }), ...plan }, sceneRecording };
+}
+
 // Only evidence affects a generated scene; approvals and camera waypoints do not.
 export function generationDependencies(state, eventId, selected) {
   const event = eventById(state, eventId);
@@ -141,7 +156,7 @@ export function generationDependencies(state, eventId, selected) {
 export function invalidateJobs(state) {
   for (const job of state.jobs) {
     if (!['queued', 'running', 'ready'].includes(job.status)) continue;
-    if (job.inputHash !== digest(eventDependencies(state, job.eventId, job.lens))) {
+    if (job.inputHash !== digest(filmDependencies(state, job.eventId, job.lens, job.manifest?.sceneRecording))) {
       job.status = 'stale';
       job.approved = false;
     }
@@ -159,6 +174,7 @@ export function invalidateJobs(state) {
   for (const [token, preview] of Object.entries(state.previews || {})) {
     if (preview.kind === 'world' && preview.plan.inputHash !== digest(generationDependencies(state, preview.plan.eventId))) delete state.previews[token];
     if (preview.kind === 'film' && preview.inputHash !== digest(eventDependencies(state, preview.eventId, preview.lens))) delete state.previews[token];
+    if (preview.kind === 'scene-film' && preview.inputHash !== digest(filmDependencies(state, preview.eventId, preview.lens, preview.recording))) delete state.previews[token];
   }
 }
 

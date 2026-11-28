@@ -78,11 +78,21 @@
 .runtime-tools select { width:auto; padding:6px; }
 .runtime-record { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
 .runtime-tools button { min-height:36px; font-size:11px; padding:8px 10px; }
+.runtime-tools fieldset { border:0; padding:0; margin:0; min-width:0; }
+.runtime-tools button:disabled { cursor:default; opacity:.5; }
+.runtime-tools a { color:#a5f1dd; text-decoration:underline; }
+.scene-film-tools { border-top:1px solid #ffffff30; margin-top:12px; padding-top:12px; }
+.scene-film-tools h3, .scene-film-tools h4 { color:inherit; font-size:13px; margin:0 0 8px; }
+.scene-film-tools ol { padding-left:20px; }
+.scene-film-tools li { margin-bottom:12px; line-height:1.6; overflow-wrap:anywhere; }
+.scene-film-tools blockquote { margin:8px 0; padding-left:8px; border-left:2px solid #91f0db; }
+.scene-film-tools audio { display:block; width:100%; min-width:0; }
 .walk-album:has(.scan-waypoints) .runtime-tools { left:32px; right:auto; }
 @media (max-width:600px) {
   .runtime-tools { top:76px; right:16px; max-width:calc(100% - 32px); }
   .walk-album:has(.scan-waypoints) .runtime-tools { left:16px; }
   .runtime-tools[open] { right:16px; left:16px; z-index:6; }
+  .runtime-tools[open] ~ .scan-waypoints, .runtime-tools[open] ~ .scan-actions { display:none; }
 }
 .scan-waypoints button[aria-pressed="true"] { background:#f3c9b4; color:#192733; }.scan-waypoints blockquote { margin:12px 0; font-size:12px; line-height:1.6; }.scan-waypoints cite { font-size:10px; opacity:.7; }
 @media (max-width:700px) {

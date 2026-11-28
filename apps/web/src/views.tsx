@@ -51,7 +51,7 @@ function Thumb({ project, source, className = '' }: { project: string; source?: 
 export function NarrationPreview({ projectId, narration }: { projectId: string; narration: NonNullable<Storyboard['narration']> }) {
   return <section className="form-stack" aria-label="Film narration">
     <strong>Original voice note</strong>
-    <p>The film uses the first {narration.seconds} seconds of this note, starting {narration.startSeconds} seconds into the film. Preview the original note below.</p>
+    <p>The film uses the first {narration.seconds.toFixed(1)} seconds of this note, starting {narration.startSeconds.toFixed(1)} seconds into the film. Preview the original note below.</p>
     <audio controls preload="none" aria-label="Preview original voice note" style={{ width: '100%' }}
       src={sourceURL(projectId, narration.sourceId, '?variant=playback')} />
   </section>;
@@ -223,48 +223,61 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
 export function Watch({ state, event, actions }: { state: Snapshot; event?: Memory; actions: ViewActions }) {
   const [playing, setPlaying] = useState(false);
   const [frame, setFrame] = useState(0);
-  const jobs = state.jobs.filter(item => item.eventId === event?.id && item.lens === state.session.lens);
+  const [selectedKind, setSelectedKind] = useState<Storyboard['kind'] | null>(null);
+  const allJobs = state.jobs.filter(item => item.eventId === event?.id && item.lens === state.session.lens);
+  const kind = selectedKind ?? allJobs.find(item => ['queued', 'running', 'ready'].includes(item.status))?.kind ?? 'source_montage';
+  const sceneFilm = kind === 'scene_recording';
+  const jobs = allJobs.filter(item => (item.kind ?? 'source_montage') === kind);
+  const montage = allJobs.find(item => item.kind !== 'scene_recording' && ['queued', 'running', 'ready'].includes(item.status));
   const current = jobs.find(item => ['queued', 'running', 'ready'].includes(item.status));
-  const storyboard = current ? current.storyboard : event && state.storyboards[event.id];
+  const storyboard = current ? current.storyboard : !sceneFilm && event ? state.storyboards[event.id] : undefined;
   const storyboardWorld = state.worlds.find(world => world.id === storyboard?.worldId);
   const frames = storyboard?.frames ?? [];
   const activeFrame = frames[frame % (frames.length || 1)];
   const source = activeFrame && sourcesFor(state, [activeFrame.sourceId])[0];
   const excluded = sourcesFor(state, storyboard?.excludedSourceIds ?? []);
   const showVideo = current?.status === 'ready' && current.approved;
+  useEffect(() => { setSelectedKind(null); }, [event?.id, state.session.lens]);
   useEffect(() => { setFrame(0); setPlaying(false); }, [event?.id, state.session.lens, storyboard?.id, showVideo]);
   useEffect(() => {
-    if (!playing || !activeFrame || showVideo) return;
+    if (!playing || !activeFrame || showVideo || sceneFilm) return;
     const timer = window.setTimeout(() => setFrame(value => (value + 1) % frames.length), activeFrame.seconds * 1000);
     return () => window.clearTimeout(timer);
-  }, [playing, frame, frames.length, activeFrame?.seconds, showVideo]);
+  }, [playing, frame, frames.length, activeFrame?.seconds, showVideo, sceneFilm]);
   return <div className={'view-stack grade-' + state.visualProfile}>
     <div className="section-heading page-section"><h2>Films from your memories</h2>
-      <button className="btn primary" onClick={actions.render} disabled={!frames.length || Boolean(current)}><Clapperboard size={17} /> Render MP4</button></div>
-    {storyboard && <p className="muted">Photo/video montage · {storyboard.durationSeconds} seconds. {storyboardBasis[storyboard.basis]} This film does not record the 3D walk.</p>}
+      {!sceneFilm && <button className="btn primary" onClick={actions.render} disabled={!frames.length || Boolean(montage)}><Clapperboard size={17} /> Render MP4</button>}</div>
+    <div className="button-row" aria-label="Film type">
+      <button className="btn" aria-pressed={!sceneFilm} onClick={() => setSelectedKind('source_montage')}>Photo/video montage</button>
+      <button className="btn" aria-pressed={sceneFilm} onClick={() => setSelectedKind('scene_recording')}>3D scene recording</button>
+    </div>
+    {storyboard && <p className="muted">{sceneFilm ? '3D scene recording' : 'Photo/video montage'} · {storyboard.durationSeconds.toFixed(1)} seconds. {sceneFilm ? 'Footage follows your reviewed camera path. Source references guide captions and narration; they do not identify exactly what the camera is looking at.' : storyboardBasis[storyboard.basis] + ' This film does not record the 3D walk.'}</p>}
     {storyboardWorld && <p className="muted">Based on world: <strong>{storyboardWorld.title}</strong></p>}
     {showVideo && current ? <div className="film-stage"><video controls playsInline preload="metadata" src={artifactURL(state.projectId, current.id)} poster={source && sourceURL(state.projectId, source.id, '?variant=thumb')}>
       <track default kind="captions" label="English captions" srcLang="en" src={artifactURL(state.projectId, current.id, 'captions')} />
-    </video></div> : source ? <div className="film-stage film-preview">
+    </video></div> : sceneFilm ? <Empty icon={<Film size={30} />} title={current ? 'Your scene film is being prepared' : 'Film your walkable world'}>
+      <p>{current ? 'The actual camera recording will be available after processing and separate approval. The cards below are evidence references, not recorded footage.' : 'Enter an approved 3D world, open Scene tools, record a 30–60 second camera path, then review and record its film.'}</p>
+      {!current && <button className="btn" onClick={() => actions.select({ view: 'explore' })}>Open memory</button>}
+    </Empty> : source ? <div className="film-stage film-preview">
       <Thumb project={state.projectId} source={source} />
       <span className="glass-pill film-tag"><Film size={14} /> Storyboard preview</span>
       <button className="film-play" aria-label={playing ? 'Pause storyboard' : 'Play storyboard'} onClick={() => setPlaying(!playing)}>{playing ? <Pause size={29} fill="currentColor" /> : <Play size={29} fill="currentColor" />}</button>
       <div className="film-caption" style={{ right: 17, overflowWrap: 'anywhere' }}><strong>{event?.title}</strong><span>{activeFrame.caption} · {activeFrame.provenance === 'imagined' ? 'Imagined demo' : 'Original source'} · {activeFrame.seconds}s</span></div>
-    </div> : current ? <div className="notice"><p>The saved film has no reviewable storyboard. Its original export remains available after approval.</p></div> :
+    </div> : current ? <div className="notice"><p>This saved film has no reviewable storyboard. Refresh the memory to check its availability.</p></div> :
       <Empty icon={<Film size={30} />} title="Your film starts with a source"><p>Link a photo or video to this memory.</p><button className="btn" onClick={actions.openCapture}>Add sources</button></Empty>}
-    {!showVideo && activeFrame?.recollection && <blockquote>{activeFrame.recollection.text}<br /><small>{activeFrame.recollection.contributor} · Recollection{activeFrame.recollection.excerpt ? ' excerpt' : ''}</small></blockquote>}
+    {!sceneFilm && !showVideo && activeFrame?.recollection && <blockquote>{activeFrame.recollection.text}<br /><small>{activeFrame.recollection.contributor} · Recollection{activeFrame.recollection.excerpt ? ' excerpt' : ''}</small></blockquote>}
     {storyboard?.narration && <NarrationPreview projectId={state.projectId} narration={storyboard.narration} />}
     {current && <div className="notice render-notice"><Film size={19} /><div><strong>{current.status === 'ready' ? current.approved ? '1080p film ready' : 'Film rendered and awaiting approval' : 'Rendering the 1080p film'}</strong>
       <p>{current.status === 'ready' ? 'Saved from memory revision ' + current.revision + '.' : 'You can keep exploring while FFmpeg renders.'}</p></div>
       {current.status === 'ready' && (current.approved ? <a className="btn compact" href={artifactURL(state.projectId, current.id) + '?download=1'}><ArrowDownToLine size={16} /> Download</a> :
         <button className="btn compact primary" onClick={() => actions.approve(current)}><Check size={16} /> Approve film</button>)}</div>}
     {!current && jobs[0] && <div className="notice"><CircleHelp size={18} /><p>{jobs[0].status === 'stale' ? 'The previous film is out of date because this memory changed. Render a new cut to use the current evidence.' : jobs[0].error || 'This film is unavailable.'}</p></div>}
-    {frames.length > 0 && <><div className="section-heading"><h2>Storyboard</h2><span className="muted">{frames.length} {frames.length === 1 ? 'source' : 'sources'} · {storyboard?.durationSeconds}s</span></div>
+    {frames.length > 0 && <><div className="section-heading"><h2>{sceneFilm ? 'Source references and caption timeline' : 'Storyboard'}</h2><span className="muted">{frames.length} {frames.length === 1 ? 'source' : 'sources'} · {storyboard?.durationSeconds.toFixed(1)}s</span></div>
       <div className="storyboard">{frames.map((item, index) => {
         const visual = sourcesFor(state, [item.sourceId])[0];
         return <button className={'storyboard-card' + (source?.id === item.sourceId ? ' selected' : '')} key={item.sourceId}
-          aria-pressed={!showVideo && frame === index} disabled={!visual} onClick={() => showVideo ? actions.openSource(visual) : setFrame(index)}>
-          <Thumb project={state.projectId} source={visual} /><span>{index + 1}. {item.caption}<br />{item.seconds}s · {displayDate(item.capturedAt, true)}</span></button>;
+          aria-pressed={!sceneFilm && !showVideo && frame === index} disabled={!visual} onClick={() => showVideo || sceneFilm ? actions.openSource(visual) : setFrame(index)}>
+          <Thumb project={state.projectId} source={visual} /><span>{index + 1}. {item.caption}<br />{item.seconds.toFixed(1)}s · {displayDate(item.capturedAt, true)}</span></button>;
       })}</div>
       {!!storyboard?.omittedRecollections && <p className="muted">{storyboard.omittedRecollections} additional {storyboard.omittedRecollections === 1 ? 'recollection remains' : 'recollections remain'} in your journal, outside this cut.</p>}
     </>}
