@@ -10,7 +10,7 @@ import '@fontsource/instrument-serif/400-italic.css';
 import './style.css';
 import './experience.css';
 import './ascii.css';
-import { Tutorial } from './onboarding';
+import { Tour, type TourAction } from './onboarding';
 import { VoicePanel } from './voice';
 import { Capture } from './capture';
 import { GenerationForm } from './generation';
@@ -216,6 +216,7 @@ function App() {
   const [notice, setNotice] = useState('');
   const [startupError, setStartupError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [tour, setTour] = useState<number | null>(null);
   const ref = useRef('');
   const earlyRoute = useRef<View | null>(null);
   const tabs = useRef<HTMLElement>(null);
@@ -247,7 +248,8 @@ function App() {
       const last = localStorage.getItem('everwhere-project');
       chooseProject(requested || list.find(item => item.id === last)?.id || list[0]?.id || '');
       const returnEvent = new URLSearchParams(location.search).get('generate');
-      setDialog(returnEvent ? { kind: 'generate', eventId: returnEvent } : { kind: 'help' });
+      if (returnEvent) setDialog({ kind: 'generate', eventId: returnEvent });
+      else setTour(0);
       if (returnEvent) history.replaceState(null, '', location.pathname);
     }).catch(err => setStartupError((err as Error).message)).finally(() => setLoading(false));
   }, [chooseProject, loadProjects]);
@@ -339,6 +341,12 @@ function App() {
     openGeneration: () => { if (current) setDialog({ kind: 'generate', eventId: current.id }); }
   };
 
+  // The tour's buttons press the same controls the user would.
+  const runTour = (action: TourAction) => {
+    if (!state) show('library');
+    else if (action === 'generate') current ? actions.openGeneration() : show('memory');
+    else show(action);
+  };
   const currentNav = nav.find(item => item.id === state?.session.view) ?? nav[0];
   const screen = currentNav.id;
   const currentAnchor = state?.anchors.find(item => item.id === state.session.anchorId && item.eventId === current?.id);
@@ -357,7 +365,7 @@ function App() {
   return <div className="app-frame">
     <a className="skip-link" href="#experience">Skip to experience</a>
     <header className="menubar">
-      <a className="brand" href="/" aria-label="Everwhere home"><img className="brand-logo" src="/landing/everwhere-logo.webp" alt="Everwhere" width="480" height="174" /></a>
+      <a className="brand" href="/" aria-label="Everwhere home"><span className="brand-mark"><AsciiArt art={art.mark} /></span><img className="brand-logo" src="/landing/everwhere-logo.webp" alt="Everwhere" width="480" height="174" /></a>
       <button className="workspace-project" onClick={() => show('library')} aria-label={'Switch project, current project ' + (state?.title || 'Projects')}><span className="project-icon"><Images size={17} /></span><strong>{state?.title || 'Projects'}</strong><ChevronDown size={15} /></button>
       <nav className="menu" aria-label="Views" ref={tabs}>{nav.map(({ id, name, icon: Icon }) =>
         <button key={id} className={screen === id ? 'active' : ''} aria-current={screen === id ? 'page' : undefined}
@@ -365,7 +373,7 @@ function App() {
       <div className="menu-actions">
         <button className="btn compact subtle menu-voice" onClick={() => show('voice')} disabled={!state} aria-label="Connect VoiceOS"><AudioLines size={16} /> <span>VoiceOS</span></button>
         <button className="btn top-capture" onClick={() => state ? show('capture') : show('library')}><Camera size={17} /> <span>{state ? <>Capture<span className="capture-word"> memory</span></> : 'Projects'}</span>{items.length > 0 && <span className="pending-count" aria-label={items.length + ' pending sources'}>{items.length}</span>}</button>
-        <button className="icon-btn" onClick={() => show('help')} aria-label="Open tutorial" title="Open tutorial"><CircleHelp size={18} /></button>
+        <button className="icon-btn" onClick={() => setTour(0)} aria-label="Open tutorial" title="Open tutorial"><CircleHelp size={18} /></button>
       </div>
     </header>
     <main className={'main screen-' + screen} id="experience" tabIndex={-1}>
@@ -389,6 +397,7 @@ function App() {
         {screen === 'remember' && <Remember state={state} event={current} actions={actions} />}
       </div>}
     </main>
+    {tour !== null && <Tour step={tour} setStep={setTour} close={() => setTour(null)} view={screen} paused={!!dialog} ready={!!state} go={openView} run={runTour} />}
     {notice && <aside className="toast" role="status">{notice}<button className="icon-btn" onClick={() => setNotice('')} aria-label="Dismiss message"><X size={17} /></button></aside>}
     {dialog && <Modal key={captureOpen ? 'capture' : dialog.kind} title={sectionTitles[dialog.kind]} onClose={dismiss} wide={captureOpen || dialog.kind === 'source'}>
       {dialog.kind === 'library' && <><p className="muted">Open a project or start a private collection.</p>
@@ -396,9 +405,6 @@ function App() {
           <span className="project-icon"><Images size={17} /></span><span><strong>{item.title}</strong><small>{item.demo ? 'Sample project' : 'Private project'}</small></span><ChevronRight size={17} /></button>)}</div>
         {state && <button className="btn compact subtle self-start library-settings" onClick={() => show('settings')}><Settings size={15} /> Settings for {state.title}</button>}
         <NameForm handle={async title => { const created = await api<Project>('/projects', { title }); await loadProjects(); chooseProject(created.id); dismiss(); }} /></>}
-      {dialog.kind === 'help' && <Tutorial finish={dismiss} canConnectVoice={!!state}
-        connectVoice={() => show('voice')}
-        create={() => show('library')} />}
       {hasMedia && state && dialog.kind === 'settings' && <SettingsPanel state={state} base={base} reload={() => void refresh().catch(() => {})} deleteProject={async () => {
         await api(base, { confirm: true }, 'DELETE'); const list = await loadProjects(); chooseProject(list[0]?.id || ''); dismiss();
       }} />}
