@@ -110,7 +110,7 @@ export function Tour({ step, setStep, close, view, paused, ready, go, run }: {
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
   }, [step, paused, last, docked, leaving]);
-  return <div className={'tour-backdrop' + (leaving ? ' is-leaving' : '') + (docked ? ' is-docked' + side : '')} hidden={paused}>
+  return <div className={'tour-backdrop' + (leaving ? ' is-leaving' : '') + (docked ? ' is-docked' + side : '') + (current.target === '.timeline' ? ' dock-top' : '')} hidden={paused}>
     {docked && spot && <div className="tour-spot" aria-hidden="true" style={{ top: spot.top - 8, left: spot.left - 8, width: spot.width + 16, height: spot.height + 16 }} />}
     <section ref={panel} className="tour" role="dialog" aria-modal={!docked} aria-labelledby="tour-title" aria-describedby="tour-description">
       <div className="tour-head"><span className="tour-badge">Quick tour</span>

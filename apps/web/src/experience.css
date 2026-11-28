@@ -104,6 +104,7 @@ kbd { display: inline-block; font: 11px ui-monospace, monospace; color: var(--te
 .tour-backdrop { transition: background-color 380ms ease, backdrop-filter 380ms ease; }
 .tour-backdrop.is-docked { place-items: end; padding: 22px; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; pointer-events: none; overflow: visible; }
 .tour-backdrop.is-docked.dock-left { place-items: end start; }
+.tour-backdrop.is-docked.dock-top { place-items: start end; }
 .is-docked .tour { width: min(430px, 100%); pointer-events: auto; position: relative; z-index: 1; }
 .is-docked .tour-body { min-height: 0; }
 .is-docked .tour-body h3 { font-size: 2rem; }
