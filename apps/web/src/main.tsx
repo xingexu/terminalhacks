@@ -278,7 +278,6 @@ function App() {
       const [, p, id, view] = location.pathname.split('/');
       const requested = p === 'p' && list.some(item => item.id === id) ? id : '';
       if (requested && nav.some(item => item.id === view)) earlyRoute.current = view as View;
-      else if (location.pathname === '/app') earlyRoute.current = 'universe';
       const last = localStorage.getItem('everwhere-project');
       chooseProject(requested || list.find(item => item.id === last)?.id || list[0]?.id || '');
       setDialog({ kind: 'help' });
