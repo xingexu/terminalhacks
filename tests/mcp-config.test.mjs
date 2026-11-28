@@ -136,7 +136,7 @@ test('MCP stdio reads the private config on each call without a restart or leaki
     await writeFile(file, JSON.stringify({ api: root, project: demo.id, token }), { mode: 0o600 });
     const paired = await call();
     assert.equal(paired.isError, false);
-    assert.equal(paired.data.data.event, 'Lago di Braies');
+    assert.equal(paired.data.data.event, 'Place Saint-Bernard');
     await chmod(file, 0o644);
     const before = requests;
     const unsafe = await call();

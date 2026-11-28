@@ -26,7 +26,7 @@ import { cancelSceneFilm, previewSceneFilm, queueSceneFilm, sceneFilmRequest } f
 import { storeSceneRecording } from '../../packages/media/scene-film.mjs';
 import { evidenceFor, handoffPlan, lookupPlace, previewWorld, voiceEvidence } from '../../packages/intelligence/scene-plan.mjs';
 import { generateWorld } from '../../packages/providers/world/procedural.mjs';
-import { appendChange, digest, eventById, generationDependencies, mediaById, rank, requireCondition as check, uid } from '../../packages/runtime/memory.mjs';
+import { appendChange, digest, eventById, generationDependencies, mediaById, rank, requireCondition as check, uid, addSampleRoute, createMemory, demoVersion } from '../../packages/runtime/memory.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const demoDir = join(root, 'apps/web/public/media');
@@ -63,7 +63,7 @@ async function streamFile(request, reply, path, mime) {
     .header('Content-Length', end - start + 1).send(createReadStream(path, { start, end }));
 }
 
-export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA || join(root, '.data')), serveWeb = true, contextFetch = fetch } = {}) {
+export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA || join(root, '.data')), serveWeb = true, contextFetch = fetch, sampleRoute = process.env.EVERWHERE_SAMPLE_ROUTE !== '0' } = {}) {
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 });
   const store = createStore(dataDir);
   const film = createFilmWorker(store, dataDir, demoDir);
@@ -194,13 +194,25 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     }
   }
 
+  const newSample = actor => {
+    const { id } = store.create(actor, 'Mont-Tremblant', true);
+    if (sampleRoute) store.update(actor, id, null, state => { addSampleRoute(state); });
+  };
   app.get('/v1/bootstrap', async (req, reply) => {
     let identity = store.browser(cookie(req, 'ew_session'));
     if (!identity) {
       identity = store.newBrowser();
       const secure = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https';
       reply.header('Set-Cookie', 'ew_session=' + identity.token + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000' + (secure ? '; Secure' : ''));
-      store.create(identity.actor, 'The Dolomites', true);
+      newSample(identity.actor);
+    } else {
+      // Sample projects made before the Mont-Tremblant sample: refresh an untouched one, otherwise add the new sample beside it.
+      const samples = store.list(identity.actor).filter(item => item.demo).map(item => ({ ...item, state: store.read(identity.actor, item.id) }));
+      if (!samples.some(item => item.state.demoVersion === demoVersion)) {
+        const untouched = samples.find(item => item.state.revision === 0 && !item.state.capture.observations.length);
+        if (untouched) store.update(identity.actor, untouched.id, null, state => { Object.assign(state, createMemory('Mont-Tremblant', true)); if (sampleRoute) addSampleRoute(state); });
+        else newSample(identity.actor);
+      }
     }
     return { ok: true, data: store.list(identity.actor) };
   });
@@ -520,7 +532,7 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     if (world.format === 'tour') {
       check(req.params.asset === 'tour.json', 404, 'WORLD_UNAVAILABLE', 'This walkthrough asset is unavailable.');
       if (req.query.download === '1') reply.header('Content-Disposition', 'attachment; filename="everwhere-memory.tour.json"');
-      return streamFile(req, reply, world.storage, 'application/json');
+      return streamFile(req, reply, world.demoFile ? join(demoDir, world.demoFile) : world.storage, 'application/json');
     }
     check(req.params.asset === (world.format === 'glb' ? 'scene.glb' : 'scene.spz'), 404, 'WORLD_UNAVAILABLE', 'This scene asset is unavailable.');
     if (req.query.download === '1') reply.header('Content-Disposition', 'attachment; filename="everwhere-memory.' + (world.format === 'glb' ? 'glb' : 'spz') + '"');

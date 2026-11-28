@@ -1,0 +1,13 @@
+{
+  "version": "everwhere-tour-1",
+  "title": "Mont-Tremblant pedestrian village",
+  "startNodeId": "place",
+  "nodes": [
+    { "id": "place", "title": "Place Saint-Bernard", "description": "The square at the top of the pedestrian village, beside Le Shack.", "projection": "streetview",
+      "streetView": { "lat": 46.214173, "lng": -74.585936, "heading": 200 }, "sourceIds": ["m-lake"],
+      "links": [{ "to": "village", "label": "Walk down to the lower village", "kind": "walk" }] },
+    { "id": "village", "title": "Lower village", "description": "The foot of the pedestrian village, where the open-air lift starts.", "projection": "streetview",
+      "streetView": { "lat": 46.2100, "lng": -74.5853, "heading": 0 }, "sourceIds": ["m-lake"],
+      "links": [{ "to": "place", "label": "Walk up to Place Saint-Bernard", "kind": "walk" }] }
+  ]
+}

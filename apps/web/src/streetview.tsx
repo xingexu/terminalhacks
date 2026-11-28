@@ -72,7 +72,7 @@ export default function StreetView({ locator, heading, title, reduced, onReady, 
         const service = new api.StreetViewService();
         const location = { lat: locator.lat, lng: locator.lng };
         let found: any;
-        for (const request of [locator.panoId && { pano: locator.panoId }, { location, radius: 50, source: 'outdoor' }, { location, radius: 50 }]) {
+        for (const request of [locator.panoId && { pano: locator.panoId }, { location, radius: 50, source: 'outdoor' }, { location, radius: 50 }, { location, radius: 250 }]) {
           if (!request) continue;
           // Provider panorama IDs are replaceable hints; fall back to the authored location.
           try {

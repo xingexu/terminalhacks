@@ -34,17 +34,31 @@ export function digest(value) {
   return createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
 }
 
+// The sample project. Its pictures are illustrated placeholders and its Street View route is a starting point, not a verified one.
+export const demoVersion = 2;
 const demoEvents = [
-  { id: 'e-lake', title: 'Lago di Braies', placeLabel: 'South Tyrol, Italy', startAt: '2024-10-12T10:00:00+02:00', story: 'The lake was still that morning. From the old boathouse, the mountains seemed to go on forever below the waterline.', gps: [46.694, 12.085], sourceIds: ['m-lake', 'm-boats'], tags: 'lake water harbor rowboats dock dolomites autumn' },
-  { id: 'e-cabin', title: 'The mountain refuge', placeLabel: 'South Tyrol, Italy', startAt: '2024-10-13T16:00:00+02:00', story: 'After a long climb, we found a little wooden refuge tucked against the mountain.', gps: [46.675, 12.113], sourceIds: ['m-cabin'], tags: 'cabin coffee refuge dinner wood afternoon dolomites' },
-  { id: 'e-trail', title: 'Sunrise at Tre Cime', placeLabel: 'Belluno, Italy', startAt: '2024-10-14T07:00:00+02:00', story: 'We set out before sunrise and reached the ridge as the first light found the peaks.', gps: [46.618, 12.303], sourceIds: ['m-trail'], tags: 'sunrise hike trail mountain dawn peaks dolomites' }
+  { id: 'e-lake', title: 'Place Saint-Bernard', placeLabel: 'Mont-Tremblant, Québec', startAt: '2025-01-18T16:30:00-05:00', story: 'The village lights came on just as the snow started. The square at the top of the hill was quiet, and every roof had a white edge.', gps: [46.2142, -74.5859], sourceIds: ['m-lake', 'm-boats'], tags: 'village square snow lights gondola tremblant winter evening' },
+  { id: 'e-cabin', title: 'Lac Tremblant', placeLabel: 'Mont-Tremblant, Québec', startAt: '2025-01-19T08:00:00-05:00', story: 'The lake had frozen right across. From the old dock the hills looked close enough to walk to.', gps: [46.2155, -74.5935], sourceIds: ['m-cabin'], tags: 'lac frozen dock ice tremblant winter' },
+  { id: 'e-trail', title: 'First light at the summit', placeLabel: 'Mont-Tremblant, Québec', startAt: '2025-01-20T07:10:00-05:00', story: 'The first gondola reached the top before the sun did. The Laurentians turned pink one ridge at a time.', gps: [46.2332, -74.5557], sourceIds: ['m-trail'], tags: 'summit sunrise ridge laurentians dawn peaks tremblant' }
 ];
 const demoMedia = [
-  ['lake', 'From the lakeshore'],
-  ['boats', 'The old boathouse'],
-  ['cabin', 'A refuge in the mountains'],
-  ['trail', 'First light on the ridge']
+  ['lake', 'The pedestrian village'],
+  ['boats', 'Gondolas over the slopes'],
+  ['cabin', 'The frozen lake'],
+  ['trail', 'First light from the summit']
 ];
+const demoWorld = { id: 'w-tremblant', demoFile: 'tremblant.tour.json', format: 'tour', points: 2, title: 'Mont-Tremblant pedestrian village',
+  eventId: 'e-lake', status: 'ready', approval: 'approved', approved: true, sourceIds: ['m-lake'], provenance: 'imagined', provider: 'Google Street View',
+  tour: { startNodeId: 'place', liveStreetView: true, nodes: [{ id: 'place', title: 'Place Saint-Bernard', sourceIds: ['m-lake'] }, { id: 'village', title: 'Lower village', sourceIds: ['m-lake'] }] } };
+
+/** Adds the sample Street View route to a sample project. Kept out of createMemory so an empty sample stays the baseline. */
+export function addSampleRoute(state) {
+  if (!state.demo || state.worlds.some(world => world.id === demoWorld.id)) return state;
+  state.worlds.push({ ...structuredClone(demoWorld), contentHash: digest(demoWorld), inputHash: digest([demoWorld.id, demoVersion]) });
+  state.anchors.push(...demoWorld.tour.nodes.map(node => ({ id: 'a-sv-' + node.id, eventId: demoWorld.eventId, worldId: demoWorld.id,
+    nodeId: node.id, title: node.title, sourceIds: node.sourceIds, position: [0, 0, 0] })));
+  return state;
+}
 
 export function createMemory(title, demo = false) {
   const events = demo ? demoEvents.map(event => ({ ...structuredClone(event), version: 0 })) : [];
@@ -53,13 +67,13 @@ export function createMemory(title, demo = false) {
     demoFile: name + '.webp', hash: digest(name)
   })) : [];
   const anchors = demo ? [
-    { id: 'a-lake', eventId: 'e-lake', sourceIds: ['m-lake'], title: 'Lakeshore', position: [0, 0, 0] },
-    { id: 'a-boats', eventId: 'e-lake', sourceIds: ['m-boats'], title: 'Boathouse', position: [1, 0, 0] },
-    { id: 'a-cabin', eventId: 'e-cabin', sourceIds: ['m-cabin'], title: 'Refuge', position: [0, 0, 0] },
-    { id: 'a-trail', eventId: 'e-trail', sourceIds: ['m-trail'], title: 'Ridge', position: [0, 0, 0] }
+    { id: 'a-lake', eventId: 'e-lake', sourceIds: ['m-lake'], title: 'The square', position: [0, 0, 0] },
+    { id: 'a-boats', eventId: 'e-lake', sourceIds: ['m-boats'], title: 'Gondola', position: [1, 0, 0] },
+    { id: 'a-cabin', eventId: 'e-cabin', sourceIds: ['m-cabin'], title: 'Lakeside', position: [0, 0, 0] },
+    { id: 'a-trail', eventId: 'e-trail', sourceIds: ['m-trail'], title: 'Summit', position: [0, 0, 0] }
   ].map(anchor => ({ ...anchor, worldId: 'trail-' + anchor.eventId })) : [];
   return {
-    title, demo, revision: 0, seq: 0, visualProfile: 'natural', events, media, anchors,
+    title, demo, ...(demo && { demoVersion }), revision: 0, seq: 0, visualProfile: 'natural', events, media, anchors,
     session: { eventId: events[0]?.id ?? null, anchorId: anchors[0]?.id ?? null, view: 'explore', lens: demo ? 'all' : 'originals' },
     recollections: [], history: [], changes: [], requests: {}, previews: {}, jobs: [], worlds: [],
     capture: { sessions: [], observations: [] }

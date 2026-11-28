@@ -204,7 +204,7 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
       </>}
       <div className="hero-shade" />
       <div className="hero-top"><div className="hero-badges"><span className="glass-pill"><Compass size={14} /> {photos.length} {photos.length === 1 ? 'photo' : 'photos'} to explore</span>
-        {active?.provenance === 'imagined' && <span className="scene-sample">Imagined demo</span>}</div>
+        </div>
         <div className="hero-top-actions">
           {active && <button className="glass-icon" aria-label="View source media" title="View source media" onClick={() => actions.openSource(active)}><Eye size={17} /></button>}
           <button className="glass-icon" aria-label="Enter immersive album" title="Enter immersive album" onClick={openAlbum} disabled={!photos.length}><Maximize size={16} /></button>

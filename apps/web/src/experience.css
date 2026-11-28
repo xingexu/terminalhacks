@@ -79,3 +79,42 @@ kbd { display: inline-block; font: 11px ui-monospace, monospace; color: var(--te
   .tutorial-copy h3 { font-size: 36px; }
   .tutorial-actions, .tutorial-actions .button-row { flex-wrap: wrap; gap: 8px; }
 }
+
+/* The tutorial sits in the middle of the screen and blurs everything behind it. */
+.tour-backdrop { position: fixed; inset: 0; z-index: 8; display: grid; place-items: center; padding: 18px; overflow-y: auto; background: #0a0a0ab8; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); animation: fade-in 320ms ease both; }
+.tour-backdrop[hidden] { display: none; }
+.tour-backdrop.is-leaving { animation: fade-out 220ms ease both; }
+.tour { width: min(560px, 100%); display: grid; gap: 16px; padding: clamp(18px, 3vw, 30px); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 22px; box-shadow: 0 30px 90px #000c; animation: rise-in 420ms cubic-bezier(.2, .8, .2, 1) both; }
+.is-leaving .tour { animation: sink-out 220ms ease both; }
+.tour-head { display: flex; align-items: center; gap: 12px; color: var(--text-muted); font-size: .76rem; }
+.tour-head .icon-btn { margin: -8px -8px -8px auto; }
+.tour-badge { padding: 5px 12px; border-radius: var(--pill); background: var(--accent); color: var(--accent-fg); font: 400 .7rem var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.tour .tutorial-image { height: 150px; }
+.tour-body { display: grid; gap: 11px; min-height: 212px; align-content: start; animation: step-in 340ms cubic-bezier(.2, .8, .2, 1) both; }
+.tour-body h3 { font: clamp(2.1rem, 4vw, 2.9rem)/1 var(--display); letter-spacing: -.02em; }
+.tour-body p { color: var(--text-muted); line-height: 1.6; }
+.tour-body .tour-note { font-size: .84rem; padding-left: 12px; border-left: 1px solid var(--line-strong); }
+.tour-do { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.tour-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 14px; border-top: 1px dashed #3e3e3b; }
+.tour-actions .text-button { color: var(--text-muted); font-size: .86rem; }
+/* Hybrid steps: the card docks in a corner and the real control is lit and usable. */
+.tour-backdrop { transition: background-color 380ms ease, backdrop-filter 380ms ease; }
+.tour-backdrop.is-docked { place-items: end; padding: 22px; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; pointer-events: none; overflow: visible; }
+.tour-backdrop.is-docked.dock-left { place-items: end start; }
+.is-docked .tour { width: min(430px, 100%); pointer-events: auto; position: relative; z-index: 1; }
+.is-docked .tour-body { min-height: 0; }
+.is-docked .tour-body h3 { font-size: 2rem; }
+.tour-spot { position: fixed; border: 2px solid #fffefa; border-radius: 18px; box-shadow: 0 0 0 200vmax #0a0a0ab3; pointer-events: none; transition: top 380ms cubic-bezier(.2, .8, .2, 1), left 380ms cubic-bezier(.2, .8, .2, 1), width 380ms cubic-bezier(.2, .8, .2, 1), height 380ms cubic-bezier(.2, .8, .2, 1); animation: fade-in 320ms ease both; }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes rise-in { from { opacity: 0; transform: translateY(18px) scale(.975); } }
+@keyframes sink-out { to { opacity: 0; transform: translateY(10px) scale(.985); } }
+@keyframes step-in { from { opacity: 0; transform: translateX(14px); } }
+/* Dialogs and messages arrive the same way. */
+.modal[open] { animation: rise-in 300ms cubic-bezier(.2, .8, .2, 1) both; }
+.modal[open]::backdrop { animation: fade-in 260ms ease both; }
+.toast { animation: rise-in 300ms cubic-bezier(.2, .8, .2, 1) both; }
+
+/* The workspace gathers itself as the landing page's characters finish scattering. */
+.app-frame { animation: app-in 1100ms cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes app-in { from { opacity: 0; filter: blur(10px); transform: scale(1.015); } }

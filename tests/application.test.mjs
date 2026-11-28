@@ -276,7 +276,7 @@ test('MCP stdio uses the real API, applies a correction and recollection, and pu
       assert.equal(data._voiceos_glance.blocks.length, 2);
       return data;
     }
-    assert.equal((await voice('get_context')).data.event, 'Lago di Braies');
+    assert.equal((await voice('get_context')).data.event, 'Place Saint-Bernard');
     await request(p + '/session', { cameraViewerId: 'mcp-camera-test' });
     const camera = await voice('camera_action', { action: 'open' });
     assert.equal(camera.data.status, 'queued');
@@ -297,7 +297,7 @@ test('MCP stdio uses the real API, applies a correction and recollection, and pu
     await voice('navigate_anchor', { anchorId: 'a-boats' });
     const repeatedNavigationId = (await snap()).session.anchorNavigationId;
     assert.notEqual(repeatedNavigationId, navigation.anchorNavigationId);
-    await voice('select_event', { query: 'Lago di Braies' });
+    await voice('select_event', { query: 'Place Saint-Bernard' });
     assert.equal((await snap()).session.anchorNavigationId, repeatedNavigationId);
     await voice('switch_view', { view: 'explore' });
     assert.equal((await snap()).session.view, 'explore');
@@ -415,8 +415,8 @@ test('real 1080p MP4 plays over range requests and dependency staleness blocks d
   const captionText = await captions.text();
   assert.match(captionText, /Imagined demo imagery/);
   assert.match(captionText, /My account of the lakeshore\./);
-  const boathouseCaption = captionText.indexOf('The old boathouse');
-  assert.ok(boathouseCaption >= 0 && boathouseCaption < captionText.indexOf('From the lakeshore'));
+  const boathouseCaption = captionText.indexOf('Gondolas over the slopes');
+  assert.ok(boathouseCaption >= 0 && boathouseCaption < captionText.indexOf('The pedestrian village'));
   t.diagnostic('FFprobe: 1920×1080 H.264 + AAC + captions, ' + media.format.duration + ' seconds');
   await request(p + '/capture/grants/' + session.grantId + '/revoke', {});
   assert.equal((await snap()).recollections.length, 0);

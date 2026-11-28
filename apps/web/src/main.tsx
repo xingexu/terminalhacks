@@ -10,7 +10,7 @@ import '@fontsource/instrument-serif/400-italic.css';
 import './style.css';
 import './experience.css';
 import './ascii.css';
-import { Tutorial } from './onboarding';
+import { Tour, type TourAction } from './onboarding';
 import { VoicePanel } from './voice';
 import { Generation } from './generation';
 import { Capture } from './capture';
@@ -295,6 +295,7 @@ function App() {
   const [startupError, setStartupError] = useState('');
   const [syncError, setSyncError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [tour, setTour] = useState<number | null>(null);
   const ref = useRef('');
   const refreshGeneration = useRef(0);
   const appliedRefresh = useRef(0);
@@ -338,7 +339,7 @@ function App() {
       if (requested && nav.some(item => item.id === view)) earlyRoute.current = view as View;
       const last = localStorage.getItem('everwhere-project');
       chooseProject(requested || list.find(item => item.id === last)?.id || list[0]?.id || '');
-      if (!last || new URLSearchParams(location.search).get('tour') === '1') setDialog({ kind: 'help' });
+      setTour(0);
     }).catch(err => setStartupError((err as Error).message)).finally(() => setLoading(false));
   }, [chooseProject, loadProjects]);
 
@@ -504,6 +505,12 @@ function App() {
     openGeneration: () => show('generation')
   };
 
+  // The tour's buttons press the same controls the user would.
+  const runTour = (action: TourAction) => {
+    if (!state) show('library');
+    else if (action === 'generate') current ? actions.openGeneration() : show('memory');
+    else show(action);
+  };
   const currentNav = nav.find(item => item.id === state?.session.view) ?? nav[0];
   const screen = currentNav.id;
   const currentAnchor = state?.anchors.find(item => item.id === state.session.anchorId && item.eventId === current?.id);
@@ -512,7 +519,7 @@ function App() {
   // VoiceOS can enable this filter; keep a visible way to leave it in every view.
   const memoryPictures = state && current ? state.media.filter(item => current.sourceIds.includes(item.id) && isVisual(item)) : [];
   const hiddenByLens = state?.session.lens === 'originals' ? memoryPictures.filter(item => item.provenance !== 'original').length : 0;
-  const dateLabel = state?.demo && state.events.length ? 'October 12–14, 2024' : current?.startAt ? displayDate(current.startAt) : '';
+  const dateLabel = state?.demo && state.events.length ? 'January 18–20, 2025' : current?.startAt ? displayDate(current.startAt) : '';
   const sectionTitles: Record<Dialog['kind'], string> = {
     library: 'Projects', settings: 'Project settings', voice: 'Connect VoiceOS', capture: 'Capture memory',
     memory: 'New memory', recollection: 'Add a recollection', correction: 'Correct memory',
@@ -521,7 +528,7 @@ function App() {
   return <div className="app-frame">
     <a className="skip-link" href="#experience">Skip to experience</a>
     <header className="menubar">
-      <a className="brand" href="/" aria-label="Everwhere home"><img className="brand-logo" src="/landing/everwhere-logo.webp" alt="Everwhere" width="480" height="174" /></a>
+      <a className="brand" href="/" aria-label="Everwhere home"><span className="brand-mark"><AsciiArt art={art.mark} /></span><img className="brand-logo" src="/landing/everwhere-logo.webp" alt="Everwhere" width="480" height="174" /></a>
       <button className="workspace-project" onClick={() => show('library')} aria-label={'Switch project, current project ' + (state?.title || 'Projects')}><span className="project-icon"><Images size={17} /></span><strong>{state?.title || 'Projects'}</strong><ChevronDown size={15} /></button>
       <nav className="menu" aria-label="Views" ref={tabs}>{nav.map(({ id, name, icon: Icon }) =>
         <button key={id} className={screen === id ? 'active' : ''} aria-current={screen === id ? 'page' : undefined}
@@ -529,7 +536,7 @@ function App() {
       <div className="menu-actions">
         <button className="btn compact subtle menu-voice" onClick={() => show('voice')} disabled={!state} aria-label="Connect VoiceOS"><AudioLines size={16} /> <span>VoiceOS</span></button>
         <button className="btn top-capture" onClick={() => state ? show('capture') : show('library')}><Camera size={17} /> <span>{state ? <>Capture<span className="capture-word"> memory</span></> : 'Projects'}</span>{items.length > 0 && <span className="pending-count" aria-label={items.length + ' pending sources'}>{items.length}</span>}</button>
-        <button className="icon-btn" onClick={() => show('help')} aria-label="Open tutorial" title="Open tutorial"><CircleHelp size={18} /></button>
+        <button className="icon-btn" onClick={() => setTour(0)} aria-label="Open tutorial" title="Open tutorial"><CircleHelp size={18} /></button>
       </div>
     </header>
     <main className={'main screen-' + screen} id="experience" tabIndex={-1}>
@@ -541,7 +548,7 @@ function App() {
         <div className="project-head"><div>
           <h1>{state.title}</h1>
           <div className="project-details">{dateLabel && <span>{dateLabel}</span>}{dateLabel && current && <span className="dot-separator" />}
-            {current && <span><MapPin size={14} />{state.demo ? 'The Italian Alps' : current.placeLabel}</span>}
+            {current && <span><MapPin size={14} />{state.demo ? 'The Laurentians, Québec' : current.placeLabel}</span>}
             {!!state.events.length && <><span className="dot-separator" /><span>{state.events.length} {state.events.length === 1 ? 'memory' : 'memories'}</span></>}
           </div></div>
         </div>
@@ -554,6 +561,7 @@ function App() {
         {screen === 'remember' && <Remember state={state} event={current} actions={actions} />}
       </div>}
     </main>
+    {tour !== null && <Tour step={tour} setStep={setTour} close={() => setTour(null)} view={screen} paused={!!dialog} ready={!!state} go={openView} run={runTour} />}
     {notice && <aside className="toast" role="status">{notice}<button className="icon-btn" onClick={() => setNotice('')} aria-label="Dismiss message"><X size={17} /></button></aside>}
     {dialog && (dialog.kind !== 'source' || source) && <Modal key={captureOpen ? 'capture' : dialog.kind} title={sectionTitles[dialog.kind]} onClose={dismiss} wide={captureOpen || dialog.kind === 'source' || dialog.kind === 'generation'}>
       {dialog.kind === 'library' && <><p className="muted">Open a project or start a private collection.</p>
@@ -561,9 +569,6 @@ function App() {
           <span className="project-icon"><Images size={17} /></span><span><strong>{item.title}</strong><small>{item.demo ? 'Sample project' : 'Private project'}</small></span><ChevronRight size={17} /></button>)}</div>
         {state && <button className="btn compact subtle self-start library-settings" onClick={() => show('settings')}><Settings size={15} /> Settings for {state.title}</button>}
         <NameForm handle={async title => { const created = await api<Project>('/projects', { title }); await loadProjects(); chooseProject(created.id); dismiss(); }} /></>}
-      {dialog.kind === 'help' && <Tutorial finish={dismiss} canConnectVoice={!!state}
-        connectVoice={() => show('voice')}
-        create={() => show('library')} />}
       {hasMedia && state && dialog.kind === 'settings' && <SettingsPanel state={state} base={base} reload={() => void refresh().catch(() => {})} deleteProject={async () => {
         await api(base, { confirm: true }, 'DELETE'); await unavailable(project);
       }} />}
@@ -653,4 +658,8 @@ function App() {
   </div>;
 }
 
-createRoot(document.getElementById('root')!).render(<App />);
+// A bare /app visit starts at the landing page; "Try it out" there brings the visitor back here.
+let entered = true;
+try { entered = sessionStorage.getItem('everwhere-entered') === '1'; } catch { /* Storage may be unavailable. */ }
+if (location.pathname === '/app' && !location.search && !location.hash && !entered) location.replace('/');
+else createRoot(document.getElementById('root')!).render(<App />);
