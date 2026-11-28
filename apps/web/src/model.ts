@@ -34,8 +34,12 @@ export function localDateTime(value?: string | null) {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
   return local.toISOString().slice(0, 16);
 }
-export const displayDate = (value?: string | null, short = false) => value ?
-  new Intl.DateTimeFormat('en-US', { month: short ? 'short' : 'long', day: 'numeric', ...(short ? {} : { year: 'numeric' }), timeZone: 'UTC' }).format(new Date(value.slice(0, 10) + 'T12:00:00Z')) : 'Date unknown';
+export const displayDate = (value?: string | null, short = false) => {
+  if (!value) return 'Date unknown';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Date unknown';
+  return new Intl.DateTimeFormat('en-US', { month: short ? 'short' : 'long', day: 'numeric', ...(short ? {} : { year: 'numeric' }) }).format(date);
+};
 export const allowed = (source: Source, lens: Lens) => lens === 'all' || source.provenance === 'original';
 export function sourcesFor(state: Snapshot, ids: string[]) {
   return ids.flatMap(id => state.media.filter(item => item.id === id && allowed(item, state.session.lens)));
