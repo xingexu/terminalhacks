@@ -141,7 +141,7 @@ export function createSceneWorker(store, dataDir, provider) {
           await client.call('scene_builder_3d_get_operation', { projectId, operationId: job.operationId, waitSeconds: 30 }), signal);
         if (operation.status !== 'succeeded') {
           check(job.retryRequested === true, 502, 'SCENE_BUILD', 'Higgsfield reported a terminal scene failure. Check the scene, then resume to retry safely.');
-          failedRevisionBefore = Number.isSafeInteger(operation.revisionBefore) ? operation.revisionBefore : job.operationBaseRevision;
+          failedRevisionBefore = Number.isSafeInteger(job.operationBaseRevision) ? job.operationBaseRevision : operation.baseRevision;
           check(Number.isSafeInteger(failedRevisionBefore), 409, 'SCENE_REVISION_UNKNOWN',
             'The failed scene revision could not be verified. Create a new scene to preserve provider changes.');
           operation = undefined;

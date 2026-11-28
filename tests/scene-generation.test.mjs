@@ -57,11 +57,12 @@ async function runWorker(state, respond) {
 
 test('scene worker retries terminal failures with fresh guarded operation IDs', async () => {
   const { state, job, plan } = queuedWorker();
+  delete job.operationBaseRevision;
   let queryCount = 0;
   const respond = async (name, args) => {
     if (name === 'scene_builder_3d_get_operation') {
       assert.equal(args.operationId, 'previous-build');
-      return { operation: { status: 'failed' } };
+      return { operation: { status: 'failed', baseRevision: 4 } };
     }
     if (name === 'scene_builder_3d_get_project') return { project: { activeOperationId: null } };
     if (name === 'scene_builder_3d_query_python') {
@@ -108,7 +109,7 @@ test('scene worker refuses to retry a failed mutation after the provider scene c
   const calls = await runWorker(state, async name => {
     if (name === 'scene_builder_3d_get_operation') return { operation: { status: 'failed', revisionBefore: 4 } };
     if (name === 'scene_builder_3d_get_project') return { project: { activeOperationId: null } };
-    if (name === 'scene_builder_3d_query_python') return { operation: { status: 'succeeded', revisionBefore: 5, sceneSequenceAfter: 28 } };
+    if (name === 'scene_builder_3d_query_python') return { operation: { status: 'succeeded', revisionBefore: 4, sceneSequenceAfter: 28 } };
     assert.fail('Unexpected Higgsfield operation: ' + name);
   });
   assert.equal(calls.some(call => call.name === 'scene_builder_3d_run_python'), false);
