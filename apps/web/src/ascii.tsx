@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // Same ramp as the landing page, darkest to brightest.
 const glyphs = ' .,:;-~+=!iltfrxvuznXYTLCJ0OZQwm#MW&8%B@$';
@@ -180,13 +180,6 @@ export const art = {
  | ~~~~~      | | ~~~~~~~~~  |
  | ~~~~~~~~   | | ~~~~~~~    |
  '------------'-'------------'`,
-  map: String.raw`
- .--------.--------.--------.
- |  .     |        |    x   |
- |   '.   |  .--.  |   /    |
- |     '--+-'    '-+--'     |
- |        |        |        |
- '--------'--------'--------'`,
   frame: String.raw`
 .---.
 |/\ |
@@ -205,64 +198,4 @@ export function AsciiSpinner() {
     return () => window.clearInterval(timer);
   }, []);
   return <span className="ascii-spinner" aria-hidden="true">[{'|/-\\'[frame]}]</span>;
-}
-
-function drawMap(points: { x: number; y: number }[], columns: number, rows: number) {
-  if (columns < 12 || rows < 5) return '';
-  const cells: string[][] = Array.from({ length: rows }, (_, row) => Array.from({ length: columns }, (_, column) =>
-    row % 4 === 2 && column % 10 === 5 ? '+' : row % 4 === 2 && column % 2 === 1 ? '.' : column % 10 === 5 && row % 2 === 0 ? '.' : ' '));
-  const spots = points.map(point => ({
-    column: Math.round(Math.min(100, Math.max(0, point.x)) / 100 * (columns - 1)),
-    row: Math.round(Math.min(100, Math.max(0, point.y)) / 100 * (rows - 1))
-  }));
-  for (let i = 1; i < spots.length; i++) {
-    let { column, row } = spots[i - 1];
-    const end = spots[i];
-    const dx = Math.abs(end.column - column);
-    const dy = Math.abs(end.row - row);
-    const stepX = column < end.column ? 1 : -1;
-    const stepY = row < end.row ? 1 : -1;
-    let error = dx - dy;
-    while (column !== end.column || row !== end.row) {
-      const doubled = error * 2;
-      const moveX = doubled > -dy;
-      const moveY = doubled < dx;
-      if (moveX) { error -= dy; column += stepX; }
-      if (moveY) { error += dx; row += stepY; }
-      cells[row][column] = moveX && moveY ? (stepX === stepY ? '\\' : '/') : moveX ? '-' : '|';
-    }
-  }
-  return cells.map(line => line.join('')).join('\n');
-}
-
-/** A character-cell chart of the route between points given in percent of the box. */
-export function AsciiMap({ points }: { points: { x: number; y: number }[] }) {
-  const ref = useRef<HTMLPreElement>(null);
-  const [grid, setGrid] = useState({ columns: 0, rows: 0 });
-  useLayoutEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-    const probe = document.createElement('canvas').getContext('2d');
-    const measure = () => {
-      const style = getComputedStyle(element);
-      if (probe) probe.font = style.fontSize + ' ' + style.fontFamily;
-      const cell = probe?.measureText('M').width || parseFloat(style.fontSize) * 0.6;
-      const line = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.3;
-      const next = { columns: Math.floor(element.clientWidth / cell), rows: Math.floor(element.clientHeight / line) };
-      setGrid(old => old.columns === next.columns && old.rows === next.rows ? old : next);
-    };
-    measure();
-    let mounted = true;
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    // The cell width changes when the monospace webfont arrives.
-    void document.fonts?.ready.then(() => { if (mounted) measure(); });
-    return () => {
-      mounted = false;
-      observer.disconnect();
-    };
-  }, []);
-  const key = points.map(point => point.x + ',' + point.y).join(' ');
-  const text = useMemo(() => drawMap(points, grid.columns, grid.rows), [key, grid.columns, grid.rows]);
-  return <pre ref={ref} className="ascii-map" aria-hidden="true">{text}</pre>;
 }

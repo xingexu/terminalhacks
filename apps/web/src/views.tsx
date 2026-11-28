@@ -1,15 +1,15 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  ArrowDownToLine, ArrowLeft, ArrowRight, AudioLines, BookOpen, Box, Camera, Check, ChevronLeft, ChevronRight, CircleHelp,
-  Clapperboard, Compass, Eye, Film, Image, Map, MapPin, Maximize, Pause, Play, Plus, Search, Sparkles, X
+  ArrowDownToLine, ArrowRight, AudioLines, BookOpen, Box, Camera, Check, ChevronLeft, ChevronRight, CircleHelp,
+  Clapperboard, Compass, Eye, Film, Image, MapPin, Maximize, Pause, Play, Plus, Search, Sparkles, X
 } from 'lucide-react';
 import {
-  allowed, api, artifactURL, displayDate, isVisual, sourceURL, sourcesFor,
+  api, artifactURL, displayDate, isVisual, sourceURL, sourcesFor,
   type Anchor, type Job, type Memory, type Profile, type SearchResult, type Snapshot, type Source, type View, type World
 } from './model';
 
 import { updateScenePointer, useScenePalette } from './scene';
-import { art, AsciiArt, AsciiImage, AsciiMap } from './ascii';
+import { art, AsciiArt, AsciiImage } from './ascii';
 
 const Spatial = lazy(() => import('./spatial'));
 const Scan = lazy(() => import('./scan'));
@@ -20,7 +20,6 @@ export type ViewActions = {
   select: (input: { eventId?: string; anchorId?: string; view?: View }) => void;
   openSource: (source: Source) => void;
   openCapture: () => void;
-  openMap: () => void;
   openMemory: () => void;
   openCorrection: () => void;
   openRecollection: () => void;
@@ -28,11 +27,8 @@ export type ViewActions = {
   render: () => void;
   approve: (job: Job | World) => void;
   setGrade: (profile: Profile) => void;
-  openSettings: () => void;
-  openVoice: () => void;
   openWorld: () => void;
   openGeneration: () => void;
-  undo: () => void;
 };
 
 export function Empty({ icon, title, children }: { icon: ReactNode; title: string; children?: ReactNode }) {
@@ -65,9 +61,8 @@ function MediaGrid({ state, sources, open }: { state: Snapshot; sources: Source[
 
 export function Timeline({ state, event, actions }: { state: Snapshot; event?: Memory; actions: ViewActions }) {
   return <section className="timeline">
-    <div className="section-heading"><h2>Journey timeline</h2><div className="button-row">
-      <button className="btn compact subtle" onClick={actions.openMap}><Map size={15} /> View map</button>
-      <button className="btn compact" onClick={actions.openMemory}><Plus size={15} /> New memory</button></div></div>
+    <div className="section-heading"><h2>Journey timeline</h2>
+      <button className="btn compact" onClick={actions.openMemory}><Plus size={15} /> New memory</button></div>
     {state.events.length ? <div className="timeline-grid">
       {state.events.map(memory => {
         const source = sourcesFor(state, memory.sourceIds).find(isVisual);
@@ -398,55 +393,6 @@ export function Remember({ state, event, actions }: { state: Snapshot; event?: M
         <div className="prompt-sources">{sourcesFor(state, question.sourceIds).map(item => <button key={item.id} onClick={() => actions.openSource(item)} aria-label={item.caption}><Thumb project={state.projectId} source={item} /></button>)}</div>
         <button className="btn" onClick={actions.openRecollection}><AudioLines size={16} /> Add your account</button></section>}
     </div>}
-    <section className="remember-voice surface">
-      <div><h3>Remember through conversation</h3><p>Use VoiceOS to find a memory or review a change.</p></div>
-      <button className="btn" onClick={actions.openVoice}><AudioLines size={17} /> Connect VoiceOS</button>
-    </section>
-    <Timeline state={state} event={event} actions={actions} />
-  </div>;
-}
-
-const degrees = (value: number, positive: string, negative: string) => Math.abs(value).toFixed(2) + '° ' + (value < 0 ? negative : positive);
-
-export function MemoryMap({ state, actions }: { state: Snapshot; actions: ViewActions }) {
-  const located = state.events.filter(memory => memory.gps);
-  if (!located.length) return <Empty icon={<AsciiArt art={art.map} />} title="No confirmed map locations"><p>Add coordinates when you create a memory to place it on the map.</p></Empty>;
-  const lats = located.map(item => item.gps![0]);
-  const lons = located.map(item => item.gps![1]);
-  const dist = Math.max(0.05, Math.max(...lats) - Math.min(...lats), Math.max(...lons) - Math.min(...lons));
-  const latCenter = (Math.min(...lats) + Math.max(...lats)) / 2;
-  const lonCenter = (Math.min(...lons) + Math.max(...lons)) / 2;
-  const points = located.map(memory => ({ memory, x: 50 + (memory.gps![1] - lonCenter) * 76 / dist, y: 50 - (memory.gps![0] - latCenter) * 74 / dist }));
-  return <div className="map-view">
-    <div className="map-canvas" aria-label="Schematic map of confirmed memory locations">
-      <AsciiMap points={points} />
-      <div className="map-north" aria-hidden="true">^ N</div>
-      {points.map(({ memory, x, y }, i) => <button key={memory.id} className={'map-point' + (memory.id === state.session.eventId ? ' selected' : '')}
-        style={{ left: x + '%', top: y + '%' }} title={memory.title} aria-label={'Explore ' + memory.title}
-        onClick={() => actions.select({ eventId: memory.id, view: 'explore' })}><span>{i + 1}</span></button>)}
-    </div>
-    <p className="map-caption"><span>Schematic map · The line follows memory order.</span>
-      <span>{degrees(Math.min(...lats), 'N', 'S')} to {degrees(Math.max(...lats), 'N', 'S')} · {degrees(Math.min(...lons), 'E', 'W')} to {degrees(Math.max(...lons), 'E', 'W')}</span></p>
-    <div className="map-legend">{points.map(({ memory }, i) => <button className="btn compact" key={memory.id} onClick={() => actions.select({ eventId: memory.id, view: 'explore' })}>
-      <span>{i + 1}.</span>{memory.title}</button>)}</div>
-  </div>;
-}
-
-export function Archive({ state, event, actions, initialMap = false }: { state: Snapshot; event?: Memory; actions: ViewActions; initialMap?: boolean }) {
-  const [tab, setTab] = useState(initialMap ? 'map' : 'revisions');
-  useEffect(() => { if (initialMap) setTab('map'); }, [initialMap]);
-  const sources = state.media.filter(item => allowed(item, state.session.lens) && isVisual(item));
-  return <div className="view-stack">
-    <div className="section-heading page-section"><h2>Memory archive</h2>
-      <button className="btn" onClick={actions.openSettings}>Project settings</button></div>
-    <div className="tab-set" aria-label="Archive views">{[['revisions', 'Revisions'], ['map', 'Map'], ['sources', 'Sources']].map(([key, label]) =>
-      <button key={key} className={key === tab ? 'selected' : ''} aria-pressed={key === tab} onClick={() => setTab(key)}>{label}</button>)}</div>
-    {tab === 'map' && <MemoryMap state={state} actions={actions} />}
-    {tab === 'sources' && (sources.length ? <MediaGrid state={state} sources={sources} open={actions.openSource} /> : <Empty icon={<AsciiArt art={art.photo} />} title="No sources in this view" />)}
-    {tab === 'revisions' && <section className="surface"><div className="section-heading"><h3>Revision {state.revision}</h3>
-      <button className="btn compact" disabled={!state.undo} onClick={actions.undo}><ArrowLeft size={15} /> Undo last change</button></div>
-      {state.history.map(item => <div className="result-row" key={item.revision}><strong>{item.label}</strong><span>{displayDate(item.at, true)} · Rev {item.revision}</span></div>)}
-      {!state.history.length && <p className="muted">Confirmed edits will appear here.</p>}</section>}
     <Timeline state={state} event={event} actions={actions} />
   </div>;
 }

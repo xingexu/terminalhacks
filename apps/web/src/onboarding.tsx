@@ -30,7 +30,7 @@ export function Tutorial({ finish, create, connectVoice, canConnectVoice }: {
     {step === steps.length - 1 && <div className="tutorial-voice">
       <p>To describe a scene, focus its memory-description field, hold <kbd>Fn</kbd>, speak, then release. VoiceOS inserts the words for you to review. Set Fn to dictation in VoiceOS Settings.</p>
       <VoiceShortcut />
-      <p>{canConnectVoice ? <>Choose <strong>Set up VoiceOS</strong> below to pair this project.</> : <>Create a project first, then open <strong>VoiceOS</strong> to pair it.</>} You can reopen setup from the <strong>VoiceOS</strong> button in Everwhere’s sidebar or mobile header.</p>
+      <p>{canConnectVoice ? <>Choose <strong>Set up VoiceOS</strong> below to pair this project.</> : <>Create a project first, then open <strong>VoiceOS</strong> to pair it.</>} You can reopen setup from the <strong>VoiceOS</strong> button in Everwhere’s menu bar.</p>
     </div>}
     <div className="tutorial-progress" aria-label="Tutorial steps">{steps.map((item, index) =>
       <button key={item.title} onClick={() => setStep(index)} aria-label={'Step ' + (index + 1) + ', ' + item.title} aria-current={index === step ? 'step' : undefined} />)}</div>
