@@ -124,7 +124,7 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
       <Suspense fallback={<div className="spatial-state">Loading 3D viewer…</div>}>
         {world.format === 'glb' ? <Scan url={'/v1/projects/' + state.projectId + '/worlds/' + spatial + '/scene.glb'}
           position={selectedAnchor?.worldId === spatial ? selectedAnchor.position : undefined}
-          anchors={anchors.filter(item => item.worldId === spatial)}
+          anchors={state.anchors.filter(item => item.worldId === spatial)}
           selectedAnchor={selectedAnchor?.worldId === spatial ? selectedAnchor : undefined}
           recollections={state.recollections} onSelectAnchor={anchorId => actions.select({ anchorId })} onRecollect={actions.openRecollection}
           onClose={() => setSpatial(null)} onWaypoint={position => actions.addWaypoint(position, world.sourceIds[0], spatial)} /> :
