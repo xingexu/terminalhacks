@@ -328,7 +328,7 @@ export function Create({ state, event, actions }: { state: Snapshot; event?: Mem
         <button className={'btn compact' + (albumOpen ? '' : ' primary')} onClick={() => setOpenAlbum(albumOpen ? null : albumKey)}>
           {albumOpen ? 'Close album' : 'Open album'}
         </button>
-        <button className="btn compact" aria-pressed={compare} onClick={() => setCompare(!compare)}><Eye size={15} /> {compare ? 'Show grade' : 'Compare ungraded'}</button>
+        <button className="btn compact" aria-pressed={compare} onClick={() => { setOpenAlbum(albumKey); setCompare(!compare); }}><Eye size={15} /> {compare ? 'Show grade' : 'Compare ungraded'}</button>
       </div>}
     </div>
     {tab === 'photos' ? <PhotoAlbum key={state.projectId + event?.id + state.session.lens} state={state} event={event} actions={actions} /> : tab === 'journal' ? event ? <article className="journal">
