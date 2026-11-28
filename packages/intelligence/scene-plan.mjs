@@ -13,7 +13,7 @@ export function evidenceFor(state, eventId) {
   const conversation = [input.story, ...input.recollections.map(item => item.text)].filter(Boolean).join('\n');
   const ownText = [input.title, input.placeLabel, conversation].join(' ').toLowerCase();
   const webText = context?.articles.map(item => item.title + ' ' + item.extract).join(' ').toLowerCase() || '';
-  const classify = value => /\b(ski|snow|mountain|alps|dolomite|ridge|summit)\w*\b/.test(value) ? 'mountain' :
+  const classify = value => /\b(ski|mountain|alps|dolomite|ridge|summit)\w*\b/.test(value) ? 'mountain' :
     /\b(beach|coast|ocean|lake|shore|sea)\w*\b/.test(value) ? 'coast' :
     /\b(forest|woodland|woods|camping)\w*\b/.test(value) ? 'forest' :
     /\b(city|urban|street|downtown|building)\w*\b/.test(value) ? 'urban' : null;

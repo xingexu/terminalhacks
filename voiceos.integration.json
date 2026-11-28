@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "com.everwhere.memories",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "name": "Everwhere",
   "summary": "Find memories, revisit places, and review your stories by voice.",
   "publisher": {
@@ -56,7 +56,7 @@
   "tools": [
     {
       "name": "get_context",
-      "description": "Read active project, event, revision and pending jobs.",
+      "description": "Read the active project, event, live Street View movement options and reviewed route stops/anchors. navigation.instructions explains how to complete a multi-step walk-around request using repeated move_player calls and named navigate_anchor destinations. Current link availability is short-lived; refresh between steps.",
       "inputSchema": {
         "type": "object",
         "properties": {},
@@ -107,7 +107,7 @@
     },
     {
       "name": "navigate_anchor",
-      "description": "Move active viewer to confirmed anchor.",
+      "description": "Select a reviewed destination in the active memory by anchorId OR by a user-supplied place description in query. Query matching uses authored stop titles/descriptions with explicit lexical evidence, not image vision. Ambiguous/no-match descriptions return candidates without changing the selection. Use this after linking a camera photo and recording its supplied description; the photo does not generate Google imagery. Selection is not confirmed arrival: the browser must load the destination.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -115,10 +115,63 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 128
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "required": [
+              "anchorId"
+            ]
+          },
+          {
+            "required": [
+              "query"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "move_player",
+      "description": "Move or turn in the currently open Everwhere scene. Call directly for forward/backward, left/right path, turn_left/turn_right, or stop; no context lookup is required. Omit worldId to target the active browser viewer. Street View follows available linked panoramas; GLB scenes use continuous walking. A new command replaces the prior one. The MCP adapter briefly waits for the matching browser receipt. Report completed, blocked or stopped only when the returned receipt confirms it; a queued response remains unconfirmed. Describe the actual result to the user, not a plan. get_context movementReceipt also reports the observed browser outcome. For a named destination or restaurant interior, look up its reviewed anchor in get_context and use navigate_anchor; do not invent an enter direction or unavailable coverage. The 90-degree limit applies per turn only; repeated separate turns and moves are supported. For walk-around requests, use get_context navigation instructions and available directions, perform a short sequence one acknowledged step at a time, and reassess. Do not describe the experience as a fixed photograph or refuse a route merely because a single turn is bounded.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "worldId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "direction": {
+            "enum": [
+              "forward",
+              "backward",
+              "left",
+              "right",
+              "turn_left",
+              "turn_right",
+              "stop"
+            ]
+          },
+          "durationSeconds": {
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 5
+          },
+          "degrees": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 90
           }
         },
         "required": [
-          "anchorId"
+          "direction"
         ],
         "additionalProperties": false
       }
@@ -469,7 +522,7 @@
     },
     {
       "name": "preview_capture_link",
-      "description": "Preview linking one pending observation to an existing event; use confirm_command for commit.",
+      "description": "Preview linking one pending observation to an existing event; use confirm_change for commit.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -598,6 +651,26 @@
           "expectedRevision",
           "environment",
           "season"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "camera_action",
+      "description": "Open the computer camera preview in the visible Everwhere browser, capture one photo after the user has reviewed the preview, or close the camera. Use action open before capture; browser camera permission and source consent remain required. Captured frames stay in the review inbox until preview_capture_link and confirm_change. A queued response is not proof of camera access or capture; inspect get_context cameraReceipt. The photo supplies a memory source, not a generated Google panorama. Never infer the displayed picture’s original date or location from its new camera capture.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "enum": [
+              "open",
+              "capture",
+              "close"
+            ]
+          }
+        },
+        "required": [
+          "action"
         ],
         "additionalProperties": false
       }

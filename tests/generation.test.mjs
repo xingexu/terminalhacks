@@ -123,6 +123,20 @@ async function approve(ctx, id) {
   await ctx.request(ctx.p + '/session', { lens: 'all' });
 }
 
+test('snow changes the suggested season without replacing street or coast surroundings', async t => {
+  for (const [placeLabel, story, environment] of [
+    ['Toronto, Canada', 'Snow settled on the city street.', 'urban'],
+    ['A rocky coast', 'Snow covered the beach beside the ocean.', 'coast']
+  ]) {
+    const ctx = await setup(t);
+    await commit(ctx, 'event.correct', { patch: { title: 'A winter visit', placeLabel, story } });
+    const evidence = await ctx.evidence();
+    assert.equal(evidence.suggestion.environment, environment);
+    assert.equal(evidence.suggestion.season, 'snow');
+    assert.equal(ctx.calls.length, 0);
+  }
+});
+
 async function unavailable(ctx, id, cookie = ctx.cookie) {
   for (const asset of ['scene.glb', 'plan.json']) {
     const response = await ctx.asset(id, asset, cookie);

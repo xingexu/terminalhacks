@@ -4,9 +4,9 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { Box3, DataTexture, Ray, RGBAFormat, Vector3 } from 'three';
+import { Box3, BoxGeometry, DataTexture, Group, Mesh, Ray, RGBAFormat, Vector3 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { collisionFromObject, safeCameraPosition } from '../apps/web/src/collision.ts';
+import { collisionFromObject, safeCameraPosition, validatedSceneSpawn } from '../apps/web/src/collision.ts';
 import { Walker } from '../apps/web/src/walking.ts';
 import { generateWorld } from '../packages/providers/world/procedural.mjs';
 import { storeMesh } from '../packages/media/mesh.mjs';
@@ -123,6 +123,9 @@ test('all environment/season variants pass storeMesh and GLTFLoader with usable 
         }
         assert.deepEqual(result.spawn, [0, 1.6, 14]);
         const collision = collisionFromObject(scene);
+        const spawn = validatedSceneSpawn(collision, bounds, result.spawn);
+        assert.ok(spawn, 'Generated scene has a safe automatic starting position');
+        assert.ok(Math.abs(spawn[1] - 1.608) < 0.01);
         const checkEye = point => {
           assert.ok(bounds.containsPoint(new Vector3(...point)));
           assert.ok(safeCameraPosition(collision, point), `Blocked camera at ${point}`);
@@ -141,11 +144,33 @@ test('all environment/season variants pass storeMesh and GLTFLoader with usable 
   }
 });
 
+test('snapping a spawn to the floor cannot lower it into a nearby step', () => {
+  const scene = new Group();
+  const floor = new Mesh(new BoxGeometry(6, 0.1, 6));
+  floor.position.y = -0.05;
+  const step = new Mesh(new BoxGeometry(0.4, 0.1, 1));
+  step.position.set(0.35, 0.05, 0);
+  scene.add(floor, step);
+  try {
+    const collision = collisionFromObject(scene);
+    const bounds = new Box3(new Vector3(-3, -1, -3), new Vector3(3, 3, 3));
+    assert.ok(safeCameraPosition(collision, [0, 1.69, 0]));
+    assert.equal(safeCameraPosition(collision, [0, 1.6, 0]), false);
+    assert.equal(validatedSceneSpawn(collision, bounds, [0, 1.69, 0]), null);
+  } finally { dispose(scene); }
+});
+
 test('the real Walker remains supported while moving through the promenade', async () => {
   const result = await generateWorld({ ...plan, environment: 'forest', season: 'snow' });
   const scene = await load(result.buffer);
   try {
     const collision = collisionFromObject(scene);
+    const bounds = new Box3().setFromObject(scene);
+    bounds.max.y += 3;
+    for (const invalid of [null, [], [0, 1.6], [0, NaN, 14], [0, Infinity, 14], ['0', 1.6, 14],
+      [0, 6, 14], [0, -1, 14], [1000, 1.6, 14], [0, 1.6, 1000]]) {
+      assert.equal(validatedSceneSpawn(collision, bounds, invalid), null, `Reject invalid spawn ${invalid}`);
+    }
     const walker = new Walker(collision, new Vector3(...result.spawn).add(new Vector3(0, -1.6, 0)));
     for (let frame = 0; frame < 360; frame++) walker.update(1 / 60, 0, new Set(['w']));
     assert.ok(walker.grounded);

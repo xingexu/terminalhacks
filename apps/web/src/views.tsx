@@ -9,12 +9,13 @@ import {
 } from './model';
 
 const Spatial = lazy(() => import('./spatial'));
+const Panorama = lazy(() => import('./panorama'));
 const Scan = lazy(() => import('./scan'));
 const WalkableAlbum = lazy(() => import('./album'));
 import { orderedPhotos } from './album-layout';
 
 export type ViewActions = {
-  select: (input: { eventId?: string; anchorId?: string; view?: View; lens?: Lens }) => void;
+  select: (input: { eventId?: string; anchorId?: string; view?: View; lens?: Lens }) => Promise<boolean>;
   openSource: (source: Source) => void;
   openCapture: () => void;
   openMap: () => void;
@@ -94,6 +95,8 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
   const activeEvent = event?.id;
   const selectedAnchor = state.anchors.find(item => item.id === state.session.anchorId);
   const lastAnchor = useRef(state.session.anchorId);
+  const requestedTourAnchors = useRef(new Set<string>());
+  const autoOpenContext = useRef(activeEvent + ':' + state.session.lens);
   useEffect(() => {
     if (lastAnchor.current !== state.session.anchorId && selectedAnchor?.worldId === 'trail-' + activeEvent) setEntered(true);
     lastAnchor.current = state.session.anchorId;
@@ -101,9 +104,17 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
   const worlds = state.worlds.filter(item => item.eventId === activeEvent && item.approved && item.status !== 'stale' && state.session.lens === 'all' &&
     item.sourceIds.every(id => event?.sourceIds.includes(id)));
   const world = worlds.find(item => item.id === spatial) ?? worlds.at(-1);
-  const walkableWorld = worlds.filter(item => item.format === 'glb').at(-1);
-  useEffect(() => { setSpatial(worlds.some(item => item.id === selectedAnchor?.worldId) ? selectedAnchor!.worldId : null); },
-    [activeEvent, selectedAnchor?.worldId, state.session.lens]);
+  // An approved live Street View route is the intended entry; the mesh scene remains the fallback.
+  const walkableWorld = worlds.filter(item => item.format === 'tour' && item.tour?.liveStreetView).at(-1) ?? worlds.filter(item => item.format === 'glb').at(-1);
+  useEffect(() => {
+    const context = activeEvent + ':' + state.session.lens;
+    const contextChanged = autoOpenContext.current !== context;
+    autoOpenContext.current = context;
+    // Acknowledging our own route change must not reopen an explicitly closed viewer.
+    const ownAcknowledgement = selectedAnchor && requestedTourAnchors.current.delete(selectedAnchor.id);
+    if (!contextChanged && ownAcknowledgement) return;
+    setSpatial(worlds.some(item => item.id === selectedAnchor?.worldId) ? selectedAnchor!.worldId : null);
+  }, [activeEvent, selectedAnchor?.id, selectedAnchor?.worldId, state.session.lens]);
   useEffect(() => { setEntered(false); setShowStory(false); }, [activeEvent, state.session.lens]);
   if (!event) return <Empty icon={<Compass size={33} />} title="Start with a place you remember">
     <p>Give a moment a name, then add the photos and stories you want to keep.</p>
@@ -132,7 +143,7 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
   const pendingWorlds = state.worlds.filter(item => item.eventId === event.id && !item.approved && item.status !== 'stale' &&
     item.sourceIds.every(id => event.sourceIds.includes(id)));
   const staleWorlds = state.worlds.filter(item => item.eventId === event.id && item.status === 'stale');
-  const originalPhoto = state.media.some(item => event.sourceIds.includes(item.id) && item.provenance === 'original' && item.mime.startsWith('image/'));
+  const sourcePhoto = state.media.some(item => event.sourceIds.includes(item.id) && item.mime.startsWith('image/'));
   const hiddenWorlds = state.session.lens === 'originals' && state.worlds.some(item => item.eventId === event.id && item.approved && item.status !== 'stale');
   return <>
     {entered && photos.length > 0 && <Suspense fallback={<div className="notice" role="status">Opening immersive album…</div>}>
@@ -141,19 +152,37 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
         onWaypoint={(sourceId, position) => actions.addWaypoint(position, sourceId)} />
     </Suspense>}
     {spatial && world?.id === spatial ? <div className="spatial-frame">
-      <Suspense fallback={<div className="spatial-state">Loading 3D viewer…</div>}>
-        {world.format === 'glb' ? <Scan url={'/v1/projects/' + state.projectId + '/worlds/' + spatial + '/scene.glb'}
+      <Suspense fallback={<div className="spatial-state">Opening your memory…</div>}>
+        {world.format === 'tour' ? <Panorama key={world.id} url={'/v1/projects/' + state.projectId + '/worlds/' + spatial + '/tour.json'}
+          title={world.title} projectId={state.projectId} worldId={world.id} movement={state.session.movement}
+          owner={state.session.activeWorldId === world.id ? state.session.activeViewerId : undefined}
+          place={state.session.streetViewPlace?.worldId === world.id ? state.session.streetViewPlace : undefined}
+          initialNodeId={selectedAnchor?.worldId === spatial ? selectedAnchor.nodeId : world.tour?.startNodeId}
+          onNodeChange={async nodeId => {
+            const target = state.anchors.find(item => item.worldId === spatial && item.nodeId === nodeId);
+            if (!target) throw new Error('This viewpoint no longer has a saved place. Return to the memory and reopen the walkthrough.');
+            if (target.id !== state.session.anchorId) requestedTourAnchors.current.add(target.id);
+            if (!await actions.select({ anchorId: target.id })) {
+              requestedTourAnchors.current.delete(target.id);
+              throw new Error('Your place could not be saved. You are still at the previous viewpoint. Retry when connected.');
+            }
+          }} onClose={() => setSpatial(null)}
+          onSource={node => {
+            const source = state.media.find(item => node.sourceIds?.includes(item.id));
+            if (source) { setSpatial(null); actions.openSource(source); }
+          }} /> : world.format === 'glb' ? <Scan url={'/v1/projects/' + state.projectId + '/worlds/' + spatial + '/scene.glb'}
           projectId={state.projectId} eventId={event.id} worldId={world.id} revision={state.revision}
+          movement={state.session.movement}
           provenance={world.provenance ?? 'reconstructed'} planId={world.planId ?? world.sceneManifest?.planId}
           position={selectedAnchor?.worldId === spatial ? selectedAnchor.position : undefined}
           anchors={state.anchors.filter(item => item.worldId === spatial)}
           selectedAnchor={selectedAnchor?.worldId === spatial ? selectedAnchor : undefined}
           recollections={state.recollections} onSelectAnchor={anchorId => actions.select({ anchorId })} onRecollect={actions.openRecollection}
-          onClose={() => setSpatial(null)} onWaypoint={position => actions.addWaypoint(position, world.sourceIds[0], spatial)} /> :
+          onClose={() => setSpatial(null)} onWaypoint={position => actions.addWaypoint(position, undefined, spatial)} /> :
         <Spatial url={'/v1/projects/' + state.projectId + '/worlds/' + spatial + '/scene.spz'}
           provenance={world.provenance ?? 'reconstructed'}
           position={selectedAnchor?.worldId === spatial ? selectedAnchor.position : undefined}
-          onClose={() => setSpatial(null)} onWaypoint={position => actions.addWaypoint(position, world.sourceIds[0], spatial)} />}
+          onClose={() => setSpatial(null)} onWaypoint={position => actions.addWaypoint(position, undefined, spatial)} />}
       </Suspense>
       <div className="spatial-waypoints">
         {state.anchors.filter(item => item.worldId === spatial).map(item =>
@@ -206,14 +235,18 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
         return <button key={item.id} className="btn compact" onClick={() => actions.approve(item)}><Check size={15} aria-hidden="true" />
           Approve {item.provenance === 'imagined' ? 'imagined world' : 'reconstruction'}: {item.title}{suffix}</button>;
       })}
-      {originalPhoto && <button className="btn compact subtle" onClick={actions.openWorld}><Plus size={15} aria-hidden="true" /> Import 3D scene</button>}
+      {sourcePhoto && <button className="btn compact subtle" onClick={actions.openWorld}><Plus size={15} aria-hidden="true" /> Import memory scene</button>}
     </div>
     {world && <p className="muted">{world.provenance === 'imagined' ? 'Generated interpretation' : 'Reconstructed scan'} · {world.planId && world.provider === 'local-procedural-v1' ? 'Everwhere procedural generation' : world.provider || 'Imported scene'} · {world.sourceIds.length} linked source {world.sourceIds.length === 1 ? 'photo' : 'photos'}</p>}
-    {hiddenWorlds && <div className="notice"><p>Originals only hides 3D worlds. Show all to enter an approved world.</p><button className="btn compact" onClick={() => actions.select({ lens: 'all' })}>Show all</button></div>}
+    {hiddenWorlds && <div className="notice"><p>Originals only hides generated scenes. Show all to enter an approved world.</p><button className="btn compact" onClick={() => actions.select({ lens: 'all' })}>Show all</button></div>}
     {!!staleWorlds.length && <p className="muted">A previous generated world is out of date because its evidence changed. Generate and review a new world to use the current memory.</p>}
     {world?.provenance === 'imagined' && world.format === 'glb' && <div className="button-row generation-export">
       <a className="btn compact" href={'/v1/projects/' + state.projectId + '/worlds/' + world.id + '/scene.glb?download=1'}><ArrowDownToLine size={15} aria-hidden="true" /> Download imagined world GLB</a>
       {world.planId && <a className="btn compact" href={'/v1/projects/' + state.projectId + '/worlds/' + world.id + '/plan.json'} download><ArrowDownToLine size={15} aria-hidden="true" /> Download scene plan</a>}
+      {state.media.some(source => world.sourceIds.includes(source.id) && source.attribution) && <>
+        <a className="btn compact" href={'/v1/projects/' + state.projectId + '/worlds/' + world.id + '/credits.json'} download><ArrowDownToLine size={15} aria-hidden="true" /> Download source credits</a>
+        <p>Share the credits file with every shared copy of this scene. Credits are a separate companion file, not embedded in the GLB. Photo-derived CC BY-SA adaptations must follow the linked ShareAlike terms.</p>
+      </>}
       <p>GLB{world.planId ? ' and plan' : ''} for 3D-tool import. A native Unreal project is not included; Unreal import has not been verified.</p>
     </div>}
     <Timeline state={state} event={event} actions={actions} />

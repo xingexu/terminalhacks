@@ -1,28 +1,60 @@
-# Five-minute Everwhere demo
+# Everwhere — Mont-Tremblant demo
 
-Use one consented memory, three original photos and one short personal recollection. Keep the local server running. Synthetic rehearsal fixtures are labelled as test inputs and must not be presented as a real person's memory.
+## Current build (November 28, 2026)
 
-Choose the output deliberately: **Photo/video montage** renders source images/clips; **3D scene recording** records the actual reviewed camera path through an approved GLB. Recording a procedural world does not make it photorealistic or measured reconstruction. The active goal still needs an accepted realistic asset, authorized personal demo inputs and native spoken VoiceOS verification; this script does not establish those gates, deployment or submission. See `GENERATION-VERIFICATION.md` for observed results.
+**Latest execution checkpoint — November 28, 2026.** This status supersedes the earlier GLB/procedural milestones in the historical documents. The integration lead verified **183 passing tests, typecheck and production build**; real browser panorama movement, source inspection, saved stop/heading reopening and the 390px layout passed. The user confirmed a native spoken turn worked. A real **640×480 camera preview opened with a browser receipt**, but no physical photo was captured. Five synthetic camera lifecycle checks passed; these are not hardware or native-speech capture proof.
 
-For a scene film, generate/import and **approve the chosen world first**. Enter it, choose a safe floor, open **Scene tools**, then **Record camera path** while walking for 30–60 seconds and **Stop recording**. Use **Replay path** to inspect the route, then **Review scene film**. Check the named world, provenance, source-reference captions and recollection excerpts. References guide captions and narration; they do not identify exactly what the camera is looking at. If a confirmed original voice note is selected, play its preview and check the stated excerpt length/start time; do not claim narration when no note is selected.
+**Still pending:** native broad “walk around Le Shack” navigation, physical-photo capture and source review, a reviewed spoken recollection/correction, and the complete timed rehearsal. Do not report the whole end-to-end goal as verified until those steps are observed. The finished companion film is linked below.
 
-Choose **Record 1080p film** and keep the page visible for the replay/capture and upload. **Cancel film** discards the unfinished recording; changed evidence requires a new path/review. Open Watch, select **3D scene recording**, wait for processing, then **Approve film** and confirm separately before playing or using **Download**. A new world, changed sources or a correction can retire a prior film. The album and journal retain every available visual source in the shared order.
+The active one-hour sprint runs **11:51:38–12:51:38 America/Toronto**. The live experience uses Google Maps JavaScript Street View. Navigation arrows are disabled with supported controls; Google and photographer attribution remain visible. This replaces the rejected photo-box walking experiment. Panorama-to-panorama movement is accepted; this is not a continuous 3D reconstruction.
 
-For an enclosed imported room, first zoom through the exterior in inspection mode and choose a clear **interior** floor. Save and confirm a waypoint, then select it in **Saved places**. Reload once to verify the selected waypoint reopens inside the room. Finish all waypoint edits **before** recording the final film: adding one afterward changes the memory and retires the earlier film. Do not mistake a roof or tabletop for the intended floor. Inspect scale, texture detail and lighting on the actual chosen asset; successful import alone is not visual acceptance.
+The prepared memory is **Winter in Mont-Tremblant**. Its reviewed route has three stops: **Village terrace → Le Shack entrance → Inside Le Shack**, with return routes. Le Shack’s own published virtual tour supplies the real interior coverage. Reference images and public place context are not evidence of the user’s trip or its date.
 
-| Time | Action | Claim supported |
-|---|---|---|
-| 0:00–0:35 | Open the memory; show original photos, recorded time and location. | A scattered collection becomes one reviewable memory. Unknown metadata stays unknown. |
-| 0:35–1:10 | Use native VoiceOS to preview a short recollection, inspect its confirmation, then confirm. | Spoken recollection reaches the same memory through the real integration. Only claim this after rehearsal. |
-| 1:10–2:10 | Inspect evidence and optional consented Wikipedia citations; preview, generate/import and approve the chosen world. | Personal accounts, public context and scene provenance remain distinguishable. Call the local procedural route an “imagined interpretation.” |
-| 2:10–2:50 | Enter the approved world, choose a safe floor and record a 30-second walking path past a photo stop. | The film route comes from actual virtual camera movement in this world. |
-| 2:50–3:15 | Review the scene film, source-reference captions and selected original-audio excerpt. | The owner sees what will be used and how it is attributed. |
-| 3:15–4:05 | Record the 1080p film; keep the page visible and wait for processing. | The exported footage captures the reviewed 3D path. Rehearse this timing on the demo machine. |
-| 4:05–4:40 | Open Watch → 3D scene recording; approve separately, play the result and show Download. | A playable saved film comes from the same memory and world. |
-| 4:40–5:00 | Turn Originals only on, then off again; finish on the memory. | Generated scene footage is hidden by the source filter while original evidence remains available. |
+### Run locally
 
-Before presenting: check the actual VoiceOS shortcut, pairing expiry, native permission card, API origin, fresh photo import, browser GPU, audio and the five-minute timer. Do two full runs. For unavailable Wikipedia, show the error and continue with personal evidence. For failed WebGL, show the original-photo trail and disclose that 3D failed. Never substitute a recorded interaction for a live claim.
+```sh
+cd "/Users/tejasskaushik/Documents/ChatGPT/Terminal Hacks Hackathon/repo"
+npm run build
+EVERWHERE_DATA="$PWD/.data/terminal-hacks-demo" PORT=4173 npm start
+```
 
-Suggested VoiceOS requests: “What memory is open in Everwhere?” → “Preview adding this recollection to this memory: [your account]” → inspect and confirm → “Get the scene evidence” → “Preview a snowy mountain memory world” → inspect and confirm. Tool coverage does not prove the model will interpret every phrase correctly; rehearse these using the native app.
+Open `http://127.0.0.1:4173/p/193a740f-5e50-47d9-bddd-c9e9f7599dd3/explore` in the prepared browser profile. The prepared data is backed up in ignored `.data/terminal-hacks-demo` (SQLite quick_check passed). The browser needs its existing project cookie. The restricted Maps browser key is in ignored `apps/web/.env.local`; never paste it into a submission or commit it. Another computer needs its own configured key, allowed referrer, data and pairing.
 
-The full V3.1 exchange, real Unreal import, shared contributors, skiing and provider reconstruction are outside this demo slice. The exported GLB contains private photos; share it only with permission.
+VoiceOS runs the absolute Node command pointing at `apps/mcp/index.mjs`. The private pairing configuration is read on every call. The current pairing expires **1:03:09 p.m. Toronto**; refresh pairing before the afternoon presentation. Restart VoiceOS after adapter/tool-schema changes and confirm refreshed custom actions if requested. Keep the intended demo tab visible: another open viewer can own voice commands.
+
+### Five-minute route
+
+1. **Purpose and inputs (30s).** “Everwhere connects a memory’s photos and context to a place you can revisit by voice.” State that this demo uses public/generated references and Google’s current available imagery; personal dates remain unknown.
+2. **Capture and review (60s).** Open the computer camera through VoiceOS. Show a permitted photo, check the live preview, then capture it. Review the pending source and choose its memory before confirming. The camera is acquiring a source; it is not generating the Google panorama. If native camera capture has not passed rehearsal, use the visible camera controls and disclose that limitation.
+3. **Explore (90s).** Enter Village terrace. W/S follow connected panorama positions; A/D turn; drag to look. In VoiceOS, ask for a forward step, a turn and stop. “Walk around Le Shack” uses current available directions and reviewed destinations; 90° is a per-turn bound, not a fixed-view limit. Use the named entrance and interior controls, then return outside.
+4. **Sources and context (60s).** Open About this place and inspect the public reference. Show the newly reviewed camera image in the memory's Capture/library view. Add a presenter disclosure or real recollection using preview/confirm; never invent a personal memory. Linking a new photo attaches it to the memory; it does not regenerate Google's panorama or automatically add it to the existing route's source associations. Appending a photo/recollection leaves this imported route approved. Withdrawing one of its existing sources makes it unavailable; generated assets and films can also become stale when their dependencies change.
+5. **Persistence and close (60s).** Exit, reload and reopen. The authored stop and viewing direction persist; an arbitrary intermediate Google panorama is not promised to persist. Close with the working scope and next step.
+
+### What has actually been checked
+
+- Live Google route and real interior rendered in the browser.
+- Keyboard turn and actual provider-panorama hop passed; authored stop/heading survived exit/reload/reopen.
+- Sources panel and linked source opened; 390px layout had no clipped controls and retained credits.
+- User confirmed native spoken turn worked after correcting the tab they were watching.
+- Real 640×480 browser camera preview and its receipt passed. No physical photo was captured. Five synthetic permission/retry/cleanup/late-resolution/ownership checks passed separately.
+- Broader native natural-language navigation, physical-photo capture/review, and a reviewed spoken write remain separate rehearsal gates until observed.
+- Integration lead verified 183 passing tests, typecheck and production build. These checks do not establish native speech or physical-photo capture.
+
+### Sixty-second companion presentation
+
+The companion video is produced separately and is not part of this repository. Its60-second outline: sample photo and supplied location; review known place context; clearly labeled concept visuals; actual app navigation; VoiceOS command examples. Generated footage must not be presented as a recording of working app behavior. Current actual-app footage shows keyboard and on-screen navigation; native speech is not shown.
+
+### Recovery and submission
+
+No available path: turn or choose a reviewed destination. A blocked movement is not success. No Google coverage/network/key: show the readable error and retry or return. Wrong browser: return to the intended tab and reopen its scene. Source withdrawal and dependency invalidation must not be bypassed.
+
+#### Pairing recovery before 1:03:09 p.m. Toronto
+
+The relocated demo database retains the current pairing's **November 28, 2026, 1:03:09 p.m. Toronto hard expiry**. Calls update activity, not expiry. A replacement lasts two hours from creation and immediately revokes the old token.
+
+1. In the prepared browser/profile at the local project, open **Connect VoiceOS → Pairing settings → Replace pairing token** (or **Create pairing token** after expiry). Keep Everwhere running and keep the displayed token private.
+2. Update the configuration actually used by the native MCP process. This setup uses the private `~/.config/everwhere/voiceos.json` file when no explicit environment setup exists: preserve its `api` and `project`, replace its `token`, and keep the file owned by the user with mode `600`; its parent directory must not be group/world-writable. Do not put the token in Git, chat, screenshots or logs.
+3. If the native process has any of `EVERWHERE_API`, `EVERWHERE_PROJECT` or `EVERWHERE_PAIRING_TOKEN` configured, that environment configuration takes precedence over the file as one complete group. Update its token and retain the matching API/project there, then reload that native integration. Do not assume editing the fallback file overrides an old environment token.
+4. File-based token changes are read on the next tool call; they do not require an API-server restart. Adapter/tool-list changes do require reloading the native integration. Ask VoiceOS which memory is open, verify the intended project and updated bridge activity, then perform one visible turn and check its matching receipt in the intended tab. A successful context lookup alone is not movement proof.
+
+The previously recorded official rules and schedule specify a working web app, a five-minute live demonstration without slides, and a 4 p.m. build end. Published judging dimensions include functionality, brief fit, live demonstration and six-hour scope; numerical weights are unknown. The user reports organizer permission for the existing repository and advance coding. Recheck organizer instructions before submitting. Deployment and external submission are not established by localhost tests. No new sprint changes have been pushed as of this document update.

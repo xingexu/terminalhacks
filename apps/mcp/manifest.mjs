@@ -13,7 +13,7 @@ export function integrationManifest(origin = 'http://127.0.0.1:4173') {
   return {
     schemaVersion: 1,
     id: 'com.everwhere.memories',
-    version: '0.2.0',
+    version: '0.4.0',
     name: 'Everwhere',
     summary: 'Find memories, revisit places, and review your stories by voice.',
     publisher: { id: 'everwhere', name: 'Everwhere' },

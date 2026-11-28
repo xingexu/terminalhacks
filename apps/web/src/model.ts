@@ -5,8 +5,9 @@ export type Lens = 'all' | 'originals';
 export type Profile = 'natural' | 'nostalgic' | 'documentary' | 'vivid';
 export type Project = { id: string; title: string; demo: boolean };
 export type Memory = { id: string; title: string; startAt: string | null; placeLabel: string; sourceIds: string[]; story: string; gps: [number, number] | null };
-export type Source = { id: string; mime: string; caption: string; provenance: 'original' | 'imagined'; capturedAt: string | null; capturedLocal?: string | null; gps?: [number, number] | null };
-export type Anchor = { id: string; worldId: string; eventId: string; title: string; sourceIds: string[]; position: [number, number, number] };
+export type Source = { id: string; mime: string; caption: string; provenance: 'original' | 'imagined'; capturedAt: string | null; capturedLocal?: string | null; gps?: [number, number] | null;
+  attribution?: { kind: 'public_reference'; title: string | null; creator: string; sourceUrl: string; license: string; licenseUrl: string; reportedDate: string | null; dateNote: string } };
+export type Anchor = { id: string; worldId: string; eventId: string; title: string; sourceIds: string[]; position: [number, number, number]; nodeId?: string };
 export type Recollection = { id: string; eventId: string; anchorId?: string; audioMediaId?: string; contributor: string; text: string; at: string };
 export type Storyboard = {
   id: string; eventId: string; kind: 'source_montage' | 'scene_recording'; basis: 'world_plan' | 'world_sources' | 'memory_sources';
@@ -25,7 +26,8 @@ export type SceneRecording = { worldId: string; worldTitle: string; provenance: 
 export type Job = { id: string; eventId: string; kind?: 'source_montage' | 'scene_recording'; lens: Lens; status: string; approved: boolean; inputHash: string; revision: number; error?: string; storyboard?: Storyboard; recording?: SceneRecording };
 export type World = {
   id: string; eventId: string; title: string; approved: boolean; inputHash: string; sourceIds: string[]; points: number;
-  format?: 'spz' | 'glb'; provenance?: 'imagined' | 'reconstructed'; status?: 'ready' | 'stale';
+  format?: 'spz' | 'glb' | 'tour'; provenance?: 'imagined' | 'reconstructed'; status?: 'ready' | 'stale';
+  tour?: { startNodeId: string; liveStreetView?: boolean; nodes: { id: string; title: string; sourceIds?: string[] }[] };
   provider?: string; planId?: string; sceneManifest?: SceneManifest;
 };
 export type Environment = 'mountain' | 'coast' | 'forest' | 'urban' | 'open';
@@ -48,7 +50,11 @@ export type WorldPreview = {
     evidence: GenerationEvidence; provenance: 'imagined'; provider: string };
   diff: { label: string; text: string };
 };
-export type Session = { eventId: string | null; anchorId: string | null; view: View; lens: Lens };
+export type Movement = { id: string; worldId: string; viewerId?: string; direction: 'forward' | 'backward' | 'left' | 'right' | 'turn_left' | 'turn_right' | 'stop'; durationSeconds: number; degrees: number; issuedAt: string; expiresAt: string };
+export type Session = { eventId: string | null; anchorId: string | null; view: View; lens: Lens; movement?: Movement;
+  cameraViewerId?: string | null; cameraReceipt?: unknown;
+  cameraAction?: { id: string; action: 'open' | 'capture' | 'close'; viewerId: string; eventId: string; issuedAt: string; expiresAt: string };
+  activeWorldId?: string | null; activeViewerId?: string; streetViewPlace?: { worldId: string; nodeId: string; heading: number } };
 export type Snapshot = {
   projectId: string; title: string; demo: boolean; revision: number; seq: number; visualProfile: Profile; session: Session;
   events: Memory[]; media: Source[]; anchors: Anchor[]; recollections: Recollection[]; jobs: Job[];

@@ -13,6 +13,7 @@ import { Tutorial } from './onboarding';
 import { VoicePanel } from './voice';
 import { Generation } from './generation';
 import { Capture } from './capture';
+import { ackCamera, ackFailed, claimCameraAction, isOwnCameraAction, useCameraViewer } from './camera-action';
 import { Archive, AtlasMark, Create, Explore, NarrationPreview, Remember, Watch, type ViewActions } from './views';
 import {
   api, ApiError, displayDate, localDateTime, sourceURL, storyboardBasis, type Command, type Lens, type Memory, type Observation, type Project, type Proposal,
@@ -193,12 +194,13 @@ function WorldForm({ state, event, base, done }: { state: Snapshot; event: Memor
   const [consent, setConsent] = useState(false);
   const [sourceIds, setSourceIds] = useState<string[]>([]);
   const [provenance, setProvenance] = useState<'imagined' | 'reconstructed'>('imagined');
+  const [tourFile, setTourFile] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const errorRef = useRef<HTMLParagraphElement>(null);
   const sceneInput = useRef<HTMLInputElement>(null);
   useEffect(() => { if (error) errorRef.current?.focus(); }, [error]);
-  const sources = state.media.filter(item => event.sourceIds.includes(item.id) && item.mime.startsWith('image/') && item.provenance === 'original');
+  const sources = state.media.filter(item => event.sourceIds.includes(item.id) && item.mime.startsWith('image/') && (provenance === 'imagined' || item.provenance === 'original'));
   const selectedSources = sourceIds.filter(id => sources.some(item => item.id === id));
   useEffect(() => {
     if (!sourceIds.some(id => !sources.some(item => item.id === id))) return;
@@ -224,8 +226,13 @@ function WorldForm({ state, event, base, done }: { state: Snapshot; event: Memor
       await done();
     } catch (err) { setError((err as Error).message); }
     finally { setBusy(false); }
-  }}><p className="muted">Import an existing GLB mesh for walking, or an SPZ splat for viewpoint inspection. The file is uploaded to this private Everwhere project; this form does not send photos to a generation provider. You will review and approve the scene before entering it.</p>
-    <label>How was this scene made?<select name="provenance" value={provenance} disabled={busy} onChange={e => setProvenance(e.target.value as 'imagined' | 'reconstructed')}>
+  }}><p className="muted">Import a photo walkthrough, a walkable GLB scene, or an SPZ scan. Review and approve it before entering your memory.</p>
+    <label>Memory scene<input ref={sceneInput} type="file" name="scene" accept=".spz,.glb,.tour.json" required disabled={busy} onChange={e => {
+      const isTour = /\.tour\.json$/i.test(e.target.files?.[0]?.name || '');
+      setTourFile(isTour); setSourceIds([]); setConsent(false);
+      if (isTour) setProvenance('imagined');
+    }} /></label>
+    <label>How was this scene made?<select name="provenance" value={provenance} disabled={busy || tourFile} onChange={e => { setProvenance(e.target.value as 'imagined' | 'reconstructed'); setSourceIds([]); setConsent(false); }}>
       <option value="imagined">Generated or authored interpretation</option>
       <option value="reconstructed">Reconstructed from a scan or photogrammetry</option>
     </select></label>
@@ -233,17 +240,16 @@ function WorldForm({ state, event, base, done }: { state: Snapshot; event: Memor
     <label>Creator or provider (optional)<input name="provider" maxLength={120} disabled={busy} placeholder="Who made the scene?" /></label>
     <label>Scene title (optional)<input name="title" maxLength={120} disabled={busy} placeholder="Uses the file name if left blank" /></label>
     <div className="form-stack" role="group" aria-labelledby="world-source-title" aria-describedby="world-source-help">
-      <strong id="world-source-title">Original source photos</strong>
-      <p className="muted" id="world-source-help">Select every original photo used to create or document this scene. Withdrawing a selected source will also make this scene unavailable.</p>
+      <strong id="world-source-title">{provenance === 'imagined' ? 'Linked images' : 'Original source photos'}</strong>
+      <p className="muted" id="world-source-help">Select every image used to create or document this scene. Withdrawing a selected source will also make this scene unavailable.</p>
       {sources.map(item => <label className="check-row" key={item.id} style={{ minHeight: 44 }}><input type="checkbox" name="source" value={item.id}
         checked={selectedSources.includes(item.id)} disabled={busy || (selectedSources.length >= 100 && !selectedSources.includes(item.id))}
         onChange={e => setSourceIds(ids => e.target.checked ? [...ids, item.id] : ids.filter(id => id !== item.id))} />
-        <span>{item.caption || 'Untitled photo'} · {displayDate(item.capturedAt)}</span></label>)}
-      {!sources.length && <p className="notice">Link an original photo to this memory through Capture before importing a scene.</p>}
+        <span>{item.caption || 'Untitled photo'} · {item.provenance === 'imagined' ? 'Imagined image' : displayDate(item.capturedAt)}</span></label>)}
+      {!sources.length && <p className="notice">Link {tourFile ? 'an image' : 'an original photo'} to this memory through Capture before importing a scene.</p>}
       {selectedSources.length >= 100 && <p className="muted" role="status">100 photos selected. Each import supports up to 100 source photos.</p>}
     </div>
-    <label>3D scene<input ref={sceneInput} type="file" name="scene" accept=".spz,.glb" required disabled={busy} /></label>
-    <p className="muted">GLB exports need embedded textures, meter units, Y-up orientation, and at most 250,000 triangles. Upload limit 48 MB.</p>
+    <p className="muted">{tourFile ? 'Photo walkthroughs use a self-contained .tour.json file with up to eight linked viewpoints.' : 'GLB exports need embedded textures, meter units, Y-up orientation, and at most 250,000 triangles.'} Upload limit 48 MB.</p>
     <label className="check-row" style={{ minHeight: 44 }}><input type="checkbox" checked={consent} disabled={busy} onChange={e => setConsent(e.target.checked)} />
       <span>I have permission to keep this scene in this project, and I have selected all of its source photos.</span></label>
     {error && <p className="form-error" ref={errorRef} tabIndex={-1} role="alert">{error}</p>}
@@ -420,13 +426,28 @@ function App() {
     }
   }, [staleConfirmation, dialog]);
 
+  const { viewer: cameraViewer, notice: cameraNotice } = useCameraViewer(base, !!project && !!state, state?.session.cameraViewerId);
+  const cameraAction = state?.session.cameraAction;
+  const captureShown = dialog?.kind === 'capture';
+  useEffect(() => {
+    // While Capture is visible its camera panel executes requests; here we only open it or answer for a closed one.
+    if (captureShown || !isOwnCameraAction(cameraAction, cameraViewer)) return;
+    if (cameraAction.action === 'open') { committing.current = null; setDialog({ kind: 'capture' }); }
+    else if (claimCameraAction(cameraAction, cameraViewer)) void (cameraAction.action === 'close' ? ackCamera(base, cameraAction, 'closed') :
+      ackCamera(base, cameraAction, 'blocked', { reason: 'The camera preview is not open. Open the camera first.' }))
+      .then(sent => { if (!sent) setNotice(ackFailed); });
+  }, [cameraAction?.id, cameraViewer?.id, captureShown, base]);
+
   const show = (kind: Extract<Dialog, { kind: 'library' | 'settings' | 'voice' | 'capture' | 'memory' | 'recollection' | 'correction' | 'help' | 'world' | 'generation' }>['kind']) => setDialog({ kind });
   const dismiss = () => {
     committing.current = null;
     setDialog(null);
   };
   const guarded = (work: () => Promise<unknown>) => { void work().catch(err => setNotice((err as Error).message)); };
-  const select = (input: Partial<Session>) => guarded(async () => { await api(base + '/session', input); await refresh(); });
+  const select = async (input: Partial<Session>) => {
+    try { await api(base + '/session', input); await refresh(); return true; }
+    catch (err) { setNotice((err as Error).message); return false; }
+  };
   const preview = async (type: string, payload: Record<string, unknown>, target = current?.id) => {
     if (!state || !target) throw new Error('Select a memory to continue.');
     const context = activeContext.current;
@@ -471,7 +492,7 @@ function App() {
   const sectionTitles: Record<Dialog['kind'], string> = {
     library: 'Projects', settings: 'Project settings', voice: 'Connect VoiceOS', capture: 'Capture memory',
     memory: 'New memory', recollection: 'Add a recollection', correction: 'Correct memory',
-    help: 'Welcome to Everwhere', source: 'Source evidence', confirm: 'Review change', world: 'Import 3D scene', generation: 'Generate memory world'
+    help: 'Welcome to Everwhere', source: 'Source evidence', confirm: 'Review change', world: 'Import memory scene', generation: 'Generate memory world'
   };
   return <div className="app-frame">
     <a className="skip-link" href="#experience">Skip to experience</a>
@@ -551,14 +572,15 @@ function App() {
           if (!isCurrentDialog()) return;
           dismiss(); setNotice('Scene imported for approval.');
         }} />}
-      {hasMedia && state && captureOpen && <div hidden={dialog.kind === 'confirm'}><Capture state={state} base={base} items={items} visible={dialog.kind === 'capture'} reload={refresh}
+      {hasMedia && state && captureOpen && <div hidden={dialog.kind === 'confirm'}><Capture state={state} base={base} items={items} visible={dialog.kind === 'capture'} cameraViewer={cameraViewer} cameraNotice={cameraNotice} reload={refresh}
         renderMemoryForm={done => <EventForm name="Create memory" onSubmit={async body => {
           await api(base + '/memories', { ...body, expectedRevision: state.revision }); await refresh(); done();
         }} />}
         preview={async (item, eventId, text) => {
           const context = activeContext.current;
           const proposal = await api<Proposal>(base + '/capture/observations/' + item.id + '/preview', {
-            eventId, expectedRevision: state.revision, text, ...(eventId === current?.id && currentAnchor && { anchorId: currentAnchor.id })
+            eventId, expectedRevision: state.revision, text, ...(item.media?.attribution && { relation: 'reference' }),
+            ...(eventId === current?.id && currentAnchor && { anchorId: currentAnchor.id })
           });
           const latest = activeContext.current;
           if (ref.current !== context.project || latest.dialog !== context.dialog || !latest.items.some(observation => observation.id === item.id)) return;
@@ -571,12 +593,18 @@ function App() {
       {current && dialog.kind === 'correction' && <EventForm name="Preview correction" event={current} onSubmit={payload => preview('event.correct', payload)} />}
       {current && dialog.kind === 'recollection' && <RecollectionForm anchor={currentAnchor?.title} onCapture={() => show('capture')}
         onSubmit={text => preview('recollection.add', { text, ...(currentAnchor && { anchorId: currentAnchor.id }) })} />}
-      {source && dialog.kind === 'source' && <div className="source-detail"><span className="eyebrow">{source.provenance === 'imagined' ? 'IMAGINED DEMO IMAGE' : 'ORIGINAL SOURCE'}</span>
+      {source && dialog.kind === 'source' && <div className="source-detail"><span className="eyebrow">{source.attribution ? 'PUBLIC REFERENCE PHOTO' : source.provenance === 'imagined' ? 'IMAGINED DEMO IMAGE' : 'ORIGINAL SOURCE'}</span>
         <h3>{source.caption}</h3>
         {source.mime.startsWith('image/') ? <img src={sourceURL(project, source.id)} alt={source.caption} /> :
           source.mime.startsWith('video/') ? <video controls playsInline src={sourceURL(project, source.id)} /> :
             <audio controls src={sourceURL(project, source.id)} />}
-        <p className="muted">{!source.capturedAt && source.capturedLocal ? source.capturedLocal.replace('T', ' · ') + ' · Timezone unknown' : displayDate(source.capturedAt)}</p>
+        <p className="muted">{source.attribution && 'Embedded capture: '}{!source.capturedAt && source.capturedLocal ? source.capturedLocal.replace('T', ' · ') + ' · Timezone unknown' : displayDate(source.capturedAt)}</p>
+        {source.attribution && <div>
+          <p>{source.attribution.title || source.caption} · {source.attribution.creator}</p>
+          <p><a href={source.attribution.sourceUrl} target="_blank" rel="noopener noreferrer">Original source</a> · <a href={source.attribution.licenseUrl} target="_blank" rel="noopener noreferrer">{source.attribution.license}</a></p>
+          <p>Source-reported date: {source.attribution.reportedDate || 'unknown'}. {source.attribution.dateNote}</p>
+          <p className="muted">Public reference imagery, not a personal trip record. This date is separate from the embedded capture timestamp. Keep these credits with shared copies and follow the linked license.</p>
+        </div>}
         {source.gps && <p className="muted">Embedded coordinates: {source.gps.map(value => value.toFixed(5)).join(', ')}</p>}
         {source.provenance === 'original' && <a className="btn self-start" href={sourceURL(project, source.id, '?download=1&variant=original')}><ArrowDownToLine size={16} /> Download original</a>}</div>}
       {staleConfirmation && <p role="status">Refreshing the review…</p>}

@@ -195,7 +195,7 @@ test('MCP stdio exposes tools before setup and rejects missing or unsafe configu
     try {
       await client.connect(new StdioClientTransport({ command: process.execPath,
         args: [fileURLToPath(new URL('../apps/mcp/index.mjs', import.meta.url))], env: { ...base, ...env } }));
-      assert.equal((await client.listTools()).tools.length, 19);
+      assert.equal((await client.listTools()).tools.length, 21);
       const result = await client.callTool({ name: 'get_context', arguments: {} });
       assert.equal(result.isError, true);
       const data = JSON.parse(result.content[0].text);
@@ -234,7 +234,7 @@ test('MCP stdio uses the real API, applies a correction and recollection, and pu
   try {
     await client.connect(transport);
     const tools = await client.listTools();
-    assert.equal(tools.tools.length, 19);
+    assert.equal(tools.tools.length, 21);
     assert.deepEqual(manifest.tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
       tools.tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })));
     async function voice(name, args = {}, expectsError = false) {
@@ -245,6 +245,14 @@ test('MCP stdio uses the real API, applies a correction and recollection, and pu
       return data;
     }
     assert.equal((await voice('get_context')).data.event, 'Lago di Braies');
+    await request(p + '/session', { cameraViewerId: 'mcp-camera-test' });
+    const camera = await voice('camera_action', { action: 'open' });
+    assert.equal(camera.data.status, 'queued');
+    assert.equal(camera.data.command.viewerId, 'mcp-camera-test');
+    assert.equal(camera._voiceos_glance.blocks[0].trailing, 'Queued');
+    assert.match(camera._voiceos_glance.blocks[1].pairs[0][1], /Waiting for/);
+    assert.equal((await voice('get_context')).data.cameraReceipt, undefined);
+    await request(p + '/session', { cameraViewerId: null, viewerId: 'mcp-camera-test' });
     assert.ok((await request(p + '/pairing')).lastSeen > 0);
     const sse = await fetch(root + p + '/events', { headers: { Cookie: cookie }, signal: stream.signal });
     assert.equal(sse.status, 200);

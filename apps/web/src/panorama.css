@@ -1,0 +1,84 @@
+.everwhere-tour { --tour-ink:#f8f5ed; --tour-muted:#c8cdc6; --tour-surface:#14201edb; --tour-line:#f8f5ed38; position:fixed; inset:0; z-index:120; overflow:hidden; color:var(--tour-ink); background:#14201e; font-family:'DM Sans Variable',sans-serif; color-scheme:dark; }
+.everwhere-tour * { box-sizing:border-box; }
+.everwhere-tour button, .everwhere-tour a { -webkit-tap-highlight-color:transparent; }
+.everwhere-tour button { font:inherit; color:inherit; cursor:pointer; border:1px solid var(--tour-line); border-radius:8px; background:var(--tour-surface); min-height:44px; padding:10px 16px; display:inline-flex; align-items:center; justify-content:center; gap:8px; line-height:1.3; }
+.everwhere-tour button:hover { background:#33443e; border-color:#f8f5ed80; }
+.everwhere-tour button:disabled { opacity:.4; cursor:default; }
+.everwhere-tour button:focus-visible, .everwhere-tour a:focus-visible, .tour-stage:focus-visible { outline:2px solid #e5dbb7; outline-offset:4px; }
+.tour-stage { position:absolute; inset:0; overflow:hidden; outline:none; cursor:grab; touch-action:none; }
+.tour-stage:active { cursor:grabbing; }
+.tour-image, .tour-previous, .tour-sphere, .tour-sphere canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+.tour-image, .tour-previous { object-fit:cover; user-select:none; }
+.tour-image { will-change:transform; }
+.tour-previous { pointer-events:none; animation:tour-fade-out 450ms ease forwards; }
+.tour-shade { pointer-events:none; position:absolute; inset:0; background:linear-gradient(180deg,#07110e88 0%,transparent 30%,transparent 48%,#07110ed9 100%); }
+.tour-header { position:absolute; top:max(24px,env(safe-area-inset-top)); left:32px; right:32px; display:flex; align-items:flex-start; justify-content:space-between; pointer-events:none; gap:16px; }
+.tour-header button { pointer-events:auto; }
+.tour-brand { font:38px/1 'Instrument Serif',serif; letter-spacing:-1.5px; text-shadow:0 2px 14px #0005; }
+.tour-brand span { display:block; margin-top:10px; font:600 10px/1.4 'DM Sans Variable',sans-serif; text-transform:uppercase; letter-spacing:1.5px; }
+.everwhere-tour .tour-icon { padding:0; width:44px; flex:none; }
+.tour-caption { position:absolute; left:40px; bottom:196px; max-width:min(620px,70vw); pointer-events:none; text-shadow:0 2px 20px #0006; }
+.tour-eyebrow { display:flex; align-items:center; gap:6px; font-size:10px; font-weight:600; letter-spacing:1.5px; line-height:1.5; text-transform:uppercase; }
+.tour-caption h1 { font:400 clamp(36px,5vw,72px)/1.03 'Instrument Serif',serif; letter-spacing:-1.5px; color:inherit; margin:12px 0; overflow-wrap:anywhere; text-wrap:balance; }
+.tour-caption p { font-size:13px; line-height:1.7; max-width:480px; margin:0; text-wrap:pretty; }
+.tour-hotspots { position:absolute; inset:0; pointer-events:none; }
+.everwhere-tour .tour-hotspot { pointer-events:auto; position:absolute; left:var(--hotspot-x); top:var(--hotspot-y); transform:translate(-50%,-50%); display:flex; flex-direction:column; gap:8px; border:0; background:transparent; padding:8px; max-width:180px; filter:drop-shadow(0 2px 8px #0006); }
+.tour-hotspot svg { width:44px; height:44px; padding:10px; border:1px solid #fff9; border-radius:50%; background:#14201ec9; }
+.tour-hotspot span { font-size:11px; font-weight:500; background:#14201ee6; padding:6px 10px; border-radius:4px; text-align:center; overflow-wrap:anywhere; }
+.everwhere-tour .tour-hotspot:hover { background:transparent; }.tour-hotspot:hover svg { color:#132019; background:#efe6cf; }
+.tour-door svg { border-radius:8px; }
+.tour-footer { position:absolute; left:40px; right:40px; bottom:max(24px,env(safe-area-inset-bottom)); }
+.tour-hint { font-size:10px; line-height:1.5; margin-bottom:12px; color:var(--tour-muted); }.tour-hint span { margin:0 8px; }
+.tour-route { display:flex; gap:12px; align-items:stretch; padding:8px; border:1px solid var(--tour-line); border-radius:12px; background:#10201de8; backdrop-filter:blur(16px); }
+.everwhere-tour .tour-route button { font-size:12px; border-color:transparent; background:transparent; }
+.everwhere-tour .tour-route button:hover { background:#ffffff12; }
+.tour-route-links { display:flex; flex:1; gap:4px; min-width:0; overflow:auto; }
+.tour-route-links button { flex:none; max-width:240px; text-align:left; }.tour-route-links button span { overflow-wrap:anywhere; }
+.everwhere-tour .tour-route .tour-back { border-right:1px solid var(--tour-line); border-radius:4px; padding-right:20px; }
+.everwhere-tour .tour-route .tour-context { border-left:1px solid var(--tour-line); border-radius:4px; padding-left:20px; }
+.tour-count { margin-top:12px; font-size:10px; color:var(--tour-muted); letter-spacing:.6px; }.tour-count span { color:var(--tour-ink); }
+.tour-end { display:flex; align-items:center; padding:8px; font-size:12px; color:var(--tour-muted); }
+.tour-loading { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; background:#10201d50; text-shadow:0 2px 8px #0008; }
+.tour-loading p { font-size:13px; }.tour-entering { background:#10201d99; }
+.tour-error { position:absolute; inset:112px 24px 24px; display:flex; justify-content:center; align-items:center; background:#10201dcb; backdrop-filter:blur(12px); border-radius:12px; padding:24px; }
+.tour-error>div { max-width:520px; }.tour-error h2 { font:400 40px/1.1 'Instrument Serif',serif; color:inherit; margin:16px 0; }.tour-error p { font-size:14px; line-height:1.6; }.tour-error-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:24px; }
+.tour-source-scrim { position:absolute; inset:0; background:#07110e66; display:flex; justify-content:flex-end; }
+.tour-sources { width:min(440px,100%); height:100%; padding:32px; overflow:auto; background:#17251ff7; border-left:1px solid var(--tour-line); backdrop-filter:blur(20px); }
+.tour-source-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.tour-sources h2 { font:400 38px/1.12 'Instrument Serif',serif; color:inherit; margin:24px 0 16px; }.tour-sources p { font-size:13px; line-height:1.75; overflow-wrap:anywhere; }.tour-sources h3 { font-size:14px; color:inherit; margin:28px 0 12px; }
+.tour-disclosure { border-top:1px solid var(--tour-line); border-bottom:1px solid var(--tour-line); padding:20px 0; margin-top:24px; }.tour-disclosure strong { font-size:12px; }.tour-disclosure p { margin:8px 0 0; color:var(--tour-muted); }
+.tour-sources ul { list-style:none; padding:0; margin:0; }.tour-sources li { margin-bottom:24px; }.tour-sources li p { margin-bottom:8px; }.tour-sources a { color:#ede1bf; text-underline-offset:4px; font-size:12px; display:inline-flex; align-items:center; gap:6px; min-height:32px; }
+.tour-muted { color:var(--tour-muted); }.everwhere-tour .tour-source-link { display:flex; width:100%; margin-top:16px; justify-content:space-between; font-size:12px; padding:12px 0; }
+.tour-sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+@keyframes tour-fade-out { from { opacity:1; } to { opacity:0; } }
+.tour-reduced .tour-previous { display:none; }
+.tour-door-cue { position:absolute; top:28px; left:50%; transform:translateX(-50%); padding:12px 16px; border:1px solid var(--tour-line); border-radius:8px; background:var(--tour-surface); display:flex; align-items:center; gap:8px; font-size:11px; pointer-events:none; }
+.tour-streetview { width:100%; height:100%; border:0; display:block; background:#15221d; }
+.tour-reference .tour-stage { inset:144px 24px 172px; cursor:auto; border:1px solid var(--tour-line); border-radius:8px; }
+.tour-reference .tour-shade { display:none; }
+.tour-reference .tour-caption { top:100px; bottom:auto; left:32px; right:80px; max-width:none; }
+.tour-reference .tour-caption h1 { font:500 18px/1.4 'DM Sans Variable',sans-serif; letter-spacing:0; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tour-reference .tour-caption p, .tour-reference .tour-caption .tour-eyebrow { display:none; }
+/* Google’s viewer z-indexes its own layers; isolate them so they cannot paint over Everwhere’s header and exit. */
+.tour-live-view { position:absolute; inset:0; isolation:isolate; z-index:0; }
+/* The live viewer ends above Everwhere’s footer so Google’s logo, copyright and terms stay uncovered. */
+.tour-live .tour-stage { inset:0 0 116px; border:0; border-radius:0; z-index:0; }
+.tour-live .tour-header, .tour-live .tour-caption { z-index:1; }
+.tour-live .tour-brand { text-shadow:0 1px 10px #000c; }
+.tour-live .tour-caption { right:auto; max-width:min(520px,70vw); padding:8px 12px; border:1px solid var(--tour-line); border-radius:8px; background:var(--tour-surface); text-shadow:none; }
+.tour-live .tour-footer { bottom:max(16px,env(safe-area-inset-bottom)); z-index:1; }
+.tour-live .tour-hint { margin-bottom:8px; }.tour-live .tour-count { display:none; }
+.tour-live .tour-door-cue, .tour-live .tour-loading, .tour-live .tour-error, .tour-live .tour-source-scrim { z-index:2; }
+@media(max-width:700px) {
+  .tour-header { left:20px; right:20px; top:max(20px,env(safe-area-inset-top)); }.tour-brand { font-size:32px; }.tour-brand span { font-size:8px; letter-spacing:1px; }
+  .tour-caption { left:24px; right:24px; bottom:204px; max-width:none; }.tour-caption h1 { font-size:40px; letter-spacing:-1px; }.tour-caption p { font-size:12px; max-width:90%; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }.tour-eyebrow { font-size:9px; }
+  .tour-footer { left:16px; right:16px; bottom:max(16px,env(safe-area-inset-bottom)); }.tour-hint { font-size:9px; max-width:260px; }.tour-hint span { margin:0 4px; }
+  .tour-route { gap:0; padding:6px; flex-wrap:wrap; }.tour-route-links { order:-1; flex-basis:100%; padding-bottom:6px; border-bottom:1px solid var(--tour-line); margin-bottom:4px; }.tour-route-links button { max-width:220px; flex:1 0 auto; }.everwhere-tour .tour-route .tour-context { margin-left:auto; border:0; padding-left:12px; }.everwhere-tour .tour-route .tour-back { border:0; padding-right:12px; }.tour-count { margin-top:8px; font-size:9px; }
+  .everwhere-tour .tour-hotspot { max-width:128px; top:min(var(--hotspot-y),32%); }.tour-hotspot:not(:first-child) { display:none; }.tour-hotspot span { font-size:10px; }.tour-hotspot svg { width:40px; height:40px; padding:9px; }.tour-door-cue { top:100px; max-width:80%; white-space:nowrap; }
+  .tour-sources { padding:24px; }.tour-sources h2 { font-size:34px; }.tour-error { inset:100px 16px 16px; padding:20px; }.tour-error h2 { font-size:32px; }
+  .tour-reference .tour-stage { inset:132px 12px 208px; }.tour-live .tour-stage { inset:0 0 196px; }.tour-live .tour-caption { right:auto; max-width:calc(100vw - 40px); }.tour-reference .tour-caption { top:98px; left:20px; right:20px; }.tour-reference .tour-caption h1 { font-size:15px; }.tour-reference .tour-hint { max-width:none; }
+}
+@media(max-height:600px) { .tour-caption { bottom:148px; }.tour-caption h1 { font-size:32px; margin:8px 0; }.tour-caption p { display:none; }.tour-hint { display:none; }.tour-header { top:16px; }.tour-count { margin-top:8px; } }
+@media(max-height:600px) and (min-width:701px) { .tour-reference .tour-stage { top:100px; bottom:112px; }.tour-reference .tour-caption { top:66px; }.tour-reference .tour-brand { font-size:26px; }.tour-reference .tour-brand span { margin-top:6px; } }
+@media(prefers-reduced-motion:reduce) { .tour-previous { animation:none; display:none; } }
+@media(max-height:600px) and (min-width:701px) { .tour-live .tour-stage { top:0; bottom:92px; } }
