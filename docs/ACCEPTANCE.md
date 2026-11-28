@@ -1,6 +1,12 @@
 # Release acceptance matrix
 Record each test as PASS / FAIL / NOT RUN, with commit, environment, elapsed time, evidence link and owner. All P0 must pass for full claim; fallback never silently counts as primary feature. Targets below are internal, not measured results.
 
+## November 27–28 procedural demo scope
+
+The owner reports organizer approval for the existing repository and coding before the public Saturday window. This is a user-provided clarification; it is not evidence that the public rules changed. The official event deadline remains Saturday November 28 at 4 p.m. Toronto, with a five-minute live demo and no slides. Reserve 2:30–4 p.m. for freeze, rehearsal and submission checks.
+
+The owner selected a clearly labelled procedural world because no world-generation provider is configured. **A05's original reconstruction requirement is not met by this fallback.** The demo claim is photos + metadata + recollection + optional cited place context → reviewed imagined scene → approval → exploration. Native VoiceOS A01/A13 and submission/deployment A15 remain independent gates, even when MCP transport and local browser checks pass. No rubric weights below are represented as official judging weights.
+
 | ID | Test | Pass condition | Owner |
 |---|---|---|---|
 | A00 | Rules & data | Actual event confirms permitted team size, agent use, code timing; consented assets and provider rights | 1,10 |

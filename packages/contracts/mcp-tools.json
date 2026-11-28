@@ -209,6 +209,31 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 4000
+              },
+              "gps": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": [
+                      {
+                        "type": "number",
+                        "minimum": -90,
+                        "maximum": 90
+                      },
+                      {
+                        "type": "number",
+                        "minimum": -180,
+                        "maximum": 180
+                      }
+                    ],
+                    "additionalItems": false
+                  }
+                ]
               }
             },
             "required": [],
@@ -381,6 +406,88 @@
         "required": [
           "observationId",
           "eventId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_scene_evidence",
+      "description": "Read linked photo timestamps, coordinates, reviewed recollections, place context, suggestions and uncertainties for a scene. No external request.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "research_place",
+      "description": "With explicit user consent, query Wikipedia for the memory place using approximate coordinates or a place query. Sends no photos or recollection text. Returns cited background, not evidence of the historical event.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "consent": {
+            "const": true
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "consent"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "preview_memory_world",
+      "description": "Preview an imagined procedural world from approved original photos, timestamps, place and recollections. Read get_scene_evidence first, explain uncertainties and selected environment/season; ask user to confirm the returned preview with confirm_change. Not a measured reconstruction.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "environment": {
+            "enum": [
+              "mountain",
+              "coast",
+              "forest",
+              "urban",
+              "open"
+            ]
+          },
+          "season": {
+            "enum": [
+              "green",
+              "snow",
+              "autumn"
+            ]
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "environment",
+          "season"
         ],
         "additionalProperties": false
       }

@@ -18,6 +18,7 @@ function replay(state, key, payload) {
   const saved = state.requests[key];
   if (!saved) return null;
   check(bodyMatches(payload, saved), 409, 'REQUEST_ID_REUSED', 'This request ID was already used for different content.');
+  check(!saved.unavailable, 409, 'EVIDENCE_REVOKED', 'This request used evidence that has been revoked.');
   return saved.result;
 }
 
@@ -43,7 +44,7 @@ export function getSnapshot(projectId, state) {
     media: state.media.filter(item => !item.revoked && !item.pending).map(cleanMedia),
     recollections: state.recollections.map(({ actor, ...item }) => ({ ...item, contributor: 'You' })),
     jobs: state.jobs.map(cleanJob), history: state.history,
-    worlds: (state.worlds || []).filter(item => !item.revoked).map(({ storage, contentHash, ...item }) => item),
+    worlds: (state.worlds || []).filter(item => !item.revoked).map(({ storage, contentHash, plan, evidenceHash, ...item }) => item),
     undo: state.changes[0] ? { revision: state.changes[0].revision, targetId: state.changes[0].targetId } : null,
     capture: { sessions: state.capture.sessions.map(session => ({ ...session, status: session.status === 'active' && session.expires <= Date.now() ? 'expired' : session.status })) }
   };
@@ -134,6 +135,7 @@ export function commitCommand(state, input, actor, tokenOnly = false) {
   const key = 'command:' + input.requestId;
   const existing = state.requests[key];
   if (existing) {
+    check(!existing.unavailable, 409, 'EVIDENCE_REVOKED', 'This request used evidence that has been revoked.');
     if (tokenOnly) {
       const { expectedRevision, previewToken, requestId } = input;
       check(digest({ expectedRevision, previewToken, requestId }) === existing.tokenHash, 409, 'REQUEST_ID_REUSED', 'This request ID was used already.');
@@ -158,6 +160,8 @@ export function commitCommand(state, input, actor, tokenOnly = false) {
     obs.status = 'linked';
     obs.eventId = proposed.targetId;
     obs.reviewRevision = state.revision;
+    // Keep provenance after undo removes the inverse from the undo stack.
+    if (proposed.type === 'recollection.add') obs.recollectionId = state.changes[0].id;
     if (obs.mediaId) {
       const item = mediaById(state, obs.mediaId);
       if (item) item.pending = false;
@@ -263,15 +267,59 @@ export function revokeCapture(state, id, discard = false) {
   }
   const files = state.media.filter(item => !item.revoked && (discard ? selected.mediaId === item.id : item.captureGrant === id));
   const ids = new Set(files.map(item => item.id));
-  for (const item of files) item.revoked = true;
-  const worlds = (state.worlds || []).filter(world => !world.revoked && world.sourceIds.some(id => ids.has(id)));
-  for (const world of worlds) Object.assign(world, { revoked: true, approved: false });
+  for (const item of files) Object.assign(item, { revoked: true, caption: 'Withdrawn source' });
   const observationRevisions = new Set(affected.map(item => item.reviewRevision).filter(Boolean));
-  const recollectionIds = new Set(state.changes.filter(item => item.type === 'recollection.add' && observationRevisions.has(item.revision)).map(item => item.id));
+  const recollectionIds = new Set([
+    ...affected.map(item => item.recollectionId).filter(Boolean),
+    ...state.changes.filter(item => item.type === 'recollection.add' && observationRevisions.has(item.revision)).map(item => item.id)
+  ]);
   const audioRecollections = new Set(state.recollections.filter(item => ids.has(item.audioMediaId)).map(item => item.id));
-  state.recollections = state.recollections.filter(item => !recollectionIds.has(item.id) && !audioRecollections.has(item.id));
+  for (const change of state.changes) {
+    if (audioRecollections.has(change.id) || ids.has(change.mediaId)) observationRevisions.add(change.revision);
+  }
+  for (const entry of state.history) if (observationRevisions.has(entry.revision)) entry.label = 'Removed capture evidence';
+  const withdrawnRecollections = new Set([...recollectionIds, ...audioRecollections]);
+  const worlds = (state.worlds || []).filter(world => !world.revoked && (world.sourceIds.some(id => ids.has(id)) ||
+    world.evidenceRefs?.mediaIds.some(id => ids.has(id)) || world.evidenceRefs?.recollectionIds.some(id => withdrawnRecollections.has(id))));
+  for (const world of worlds) {
+    Object.assign(world, { revoked: true, approved: false });
+    delete world.plan;
+  }
+  // Stale and failed jobs can still retain evidence and completed output files.
+  // Return only their deletion handles before removing persisted private copies.
+  const outputs = [];
+  for (const job of state.jobs) {
+    const manifest = job.manifest;
+    if (!manifest || !(manifest.media.some(item => ids.has(item.id)) || ids.has(manifest.narration?.id) ||
+      manifest.recollections.some(item => withdrawnRecollections.has(item.id) || ids.has(item.audioMediaId)))) continue;
+    outputs.push({ id: job.id, output: job.output, captions: job.captions });
+    Object.assign(job, { status: 'stale', approved: false });
+    delete job.manifest;
+    delete job.output;
+    delete job.captions;
+    delete job.contentHash;
+  }
+  const revokedArtifacts = new Set([...worlds, ...outputs].map(item => item.id));
+  for (const request of Object.values(state.requests)) {
+    if (observationRevisions.has(request.result?.revision) || revokedArtifacts.has(request.result?.artifactId) ||
+      revokedArtifacts.has(request.result?.id)) {
+      request.result = { revision: request.result.revision, revoked: true };
+      request.unavailable = true;
+    }
+  }
+  const observationIds = new Set(affected.map(item => item.id));
+  for (const [token, preview] of Object.entries(state.previews)) {
+    const payload = preview.proposed?.payload;
+    if (observationIds.has(preview.observation) || ids.has(payload?.audioMediaId) || ids.has(payload?.mediaId) ||
+      payload?.sourceIds?.some(id => ids.has(id))) delete state.previews[token];
+  }
+  state.recollections = state.recollections.filter(item => !withdrawnRecollections.has(item.id));
   state.changes = state.changes.filter(item => !observationRevisions.has(item.revision) && !ids.has(item.mediaId) && !audioRecollections.has(item.id));
   for (const anchor of state.anchors) anchor.sourceIds = anchor.sourceIds.filter(id => !ids.has(id));
+  const removedAnchors = new Set(state.anchors.filter(anchor => anchor.sourceIds.length === 0).map(anchor => anchor.id));
+  state.anchors = state.anchors.filter(anchor => !removedAnchors.has(anchor.id));
+  if (removedAnchors.has(state.session.anchorId)) state.session.anchorId = null;
+  for (const recollection of state.recollections) if (removedAnchors.has(recollection.anchorId)) delete recollection.anchorId;
   for (const event of state.events) {
     if (!event.sourceIds.some(id => ids.has(id))) continue;
     event.sourceIds = event.sourceIds.filter(id => !ids.has(id));
@@ -279,8 +327,6 @@ export function revokeCapture(state, id, discard = false) {
     event.version += 1;
   }
   if (ids.size || recollectionIds.size) appendChange(state, discard ? 'Discarded a capture' : 'Revoked capture evidence', null);
-  const outputs = state.jobs.filter(job => job.status === 'stale' &&
-    (job.manifest.media.some(item => ids.has(item.id)) || ids.has(job.manifest.narration?.id)));
   return { files, outputs, worlds };
 }
 

@@ -17,8 +17,9 @@ import type { Anchor, Recollection } from './model';
 import './album.css';
 
 type Position = [number, number, number];
-export default function Scan({ url, projectId, eventId, worldId, revision, position, onClose, onWaypoint, anchors, selectedAnchor, recollections, onSelectAnchor, onRecollect }: {
+export default function Scan({ url, projectId, eventId, worldId, revision, provenance = 'reconstructed', planId, position, onClose, onWaypoint, anchors, selectedAnchor, recollections, onSelectAnchor, onRecollect }: {
   projectId: string; eventId: string; worldId: string; revision: number;
+  provenance?: 'imagined' | 'reconstructed'; planId?: string;
   url: string; position?: Position; onClose: () => void; onWaypoint: (position: Position) => void;
   anchors: Anchor[]; selectedAnchor?: Anchor; recollections: Recollection[];
   onSelectAnchor: (id: string) => void; onRecollect: () => void;
@@ -107,7 +108,7 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
     };
     const overview = () => {
       setMode('overview');
-      setNotice('Drag to inspect the scan, then choose a clear floor to begin walking.');
+      setNotice('Drag to inspect the world, then choose a clear floor to begin walking.');
       orbit.target.copy(camera.position).add(new Vector3(0, 0, -3).applyQuaternion(camera.quaternion));
       orbit.update();
     };
@@ -134,7 +135,7 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
     function selectFloor(point: Vector2) {
       pick.setFromCamera(point, camera);
       const hit = pick.intersectObjects(scene.children, true)[0];
-      if (!hit?.face) { setNotice('Choose a visible floor surface in the scan.'); return; }
+      if (!hit?.face) { setNotice('Choose a visible floor surface in the world.'); return; }
       normal.copy(worldSurfaceNormal(hit.object, hit.face.normal, hit.instanceId));
       if (normal.y < 0.55) { setNotice('Choose a level floor. This surface is too steep to stand on.'); return; }
       place(hit.point);
@@ -142,11 +143,11 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
     void (async () => {
       try {
         const response = await fetch(url, { signal: download.signal });
-        if (!response.ok) throw new Error('This reconstruction is unavailable.');
+        if (!response.ok) throw new Error('This world is unavailable. Return to the memory to check its approval and evidence.');
         const bytes = await response.arrayBuffer();
         const manager = new LoadingManager();
         manager.setURLModifier(resource => {
-          if (!resource.startsWith('blob:') && !resource.startsWith('data:')) throw new Error('The scan must embed its textures.');
+          if (!resource.startsWith('blob:') && !resource.startsWith('data:')) throw new Error('The scene must embed its textures.');
           return resource;
         });
         const gltf = await new GLTFLoader(manager).parseAsync(bytes, '');
@@ -165,11 +166,11 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
         orbit.update();
         collision = collisionFromObject(gltf.scene);
         recorder = new PathRecorder(camera, {
-          id: worldId, planId: 'import-' + worldId, revision, format: 'glb', assetId: worldId, collisionAssetId: worldId,
+          id: worldId, planId: planId ?? 'import-' + worldId, revision, format: 'glb', assetId: worldId, collisionAssetId: worldId,
           units: 'm', coordinateSystem: 'right-handed-y-up', scaleConfidence: null,
           boundsMin: sceneBounds.min.toArray(), boundsMax: sceneBounds.max.toArray(), spawn: center.toArray(),
           anchors: anchors.map(anchor => ({ id: anchor.id, position: anchor.position, sourceIds: anchor.sourceIds })),
-          capability: 'free_roam', provenance: 'reconstructed'
+          capability: 'free_roam', provenance
         }, point => safeCameraPosition(collision, point));
         const pathRecorder = recorder;
         setRuntime({
@@ -199,7 +200,7 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
           }
         };
         setPhase('overview');
-        setNotice('Scale is unverified. Inspect the scan, then choose a clear floor to begin walking.');
+        setNotice('Scale is unverified. Inspect the world, then choose a clear floor to begin walking.');
       } catch (error) {
         if (active) { setNotice((error as Error).message); setPhase('error'); }
       }
@@ -290,7 +291,7 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
       document.body.style.overflow = overflow;
       previousFocus?.focus();
     };
-  }, [url]);
+  }, [url, provenance, planId]);
   useEffect(() => {
     const key = JSON.stringify(position);
     if (position && actions.current && key !== appliedPosition.current) {
@@ -298,7 +299,7 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
       actions.current.move(position);
     }
   }, [position?.[0], position?.[1], position?.[2], phase]);
-  return createPortal(<div className="walk-album" ref={wrapper} role="dialog" aria-modal="true" aria-label="Walkable reconstruction"
+  return createPortal(<div className="walk-album" ref={wrapper} role="dialog" aria-modal="true" aria-label={provenance === 'imagined' ? 'Walkable imagined world' : 'Walkable reconstruction'}
     onKeyDown={event => {
       if (event.key === 'Escape') { event.stopPropagation(); onClose(); return; }
       if (event.key === 'Tab') {
@@ -318,8 +319,8 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
     }} onKeyUp={event => {
       if (event.key !== ' ') keys.current.delete(event.key.toLowerCase());
     }}>
-    <div className="walk-canvas" ref={host} tabIndex={0} aria-label="Reconstruction. Choose a floor, then use WASD to walk and drag to look." onBlur={() => keys.current.clear()} />
-    <header className="walk-header"><div className="walk-brand">everwhere<span>Reconstructed · imported mesh</span></div><div className="walk-header-actions"><button onClick={onClose}><X size={16} /> Exit</button></div></header>
+    <div className="walk-canvas" ref={host} tabIndex={0} aria-label={(provenance === 'imagined' ? 'Imagined procedural world. ' : 'Reconstruction. ') + 'Choose a floor, then use WASD to walk and drag to look.'} onBlur={() => keys.current.clear()} />
+    <header className="walk-header"><div className="walk-brand">everwhere<span>{provenance === 'imagined' ? 'Imagined · procedural world' : 'Reconstructed · imported mesh'}</span></div><div className="walk-header-actions"><button onClick={onClose}><X size={16} /> Exit</button></div></header>
     <RuntimeTools runtime={runtime} contextURL={'/projects/' + projectId + '/memories/' + eventId + '/scene-context?world=' + worldId} focus={() => host.current?.focus()} />
     {anchors.length > 0 && <aside className="scan-waypoints" aria-label="Saved places">
       <h2>Saved places</h2>
@@ -329,7 +330,7 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
       </>}
     </aside>}
     <div className="scan-actions">
-      {phase === 'loading' ? <p role="status">Loading the scan and its collision geometry…</p> : <p role="status">{notice}</p>}
+      {phase === 'loading' ? <p role="status">Loading the world and its walking surfaces…</p> : <p role="status">{notice}</p>}
       {phase === 'overview' && <button className="walk-primary" onClick={() => actions.current?.choose()}><Footprints size={16} /> Choose floor to walk</button>}
       {phase === 'choose' && <button onClick={() => actions.current?.overview()}>Cancel placement</button>}
       {phase === 'walk' && <><button onClick={() => actions.current?.overview()}><MoveUpRight size={16} /> Inspect scene</button>

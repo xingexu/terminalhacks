@@ -95,6 +95,30 @@
                     },
                     "minItems": 3,
                     "maxItems": 3
+                  },
+                  "gps": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "prefixItems": [
+                          {
+                            "type": "number",
+                            "minimum": -90,
+                            "maximum": 90
+                          },
+                          {
+                            "type": "number",
+                            "minimum": -180,
+                            "maximum": 180
+                          }
+                        ]
+                      }
+                    ]
                   }
                 },
                 "required": [],

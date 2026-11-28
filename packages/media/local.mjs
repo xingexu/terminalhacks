@@ -24,7 +24,7 @@ export async function ingest(buffer, { name, audio, dir, keepLocation = false })
   await mkdir(dir, { recursive: true });
   const hash = createHash('sha256').update(buffer).digest('hex');
   const caption = basename(name || 'Untitled source').replace(/\.[a-z0-9]{1,8}$/i, '').slice(0, 180) || 'Untitled source';
-  let mime, capturedAt = null, gps = null, storage, thumb, duration = null, playback, inspectionPath;
+  let mime, capturedAt = null, capturedLocal = null, gps = null, storage, thumb, duration = null, playback, inspectionPath;
   try {
     const metadata = await sharp(buffer, { limitInputPixels: 50_000_000 }).metadata().catch(() => null);
     if (imageMimes[metadata?.format]) {
@@ -33,6 +33,7 @@ export async function ingest(buffer, { name, audio, dir, keepLocation = false })
       thumb = prefix + '.jpg';
       const exif = await exifr.parse(buffer, { pick: ['DateTimeOriginal', 'OffsetTimeOriginal'], reviveValues: false }).catch(() => null);
       const raw = typeof exif?.DateTimeOriginal === 'string' ? exif.DateTimeOriginal : '';
+      if (/^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)) capturedLocal = raw.replace(/^(\d{4}):(\d{2}):(\d{2}) /, '$1-$2-$3T');
       if (/^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}$/.test(raw) && /^[+-]\d{2}:\d{2}$/.test(exif?.OffsetTimeOriginal ?? '')) {
         const timestamp = raw.replace(/^(\d{4}):(\d{2}):(\d{2}) /, '$1-$2-$3T') + exif.OffsetTimeOriginal;
         if (!Number.isNaN(Date.parse(timestamp))) capturedAt = timestamp;
@@ -51,7 +52,7 @@ export async function ingest(buffer, { name, audio, dir, keepLocation = false })
       inspectionPath = prefix + (isMp4 ? '.mp4' : '.webm');
       await writeFile(inspectionPath, buffer);
       const { stdout } = await run(ffprobe, ['-v', 'error', '-protocol_whitelist', 'file,pipe', '-show_entries',
-        'format=duration:format_tags=creation_time:stream=codec_type,width,height', '-of', 'json', inspectionPath], { timeout: 12000 });
+        'format=duration:format_tags=creation_time,location,com.apple.quicktime.location.ISO6709:stream=codec_type,width,height', '-of', 'json', inspectionPath], { timeout: 12000 });
       const probe = JSON.parse(stdout);
       const video = probe.streams?.find(stream => stream.codec_type === 'video');
       const isAudio = probe.streams?.some(stream => stream.codec_type === 'audio');
@@ -70,6 +71,13 @@ export async function ingest(buffer, { name, audio, dir, keepLocation = false })
       storage = inspectionPath;
       const timestamp = probe.format?.tags?.creation_time;
       if (typeof timestamp === 'string' && /(?:Z|[+-]\d{2}:\d{2})$/.test(timestamp) && !Number.isNaN(Date.parse(timestamp))) capturedAt = timestamp;
+      if (keepLocation) {
+        const location = probe.format?.tags?.['com.apple.quicktime.location.ISO6709'] || probe.format?.tags?.location;
+        const coordinates = typeof location === 'string' && /^([+-]\d{2}(?:\.\d+)?)([+-]\d{3}(?:\.\d+)?)(?:[+-]\d+(?:\.\d+)?)?\/$/.exec(location);
+        if (coordinates && Math.abs(Number(coordinates[1])) <= 90 && Math.abs(Number(coordinates[2])) <= 180) {
+          gps = [Number(coordinates[1]), Number(coordinates[2])];
+        }
+      }
       if (!audio) {
         thumb = prefix + '.jpg';
         await run(ffmpeg, ['-nostdin', '-loglevel', 'error', '-protocol_whitelist', 'file,pipe', '-i', storage, '-frames:v', '1',
@@ -77,7 +85,7 @@ export async function ingest(buffer, { name, audio, dir, keepLocation = false })
       }
     }
     if (storage !== inspectionPath) await writeFile(storage, buffer);
-    return { id, hash, caption, mime, capturedAt, gps, duration, storage, thumb, playback, provenance: 'original' };
+    return { id, hash, caption, mime, capturedAt, capturedLocal, gps, duration, storage, thumb, playback, provenance: 'original' };
   } catch (error) {
     await Promise.all([...new Set([storage, thumb, playback, inspectionPath].filter(Boolean))].map(path => rm(path, { force: true })));
     if (error.status) throw error;

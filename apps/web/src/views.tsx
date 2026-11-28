@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import {
   allowed, api, artifactURL, displayDate, isVisual, sourceURL, sourcesFor,
-  type Anchor, type Job, type Memory, type Profile, type SearchResult, type Snapshot, type Source, type View, type World
+  type Anchor, type Job, type Lens, type Memory, type Profile, type SearchResult, type Snapshot, type Source, type View, type World
 } from './model';
 
 const Spatial = lazy(() => import('./spatial'));
@@ -14,7 +14,7 @@ const WalkableAlbum = lazy(() => import('./album'));
 import { orderedPhotos } from './album-layout';
 
 export type ViewActions = {
-  select: (input: { eventId?: string; anchorId?: string; view?: View }) => void;
+  select: (input: { eventId?: string; anchorId?: string; view?: View; lens?: Lens }) => void;
   openSource: (source: Source) => void;
   openCapture: () => void;
   openMap: () => void;
@@ -27,6 +27,7 @@ export type ViewActions = {
   setGrade: (profile: Profile) => void;
   openSettings: () => void;
   openWorld: () => void;
+  openGeneration: () => void;
   undo: () => void;
 };
 
@@ -88,7 +89,7 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
     if (lastAnchor.current !== state.session.anchorId && selectedAnchor?.worldId === 'trail-' + activeEvent) setEntered(true);
     lastAnchor.current = state.session.anchorId;
   }, [state.session.anchorId, activeEvent]);
-  const worlds = state.worlds.filter(item => item.eventId === activeEvent && item.approved && state.session.lens === 'all' &&
+  const worlds = state.worlds.filter(item => item.eventId === activeEvent && item.approved && item.status !== 'stale' && state.session.lens === 'all' &&
     item.sourceIds.every(id => event?.sourceIds.includes(id)));
   const world = worlds.find(item => item.id === spatial) ?? worlds.at(-1);
   useEffect(() => { setSpatial(worlds.some(item => item.id === selectedAnchor?.worldId) ? selectedAnchor!.worldId : null); },
@@ -117,8 +118,11 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
     setEntered(true);
     setShowStory(false);
   }
-  const pendingWorld = state.worlds.find(item => item.eventId === event.id && !item.approved &&
+  const pendingWorlds = state.worlds.filter(item => item.eventId === event.id && !item.approved && item.status !== 'stale' &&
     item.sourceIds.every(id => event.sourceIds.includes(id)));
+  const staleWorlds = state.worlds.filter(item => item.eventId === event.id && item.status === 'stale');
+  const originalPhoto = state.media.some(item => event.sourceIds.includes(item.id) && item.provenance === 'original' && item.mime.startsWith('image/'));
+  const hiddenWorlds = state.session.lens === 'originals' && state.worlds.some(item => item.eventId === event.id && item.approved && item.status !== 'stale');
   return <>
     {entered && photos.length > 0 && <Suspense fallback={<div className="notice" role="status">Opening immersive album…</div>}>
       <WalkableAlbum key={state.projectId + event.id + state.session.lens + photos.map(photo => photo.id).join(',')}
@@ -129,6 +133,7 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
       <Suspense fallback={<div className="spatial-state">Loading 3D viewer…</div>}>
         {world.format === 'glb' ? <Scan url={'/v1/projects/' + state.projectId + '/worlds/' + spatial + '/scene.glb'}
           projectId={state.projectId} eventId={event.id} worldId={world.id} revision={state.revision}
+          provenance={world.provenance ?? 'reconstructed'} planId={world.planId ?? world.sceneManifest?.planId}
           position={selectedAnchor?.worldId === spatial ? selectedAnchor.position : undefined}
           anchors={state.anchors.filter(item => item.worldId === spatial)}
           selectedAnchor={selectedAnchor?.worldId === spatial ? selectedAnchor : undefined}
@@ -179,10 +184,23 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
         </div>
       </div>
     </div>}
-    {(pendingWorld || world || media.some(item => item.provenance === 'original' && item.mime.startsWith('image/'))) && <div className="world-actions button-row">
-      {worlds.map(item => item.id !== spatial && <button key={item.id} className="btn compact" onClick={() => setSpatial(item.id)}><Box size={15} /> {item.format === 'glb' ? 'Walk in ' : 'Explore '}{item.title}</button>)}
-      {pendingWorld && <button className="btn compact" onClick={() => actions.approve(pendingWorld)}><Check size={15} /> Approve reconstruction</button>}
-      {media.some(item => item.provenance === 'original' && item.mime.startsWith('image/')) && <button className="btn compact subtle" onClick={actions.openWorld}><Plus size={15} /> Import 3D scene</button>}
+    <div className="world-actions button-row">
+      <button className="btn compact primary" onClick={actions.openGeneration}><Sparkles size={15} aria-hidden="true" /> Generate memory world</button>
+      {worlds.map(item => item.id !== spatial && <button key={item.id} className="btn compact" onClick={() => setSpatial(item.id)}><Box size={15} aria-hidden="true" /> {item.provenance === 'imagined' ? 'Enter imagined world: ' : item.format === 'glb' ? 'Walk in reconstruction: ' : 'Explore reconstruction: '}{item.title}</button>)}
+      {pendingWorlds.map(item => {
+        const variants = state.worlds.filter(candidate => candidate.eventId === item.eventId && candidate.title === item.title);
+        const suffix = variants.length > 1 ? ' · Variant ' + (variants.findIndex(candidate => candidate.id === item.id) + 1) : '';
+        return <button key={item.id} className="btn compact" onClick={() => actions.approve(item)}><Check size={15} aria-hidden="true" />
+          Approve {item.provenance === 'imagined' ? 'imagined world' : 'reconstruction'}: {item.title}{suffix}</button>;
+      })}
+      {originalPhoto && <button className="btn compact subtle" onClick={actions.openWorld}><Plus size={15} aria-hidden="true" /> Import 3D scene</button>}
+    </div>
+    {hiddenWorlds && <div className="notice"><p>Originals only hides 3D worlds. Show all to enter an approved world.</p><button className="btn compact" onClick={() => actions.select({ lens: 'all' })}>Show all</button></div>}
+    {!!staleWorlds.length && <p className="muted">A previous generated world is out of date because its evidence changed. Generate and review a new world to use the current memory.</p>}
+    {world?.provenance === 'imagined' && world.format === 'glb' && <div className="button-row generation-export">
+      <a className="btn compact" href={'/v1/projects/' + state.projectId + '/worlds/' + world.id + '/scene.glb?download=1'}><ArrowDownToLine size={15} aria-hidden="true" /> Download imagined world GLB</a>
+      <a className="btn compact" href={'/v1/projects/' + state.projectId + '/worlds/' + world.id + '/plan.json'} download><ArrowDownToLine size={15} aria-hidden="true" /> Download scene plan</a>
+      <p>GLB and plan for 3D-tool import. A native Unreal project is not included; Unreal import has not been verified.</p>
     </div>}
     <Timeline state={state} event={event} actions={actions} />
   </>;

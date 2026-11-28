@@ -23,6 +23,20 @@ Open `http://localhost:4173`. Set `PORT` to change the port and `EVERWHERE_DATA`
 5. **Memories → Import 3D scene** accepts prebuilt `.spz` reconstructions or self-contained `.glb` meshes from LiDAR/photogrammetry. Link an original photo documenting the place, import the scene, and approve it. Turn off **Originals only** to open the reconstruction. For GLB, choose **Choose floor to walk**, then click an open floor surface. WASD, mouse/touch look, Shift sprint and Space jump use capsule collisions, gravity and fixed physics steps against the actual mesh. Scans need meter units, Y-up orientation, embedded textures, at most 250,000 triangles, and a file size below 48 MB. The walkable album lays out photos in a designed environment. Reconstruction of the photographed place requires a separately produced scene.
 6. Use **Project settings** to revoke a capture grant or delete a project.
 
+## Generate an imagined memory world
+
+The hackathon demo uses a local procedural generator, as explicitly selected by the project owner when no hosted world provider was available. It creates an explorable interpretation with the original photographs embedded at stops. It does not recover the photographed geometry or produce historical footage.
+
+1. Create a memory with its place, date and optional latitude/longitude. Capture and review at least one original photo. Enable location retention only if you want embedded GPS kept. A timestamp without an offset remains labelled **Timezone unknown**.
+2. Add a recollection through Stories or the paired VoiceOS integration. Open **Generate memory world** and review the sources, recollections and unknowns.
+3. Optionally authorize a Wikipedia place lookup. Only the place label or coordinates rounded to two decimals are sent to Wikipedia; photos and conversation are not. Links and retrieval time remain visible. Current web context does not establish what happened on the memory's date.
+4. Choose the imagined environment and season. Preview, generate, then separately approve the scene. Turn off **Originals only** and enter it. Choose an open floor to walk, or use its photo stops.
+5. Download the GLB and scene plan if needed. The GLB contains the selected photographs, without their EXIF. The plan includes configuration, source IDs, evidence counts and public citations; exact locations and private recollection text are excluded. Downloaded copies cannot be revoked remotely.
+
+Generation supports five environments and three seasons, up to six photo stops ordered by known capture time (unknown times last). With no provider key or GPU service, it runs locally. VoiceOS can call `get_scene_evidence`, `research_place`, `preview_memory_world` and `confirm_change`; voice evidence exposes only rounded coordinates. The native VoiceOS permission card and spoken path still require rehearsal on the demo Mac.
+
+Corrections to evidence used by a world retire its approval. Adding an unrelated recollection preserves an existing world. Revoking a used capture blocks dependent assets and removes their local files. A stale, inaccessible world may retain its GLB locally until source revocation or project deletion; this build does not include automatic disk cleanup. The export uses metres/right-handed Y-up; Unreal conversion, collision and scale must be validated separately. No native Unreal execution is claimed.
+
 ## Immersive runtime and V3.1 camera paths
 
 In a single-memory album or an approved GLB, open **Scene tools** to pause, reduce motion, change artistic lighting or lower rendering resolution. Walk to a safe position, select **Record camera path**, explore for at least ten seconds, then stop. **Replay path** uses timestamped position and quaternion interpolation. **Export path** downloads a V3.1 envelope containing `context`, `sceneManifest` and `cameraPath`, each matching its definition in `packages/contracts/engine-exchange.schema.json`. This is the camera-path subset of the exchange, ready for Arin's renderer. It contains virtual movement and source IDs. Imported-scene scale remains unverified. Whole-project albums require choosing one memory before path export.
@@ -69,4 +83,4 @@ python3 -m venv .venv
 
 `npm test` starts the real API with temporary SQLite data, exercises the MCP process, compiles a film with FFmpeg, and checks SPZ file authorization. See [the release evidence](docs/release-evidence.csv) for measured results and open gates. The handoff's reference tests were run separately from its original ZIP.
 
-Live VoiceOS Agent Mode, browser microphone and WebGL performance remain unverified. Reconstruction generation through a hosted provider and V3 shared universes are outside this build. The app is served as a session preview.
+Live VoiceOS Agent Mode and browser microphone remain separate verification gates. See release evidence for the current browser and performance checks. Reconstruction through a hosted provider, native Unreal execution and V3 shared universes are outside this procedural demo.

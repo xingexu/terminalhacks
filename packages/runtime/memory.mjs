@@ -85,6 +85,19 @@ export function eventDependencies(state, eventId, lens) {
   };
 }
 
+// Only evidence affects a generated scene; approvals and camera waypoints do not.
+export function generationDependencies(state, eventId, selected) {
+  const event = eventById(state, eventId);
+  if (!event) return null;
+  const { title, placeLabel, startAt, gps, story } = event;
+  const media = event.sourceIds.map(id => mediaById(state, id)).filter(item => item && !item.pending && (!selected || selected.mediaIds.includes(item.id)))
+    .map(({ id, hash, caption, mime, capturedAt, capturedLocal, gps, provenance }) => ({ id, hash, caption, mime, capturedAt, capturedLocal, gps, provenance }));
+  const recollections = state.recollections.filter(item => item.eventId === eventId && (!item.audioMediaId || mediaById(state, item.audioMediaId)) &&
+    (!selected || selected.recollectionIds.includes(item.id)))
+    .map(({ id, text, audioMediaId }) => ({ id, text, audioMediaId }));
+  return { eventId, title, placeLabel, startAt, gps, story, media, recollections };
+}
+
 export function invalidateJobs(state) {
   for (const job of state.jobs) {
     if (!['queued', 'running', 'ready'].includes(job.status)) continue;
@@ -92,6 +105,19 @@ export function invalidateJobs(state) {
       job.status = 'stale';
       job.approved = false;
     }
+  }
+  for (const world of state.worlds || []) {
+    if (world.provider === 'local-procedural-v1' && world.evidenceHash !== digest(generationDependencies(state, world.eventId, world.evidenceRefs))) {
+      world.status = 'stale';
+      world.approved = false;
+      delete world.plan;
+    }
+  }
+  for (const [eventId, research] of Object.entries(state.locationResearch || {})) {
+    if (research.inputHash !== digest(generationDependencies(state, eventId))) delete state.locationResearch[eventId];
+  }
+  for (const [token, preview] of Object.entries(state.previews || {})) {
+    if (preview.kind === 'world' && preview.plan.inputHash !== digest(generationDependencies(state, preview.plan.eventId))) delete state.previews[token];
   }
 }
 
@@ -178,7 +204,7 @@ export function applyCommand(state, command, actor, observationId) {
         409, 'ARTIFACT_CHANGED', 'This export is no longer ready for approval.');
       asset.approved = true;
       inverse = { type, targetId, id: asset.id };
-      label = world ? 'Approved a reconstructed scene' : 'Approved a film export';
+      label = world ? (world.provenance === 'imagined' ? 'Approved an imagined scene' : 'Approved a reconstructed scene') : 'Approved a film export';
       data = { artifactId: asset.id, contentHash: asset.contentHash };
       break;
     }

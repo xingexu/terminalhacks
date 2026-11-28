@@ -201,7 +201,7 @@ test('MCP stdio uses the real API, applies a correction and recollection, and pu
   try {
     await client.connect(transport);
     const tools = await client.listTools();
-    assert.equal(tools.tools.length, 16);
+    assert.equal(tools.tools.length, 19);
     assert.deepEqual(manifest.tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
       tools.tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })));
     async function voice(name, args = {}, expectsError = false) {

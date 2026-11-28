@@ -11,6 +11,7 @@ import './style.css';
 import './experience.css';
 import { Tutorial } from './onboarding';
 import { VoicePanel } from './voice';
+import { Generation } from './generation';
 import { Capture } from './capture';
 import { Archive, AtlasMark, Create, Explore, Remember, Watch, type ViewActions } from './views';
 import {
@@ -27,7 +28,7 @@ const nav = [
 ] as const;
 
 type Dialog =
-  { kind: 'library' | 'settings' | 'voice' | 'capture' | 'memory' | 'recollection' | 'correction' | 'help' | 'world' } |
+  { kind: 'library' | 'settings' | 'voice' | 'capture' | 'memory' | 'recollection' | 'correction' | 'help' | 'world' | 'generation' } |
   { kind: 'source'; source: Source } |
   { kind: 'confirm'; proposal: Proposal; revision: number; command?: Command; film?: boolean; fromCapture?: boolean };
 
@@ -53,6 +54,9 @@ function Modal({ title, onClose, children, wide = false }: { title: string; onCl
 function EventForm({ event, name, onSubmit }: { event?: Memory; name: string; onSubmit: (body: Record<string, unknown>) => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [coordinateError, setCoordinateError] = useState('');
+  const coordinateErrorRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => { if (coordinateError) coordinateErrorRef.current?.focus(); }, [coordinateError]);
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
@@ -60,21 +64,31 @@ function EventForm({ event, name, onSubmit }: { event?: Memory; name: string; on
     const place = String(form.get('place') || '').trim();
     const date = String(form.get('date') || '');
     const story = String(form.get('story') || '').trim();
-    const lat = String(form.get('lat') || '');
-    const lon = String(form.get('lon') || '');
-    setBusy(true);
+    const lat = String(form.get('lat') || '').trim();
+    const lon = String(form.get('lon') || '').trim();
     setError('');
+    setCoordinateError('');
+    if (Boolean(lat) !== Boolean(lon)) {
+      setCoordinateError('Enter both latitude and longitude, or leave both blank to remove the coordinates.');
+      return;
+    }
+    const gps: [number, number] | null = lat && lon ? [Number(lat), Number(lon)] : null;
+    if (gps && (!gps.every(Number.isFinite) || Math.abs(gps[0]) > 90 || Math.abs(gps[1]) > 180)) {
+      setCoordinateError('Use a latitude from −90 to 90 and a longitude from −180 to 180. Both must be finite numbers.');
+      return;
+    }
+    setBusy(true);
     try {
-      if (!event && Boolean(lat) !== Boolean(lon)) throw new Error('Enter both latitude and longitude.');
       const originalClock = localDateTime(event?.startAt);
       const startAt = date === originalClock && event ? event.startAt : date ? new Date(date).toISOString() : null;
       if (event) {
-        const values = { title, ...(place && { placeLabel: place }), startAt, ...(story && { story }) };
-        const patch = Object.fromEntries(Object.entries(values).filter(([key, value]) => event[key as keyof Memory] !== value));
+        const values = { title, ...(place && { placeLabel: place }), startAt, ...(story && { story }), gps };
+        const patch = Object.fromEntries(Object.entries(values).filter(([key, value]) => key === 'gps'
+          ? JSON.stringify(event.gps ?? null) !== JSON.stringify(value) : event[key as keyof Memory] !== value));
         if (!Object.keys(patch).length) throw new Error('Change a field before previewing the correction.');
         await onSubmit({ patch });
       } else {
-        await onSubmit({ title, placeLabel: place || undefined, startAt, gps: lat && lon ? [Number(lat), Number(lon)] : null });
+        await onSubmit({ title, placeLabel: place || undefined, startAt, gps });
       }
     } catch (err) { setError((err as Error).message); }
     finally { setBusy(false); }
@@ -83,9 +97,17 @@ function EventForm({ event, name, onSubmit }: { event?: Memory; name: string; on
     <label>Memory title<input name="title" required maxLength={180} defaultValue={event?.title} placeholder="A moment worth remembering" /></label>
     <div className="form-columns"><label>Place<input name="place" maxLength={180} defaultValue={event?.placeLabel} placeholder="Unknown location" /></label>
       <label>Date and time<input type="datetime-local" name="date" defaultValue={localDateTime(event?.startAt)} /></label></div>
-    {event ? <label>Story<textarea name="story" rows={4} maxLength={4000} defaultValue={event.story} /></label> :
-      <details><summary>Optional map location</summary><div className="form-columns"><label>Latitude<input name="lat" type="number" step="any" min="-90" max="90" /></label>
-        <label>Longitude<input name="lon" type="number" step="any" min="-180" max="180" /></label></div></details>}
+    <p className="muted" id="coordinates-help">Coordinates are optional. Leave both fields blank to remove the memory’s coordinates.</p>
+    <div className="form-columns">
+      <label>Latitude<input name="lat" type="number" step="any" min="-90" max="90" defaultValue={event?.gps?.[0] ?? ''}
+        aria-describedby={'coordinates-help' + (coordinateError ? ' coordinates-error' : '')} aria-invalid={!!coordinateError}
+        onChange={() => setCoordinateError('')} onInvalid={e => { e.preventDefault(); setCoordinateError('Enter a finite latitude from −90 to 90.'); }} /></label>
+      <label>Longitude<input name="lon" type="number" step="any" min="-180" max="180" defaultValue={event?.gps?.[1] ?? ''}
+        aria-describedby={'coordinates-help' + (coordinateError ? ' coordinates-error' : '')} aria-invalid={!!coordinateError}
+        onChange={() => setCoordinateError('')} onInvalid={e => { e.preventDefault(); setCoordinateError('Enter a finite longitude from −180 to 180.'); }} /></label>
+    </div>
+    {coordinateError && <p className="form-error" role="alert" id="coordinates-error" tabIndex={-1} ref={coordinateErrorRef}>{coordinateError}</p>}
+    {event && <label>Story<textarea name="story" rows={4} maxLength={4000} defaultValue={event.story} /></label>}
     {error && <p className="form-error" role="alert">{error}</p>}
     <button className="btn primary self-start" disabled={busy}>{name} <ArrowRight size={16} /></button>
   </form>;
@@ -131,7 +153,7 @@ function Confirmation({ value, commit, back }: { value: Extract<Dialog, { kind: 
   const diff = value.proposal.diff;
   const showValue = (field: unknown) => {
     if (typeof field === 'object' && field !== null) return Object.entries(field).map(([key, value]) =>
-      <span key={key}><strong>{{ placeLabel: 'Place', startAt: 'Date', title: 'Title', story: 'Story' }[key] || key}</strong> {String(value ?? 'Unknown')}</span>);
+      <span key={key}><strong>{{ placeLabel: 'Place', startAt: 'Date', title: 'Title', story: 'Story', gps: 'Coordinates' }[key] || key}</strong> {key === 'gps' ? Array.isArray(value) ? value.join(', ') : 'Not set' : String(value ?? 'Unknown')}</span>);
     return <span>{String(field ?? 'Unknown')}</span>;
   };
   return <div className="form-stack">
@@ -188,7 +210,7 @@ function SettingsPanel({ base, state, reload, deleteProject }: { base: string; s
     try { await task(); reload(); setConfirm(''); } catch (err) { setError((err as Error).message); }
     finally { setBusy(false); }
   };
-  return <div className="form-stack"><div className="notice"><LockKeyhole size={20} /><div><strong>Private project</strong><p>Project access is tied to this browser session. Capture processing stays on the Everwhere server.</p></div></div>
+  return <div className="form-stack"><div className="notice"><LockKeyhole size={20} /><div><strong>Private project</strong><p>Project access is tied to this browser session. Photos and conversations stay on the Everwhere server. Only an opted-in place query and rounded coordinates are sent to Wikipedia.</p></div></div>
     <h3>Capture permissions</h3>
     {!state.capture.sessions.length && <p className="muted">No capture sessions have been started.</p>}
     {state.capture.sessions.filter(item => item.status !== 'revoked').map(item => <div className="result-row" key={item.id}>
@@ -219,6 +241,8 @@ function App() {
   const earlyRoute = useRef<View | null>(null);
   const base = '/projects/' + project;
   const current = state?.events.find(item => item.id === state.session.eventId) ?? state?.events[0];
+  const activeContext = useRef({ dialog, project, eventId: current?.id });
+  activeContext.current = { dialog, project, eventId: current?.id };
 
   const loadProjects = useCallback(async () => {
     const list = await api<Project[]>('/bootstrap');
@@ -284,7 +308,7 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
-  const show = (kind: Extract<Dialog, { kind: 'library' | 'settings' | 'voice' | 'capture' | 'memory' | 'recollection' | 'correction' | 'help' | 'world' }>['kind']) => setDialog({ kind });
+  const show = (kind: Extract<Dialog, { kind: 'library' | 'settings' | 'voice' | 'capture' | 'memory' | 'recollection' | 'correction' | 'help' | 'world' | 'generation' }>['kind']) => setDialog({ kind });
   const dismiss = () => {
     setDialog(null);
   };
@@ -313,6 +337,7 @@ function App() {
     setGrade: preset => guarded(() => preview('profile.set', { preset })),
     openSettings: () => show('settings'),
     openWorld: () => show('world'),
+    openGeneration: () => show('generation'),
     undo: () => { if (state?.undo) guarded(() => preview('undo', { revisionToUndo: state.undo!.revision }, state.undo!.targetId)); }
   };
 
@@ -324,7 +349,7 @@ function App() {
   const sectionTitles: Record<Dialog['kind'], string> = {
     library: 'Projects', settings: 'Project settings', voice: 'Connect VoiceOS', capture: 'Capture memory',
     memory: 'New memory', recollection: 'Add a recollection', correction: 'Correct memory',
-    help: 'Welcome to Everwhere', source: 'Source evidence', confirm: 'Review change', world: 'Import 3D scene'
+    help: 'Welcome to Everwhere', source: 'Source evidence', confirm: 'Review change', world: 'Import 3D scene', generation: 'Generate memory world'
   };
   return <div className="app-frame">
     <a className="skip-link" href="#experience">Skip to experience</a>
@@ -370,7 +395,7 @@ function App() {
       </div>}
     </main>
     {notice && <aside className="toast" role="status">{notice}<button className="icon-btn" onClick={() => setNotice('')} aria-label="Dismiss message"><X size={17} /></button></aside>}
-    {dialog && <Modal key={captureOpen ? 'capture' : dialog.kind} title={sectionTitles[dialog.kind]} onClose={dismiss} wide={captureOpen || dialog.kind === 'source'}>
+    {dialog && <Modal key={captureOpen ? 'capture' : dialog.kind} title={sectionTitles[dialog.kind]} onClose={dismiss} wide={captureOpen || dialog.kind === 'source' || dialog.kind === 'generation'}>
       {dialog.kind === 'library' && <><p className="muted">Open a project or start a private collection.</p>
         <div className="library-list">{projects.map(item => <button className="workspace-project" key={item.id} onClick={() => { if (item.id !== project) chooseProject(item.id); dismiss(); }}>
           <span className="project-icon"><Images size={17} /></span><span><strong>{item.title}</strong><small>{item.demo ? 'Sample project' : 'Private project'}</small></span><ChevronRight size={17} /></button>)}</div>
@@ -382,6 +407,18 @@ function App() {
         await api(base, { confirm: true }, 'DELETE'); const list = await loadProjects(); chooseProject(list[0]?.id || ''); dismiss();
       }} />}
       {hasMedia && state && dialog.kind === 'voice' && <VoicePanel base={base} state={state} />}
+      {state && current && dialog.kind === 'generation' && <Generation key={project + current.id} state={state} event={current} base={base} onCorrect={() => show('correction')} onRefresh={refresh}
+        onGenerated={async () => {
+          // Object identity distinguishes a reopened dialog, even for the same memory.
+          const isCurrentDialog = () => activeContext.current.dialog === dialog &&
+            activeContext.current.project === project && activeContext.current.eventId === current.id;
+          if (!isCurrentDialog()) return;
+          await api(base + '/session', { eventId: current.id, view: 'explore', lens: 'all' });
+          if (!isCurrentDialog()) return;
+          await refresh();
+          if (!isCurrentDialog()) return;
+          dismiss(); setNotice('Imagined world generated. Select Approve imagined world to review it before entering.');
+        }} />}
       {state && current && dialog.kind === 'world' && <WorldForm state={state} event={current} base={base}
         done={async () => { await refresh(); dismiss(); setNotice('Reconstruction uploaded for approval.'); }} />}
       {hasMedia && state && captureOpen && <div hidden={dialog.kind === 'confirm'}><Capture state={state} base={base} items={items} visible={dialog.kind === 'capture'} reload={refresh}
@@ -405,7 +442,7 @@ function App() {
         {dialog.source.mime.startsWith('image/') ? <img src={sourceURL(project, dialog.source.id)} alt={dialog.source.caption} /> :
           dialog.source.mime.startsWith('video/') ? <video controls playsInline src={sourceURL(project, dialog.source.id)} /> :
             <audio controls src={sourceURL(project, dialog.source.id)} />}
-        <p className="muted">{displayDate(dialog.source.capturedAt)}</p>
+        <p className="muted">{!dialog.source.capturedAt && dialog.source.capturedLocal ? dialog.source.capturedLocal.replace('T', ' · ') + ' · Timezone unknown' : displayDate(dialog.source.capturedAt)}</p>
         {dialog.source.gps && <p className="muted">Embedded coordinates: {dialog.source.gps.map(value => value.toFixed(5)).join(', ')}</p>}
         {dialog.source.provenance === 'original' && <a className="btn self-start" href={sourceURL(project, dialog.source.id, '?download=1&variant=original')}><ArrowDownToLine size={16} /> Download original</a>}</div>}
       {state && dialog.kind === 'confirm' && <Confirmation key={dialog.proposal.previewToken} value={dialog} back={() => dialog.fromCapture ? show('capture') : dismiss()} commit={async requestId => {

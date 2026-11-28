@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
 import staticFiles from '@fastify/static';
 import { createReadStream, existsSync } from 'node:fs';
-import { stat, rm } from 'node:fs/promises';
+import { stat, rm, readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { join, resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
@@ -18,7 +18,9 @@ import { ingest, removeMedia } from '../../packages/media/local.mjs';
 import { storeSplat } from '../../packages/media/splat.mjs';
 import { storeMesh } from '../../packages/media/mesh.mjs';
 import { sceneContext } from '../../packages/runtime/scene.mjs';
-import { appendChange, digest, eventById, mediaById, rank, requireCondition as check, uid } from '../../packages/runtime/memory.mjs';
+import { evidenceFor, handoffPlan, lookupPlace, previewWorld, voiceEvidence } from '../../packages/intelligence/scene-plan.mjs';
+import { generateWorld } from '../../packages/providers/world/procedural.mjs';
+import { appendChange, digest, eventById, generationDependencies, mediaById, rank, requireCondition as check, uid } from '../../packages/runtime/memory.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const demoDir = join(root, 'apps/web/public/media');
@@ -55,7 +57,7 @@ async function streamFile(request, reply, path, mime) {
     .header('Content-Length', end - start + 1).send(createReadStream(path, { start, end }));
 }
 
-export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA || join(root, '.data')), serveWeb = true } = {}) {
+export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA || join(root, '.data')), serveWeb = true, contextFetch = fetch } = {}) {
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 });
   const store = createStore(dataDir);
   const film = createFilmWorker(store, dataDir, demoDir);
@@ -103,6 +105,88 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     return { ok: true, revision: state.revision, data };
   };
 
+  async function researchPlace(req, eventId, input) {
+    check(input?.consent === true, 400, 'CONSENT_REQUIRED', 'Confirm sharing this place and approximate coordinates with Wikipedia. Photos and conversation stay private.');
+    const { actor, project } = scope(req);
+    const before = store.read(actor, project);
+    check(before.revision === input.expectedRevision, 409, 'REVISION_CONFLICT', 'The memory changed. Review its location first.');
+    const evidence = evidenceFor(before, eventId);
+    if (evidence.research && Date.now() - Date.parse(evidence.research.fetchedAt) < 15 * 60_000) {
+      return { ok: true, revision: before.revision, data: evidence.research };
+    }
+    const result = await lookupPlace(evidence, contextFetch);
+    return update(req, 'context.changed', state => {
+      check(state.revision === before.revision && digest(generationDependencies(state, eventId)) === evidence.inputHash,
+        409, 'REVISION_CONFLICT', 'The memory changed during research. Review it and try again.');
+      (state.locationResearch ??= {})[eventId] = result;
+      return result;
+    });
+  }
+
+  function worldReplay(state, input) {
+    const request = state.requests['world:' + input.requestId];
+    if (!request) return null;
+    check(request.hash === digest(input), 409, 'REQUEST_ID_REUSED', 'This request ID was already used for another generation.');
+    const world = state.worlds.find(item => item.id === request.result.id);
+    check(world && !world.revoked && world.status === 'ready', 409, 'WORLD_UNAVAILABLE', 'This generated scene is no longer current. Review a new plan.');
+    return request.result;
+  }
+
+  async function confirmWorld(req, input) {
+    check(input && typeof input.requestId === 'string' && input.requestId.length > 0 && input.requestId.length <= 128 &&
+      typeof input.previewToken === 'string' && input.previewToken.length <= 128 && Number.isInteger(input.expectedRevision),
+      400, 'INVALID_COMMAND', 'A request ID, preview and current revision are required.');
+    const { actor, project } = scope(req);
+    const before = store.read(actor, project);
+    const replay = worldReplay(before, input);
+    if (replay) return { ok: true, revision: before.revision, data: replay };
+    const preview = before.previews[input.previewToken];
+    check(preview?.kind === 'world' && preview.actor === actor && preview.expires > Date.now(),
+      409, 'PREVIEW_EXPIRED', 'This scene preview expired. Review a new plan.');
+    const { plan } = preview;
+    check(before.revision === input.expectedRevision && plan.revision === before.revision &&
+      plan.inputHash === digest(generationDependencies(before, plan.eventId)),
+      409, 'REVISION_CONFLICT', 'The memory changed. Review a new scene plan.');
+    const photos = await Promise.all(plan.sourceIds.map(async id => {
+      const source = mediaById(before, id);
+      check(source && !source.pending && source.provenance === 'original' && eventById(before, plan.eventId)?.sourceIds.includes(id),
+        409, 'SOURCE_UNAVAILABLE', 'A scene source is no longer available.');
+      return { id, jpeg: await readFile(source.thumb) };
+    }));
+    const generated = await generateWorld(plan, photos);
+    const asset = await storeMesh(generated.buffer, 'Imagined memory.glb', join(dataDir, 'projects', project));
+    let retained = false;
+    try {
+      const result = update(req, 'revision.committed', state => {
+        const replay = worldReplay(state, input);
+        if (replay) return replay;
+        check(state.revision === before.revision && state.previews[input.previewToken]?.actor === actor &&
+          state.previews[input.previewToken].expires > Date.now() && plan.inputHash === digest(generationDependencies(state, plan.eventId)),
+          409, 'REVISION_CONFLICT', 'The memory changed during generation. Review a new plan.');
+        const anchors = generated.photoStops.map(stop => ({ id: uid(), worldId: asset.id, eventId: plan.eventId,
+          title: mediaById(state, stop.sourceId).caption, sourceIds: [stop.sourceId], position: stop.position }));
+        const manifest = { id: asset.id, planId: plan.id, revision: state.revision + 1, format: 'glb', assetId: asset.id,
+          collisionAssetId: asset.id, units: 'm', coordinateSystem: 'right-handed-y-up', scaleConfidence: null,
+          boundsMin: generated.boundsMin, boundsMax: generated.boundsMax, spawn: generated.spawn,
+          anchors: anchors.map(({ id, position, sourceIds }) => ({ id, position, sourceIds })), capability: 'free_roam', provenance: 'imagined' };
+        state.worlds.push({ ...asset, eventId: plan.eventId, title: plan.title + ' · imagined world', status: 'ready', planId: plan.id,
+          approval: 'pending', approved: false, provenance: 'imagined', sourceIds: plan.sourceIds, provider: plan.provider,
+          evidenceRefs: { mediaIds: plan.evidence.media.map(item => item.id), recollectionIds: plan.evidence.recollections.map(item => item.id) },
+          evidenceHash: plan.inputHash, inputHash: digest(plan), plan, sceneManifest: manifest });
+        state.anchors.push(...anchors);
+        delete state.previews[input.previewToken];
+        appendChange(state, 'Generated an imagined memory world', plan.eventId);
+        const data = { id: asset.id, status: 'ready', approved: false };
+        state.requests['world:' + input.requestId] = { hash: digest(input), result: data };
+        return data;
+      });
+      retained = result.data.id === asset.id;
+      return result;
+    } finally {
+      if (!retained) await rm(asset.storage, { force: true });
+    }
+  }
+
   app.get('/v1/bootstrap', async (req, reply) => {
     let identity = store.browser(cookie(req, 'ew_session'));
     if (!identity) {
@@ -133,6 +217,10 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     check(req.body?.expectedRevision === state.revision, 409, 'REVISION_CONFLICT', 'Refresh the project before adding a memory.', { revision: state.revision });
     return createEvent(state, req.body);
   }));
+  app.get(projectPath + '/memories/:id/evidence', async req => read(req, state => evidenceFor(state, req.params.id)));
+  app.post(projectPath + '/memories/:id/place-context', async req => researchPlace(req, req.params.id, req.body));
+  app.post(projectPath + '/world-preview', async req => update(req, null, (state, actor) => previewWorld(state, req.body ?? {}, actor)));
+  app.post(projectPath + '/world-jobs', async req => confirmWorld(req, req.body));
   app.post(projectPath + '/session', async req => update(req, 'session.changed', state => updateSession(state, req.body ?? {})));
   app.get(projectPath + '/search', async req => read(req, state => rank(state, String(req.query.q || '').slice(0, 4000), req.query.eventId)));
   app.get(projectPath + '/gaps', async req => read(req, state => gapQuestion(state, req.query.eventId || state.session.eventId)));
@@ -299,9 +387,20 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     const { actor, project } = scope(req);
     const state = store.read(actor, project);
     const world = state.worlds?.find(item => item.id === req.params.id);
-    check(world?.approved && !world.revoked && req.params.asset === (world.format === 'glb' ? 'scene.glb' : 'scene.spz') && state.session.lens === 'all' &&
+    check(world?.approved && !world.revoked && world.status === 'ready' && state.session.lens === 'all' &&
       world.sourceIds.every(id => mediaById(state, id) && eventById(state, world.eventId)?.sourceIds.includes(id)),
       404, 'WORLD_UNAVAILABLE', 'This reconstruction is unavailable.');
+    if (req.params.asset === 'plan.json') {
+      check(world.plan && world.sceneManifest, 404, 'PLAN_UNAVAILABLE', 'This scene does not have a generation plan.');
+      return reply.header('Content-Disposition', 'attachment; filename="everwhere-scene-plan.json"').send({
+        version: 'everwhere-generation-1', contract: 'context and sceneManifest follow V3.1 definitions; this is not the full V3.1 exchange document',
+        context: sceneContext(state, project, world.eventId, world.sourceIds, world.id),
+        sceneManifest: { ...world.sceneManifest, revision: state.revision }, plan: handoffPlan(world.plan),
+        unrealHandoff: 'GLB is metres/right-handed Y-up. Convert units and axes on import to Unreal centimetres/left-handed Z-up. Validate materials, collision, spawn and scale in Unreal; native Unreal import is not verified.'
+      });
+    }
+    check(req.params.asset === (world.format === 'glb' ? 'scene.glb' : 'scene.spz'), 404, 'WORLD_UNAVAILABLE', 'This scene asset is unavailable.');
+    if (req.query.download === '1') reply.header('Content-Disposition', 'attachment; filename="everwhere-memory.' + (world.format === 'glb' ? 'glb' : 'spz') + '"');
     return streamFile(req, reply, world.storage, world.format === 'glb' ? 'model/gltf-binary' : 'application/octet-stream');
   });
   app.get(projectPath + '/artifacts/:id/access', async req => read(req, (state, actor, project) => {
@@ -345,6 +444,12 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
         return update(req, 'session.changed', state => updateSession(state, { lens: input.mode === 'original' ? 'originals' : 'all' }));
       }
       case 'get_gap_question': return read(req, state => gapQuestion(state, active(state)));
+      case 'get_scene_evidence': return read(req, state => voiceEvidence(evidenceFor(state, active(state))));
+      case 'research_place': return researchPlace(req, read(req, active).data, input);
+      case 'preview_memory_world': return update(req, null, (state, actor) => {
+        const preview = previewWorld(state, { ...input, eventId: active(state) }, actor);
+        return { ...preview, plan: handoffPlan(preview.plan) };
+      });
       case 'preview_recollection': return prepare('recollection.add', () => ({ text: input.text, ...(input.anchorId && { anchorId: input.anchorId }) }));
       case 'preview_correction': return prepare('event.correct', () => ({ patch: input.patch }));
       case 'preview_style': return prepare('profile.set', () => ({ preset: input.preset }));
@@ -357,7 +462,8 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
         return previewFilm(state, { eventId: state.session.eventId, expectedRevision: input.expectedRevision }, actor);
       });
       case 'confirm_change': {
-        const previewKind = read(req, state => state.previews[input.previewToken]?.kind || (state.requests['film:' + input.requestId] ? 'film' : null)).data;
+        const previewKind = read(req, state => state.previews[input.previewToken]?.kind || (state.requests['film:' + input.requestId] ? 'film' : state.requests['world:' + input.requestId] ? 'world' : null)).data;
+        if (previewKind === 'world') return confirmWorld(req, input);
         if (previewKind === 'film') {
           const result = update(req, 'job.changed', (state, actor) => {
             check(state.revision === input.expectedRevision || state.requests['film:' + input.requestId], 409, 'REVISION_CONFLICT', 'Review the current revision first.');
