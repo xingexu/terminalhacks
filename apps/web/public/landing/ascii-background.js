@@ -40,7 +40,7 @@
   const trailContext = trailCanvas.getContext('2d');
   const sampler = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
 
-  const panelImages = [...document.querySelectorAll('.landing-panels > img')];
+  const sources = ['photos/lake.webp', 'photos/ocean.webp', 'photos/stars.webp', 'photos/desert.webp'];
   const glyphs = ' .,:;-~+=!iltfrxvuznXYTLCJ0OZQwm#MW&8%B@$';
   const trail = [];
   const trailLifetime = 620;
@@ -49,8 +49,7 @@
   let width = background.clientWidth;
   let height = background.clientHeight;
   let scale = Math.min(window.devicePixelRatio, 2);
-  let artworkReady = false;
-  let paintFrame = 0;
+  let photo;
   let glyphWidth;
   let glyphHeight;
   let exitFrame = 0;
@@ -67,13 +66,8 @@
     context.setTransform(scale, 0, 0, scale, 0, 0);
   }
 
-  function schedulePaint() {
-    if (!workspaceEntered && !destination && !paintFrame) paintFrame = requestAnimationFrame(paint);
-  }
-
   function paint() {
-    paintFrame = 0;
-    if (!sampler || !context || workspaceEntered || destination || !width || !height) return;
+    if (!photo || !width || !height) return;
 
     sizeCanvas(photoCanvas, context);
     const fontSize = width < 680 ? 7 : 8;
@@ -90,53 +84,21 @@
     sampler.canvas.width = columns;
     sampler.canvas.height = rows;
 
-    const bounds = background.getBoundingClientRect();
-    const panels = [];
-    context.save();
-    context.beginPath();
-    for (const image of panelImages) {
-      if (!image.complete || !image.naturalWidth || !image.naturalHeight) continue;
-      const rect = image.getBoundingClientRect();
-      if (!rect.width || !rect.height) continue;
-      const left = rect.left - bounds.left, top = rect.top - bounds.top;
-      const style = getComputedStyle(image);
-      const [x, y] = style.objectPosition.split(/\s+/).map(part =>
-        part.endsWith('%') ? parseFloat(part) / 100 : .5);
-      const cover = Math.max(rect.width / image.naturalWidth, rect.height / image.naturalHeight);
-      const cropWidth = rect.width / cover, cropHeight = rect.height / cover;
-      sampler.drawImage(image, (image.naturalWidth - cropWidth) * (x ?? .5),
-        (image.naturalHeight - cropHeight) * (y ?? .5), cropWidth, cropHeight,
-        left / cellWidth, top / cellHeight, rect.width / cellWidth, rect.height / cellHeight);
-      panels.push({ left, top, right: left + rect.width, bottom: top + rect.height,
-        saturation: Number(style.getPropertyValue('--scene-saturation').trim() || 1),
-        brightness: Number(style.getPropertyValue('--scene-brightness').trim() || 1) });
-      context.rect(left, top, rect.width, rect.height);
-    }
-    artworkReady = panels.length > 0;
-    if (!artworkReady) {
-      context.restore();
-      return;
-    }
-    // Clip at physical panel edges too, even when a gutter splits a glyph cell.
-    context.clip();
+    const cover = Math.max(width / photo.naturalWidth, height / photo.naturalHeight);
+    const cropWidth = width / cover;
+    const cropHeight = height / cover;
+    sampler.drawImage(photo, (photo.naturalWidth - cropWidth) / 2, (photo.naturalHeight - cropHeight) / 2,
+      cropWidth, cropHeight, 0, 0, columns, rows);
     const colors = sampler.getImageData(0, 0, columns, rows);
     const pixels = colors.data;
 
     for (let row = 0; row < rows; row++) {
       let line = '';
-      const y = (row + .5) * cellHeight;
-      const rowPanels = panels.filter(panel => y >= panel.top && y < panel.bottom);
       for (let column = 0; column < columns; column++) {
         const offset = (row * columns + column) * 4;
-        const x = (column + .5) * cellWidth;
-        const panel = rowPanels.find(panel => x >= panel.left && x < panel.right);
-        if (!panel) { line += ' '; continue; }
-        const gray = 0.2126 * pixels[offset] + 0.7152 * pixels[offset + 1] + 0.0722 * pixels[offset + 2];
-        for (let channel = 0; channel < 3; channel++) {
-          const saturated = gray + (pixels[offset + channel] - gray) * panel.saturation;
-          pixels[offset + channel] = Math.max(0, Math.min(255, saturated)) * panel.brightness;
-        }
-        const red = pixels[offset], green = pixels[offset + 1], blue = pixels[offset + 2];
+        const red = pixels[offset];
+        const green = pixels[offset + 1];
+        const blue = pixels[offset + 2];
         const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
         line += glyphs[Math.round(luminance ** 0.9 * (glyphs.length - 1))];
         // Lift dark colors so sparse glyphs remain visible against the backdrop.
@@ -150,6 +112,7 @@
 
     // Mask the enlarged color grid with the text, so each cell keeps its own color.
     sampler.putImageData(colors, 0, 0);
+    context.save();
     context.globalCompositeOperation = 'source-in';
     context.imageSmoothingEnabled = false;
     context.drawImage(sampler.canvas, 0, 0, columns * cellWidth, rows * cellHeight);
@@ -202,7 +165,7 @@
   document.addEventListener('visibilitychange', clearTrail);
   window.addEventListener('blur', clearTrail);
   function pointerTrail({ clientX, clientY, pointerType }) {
-    if (!trailContext || document.documentElement.dataset.leaving || pointerType === 'touch' || !artworkReady || reducedMotion.matches || document.hidden) return;
+    if (!trailContext || document.documentElement.dataset.leaving || pointerType === 'touch' || !photo || reducedMotion.matches || document.hidden) return;
 
     const last = trail.at(-1);
     if (last && Math.hypot(clientX - last.x, clientY - last.y) < 8) return;
@@ -216,22 +179,15 @@
     const nextWidth = background.clientWidth;
     const nextHeight = background.clientHeight;
     const nextScale = Math.min(window.devicePixelRatio, 2);
-    if (nextWidth !== width || nextHeight !== height || nextScale !== scale) {
-      width = nextWidth;
-      height = nextHeight;
-      scale = nextScale;
-      clearTrail();
-      if (trailContext) sizeCanvas(trailCanvas, trailContext);
-    }
-    schedulePaint();
+    if (nextWidth === width && nextHeight === height && nextScale === scale) return;
+    width = nextWidth;
+    height = nextHeight;
+    scale = nextScale;
+    clearTrail();
+    if (trailContext) sizeCanvas(trailCanvas, trailContext);
+    paint();
   });
   backgroundObserver.observe(background);
-  for (const image of panelImages) {
-    backgroundObserver.observe(image);
-    image.addEventListener('load', schedulePaint);
-    image.addEventListener('error', schedulePaint);
-  }
-  schedulePaint();
 
   // Each instance carries one original cell from the painted, full-resolution canvas.
   function glyphScatter(gl) {
@@ -378,11 +334,6 @@
     } else {
       workspaceEntered = true;
       clearTrail();
-      cancelAnimationFrame(paintFrame);
-      for (const image of panelImages) {
-        image.removeEventListener('load', schedulePaint);
-        image.removeEventListener('error', schedulePaint);
-      }
       window.removeEventListener('pointermove', pointerTrail);
       backgroundObserver.disconnect();
       scatterGL?.getExtension('WEBGL_lose_context')?.loseContext();
@@ -390,7 +341,7 @@
       startGlyphScatter = null;
       scatterCanvas?.remove();
       scatterCanvas = null;
-      artworkReady = false;
+      photo = null;
       for (const surface of [photoCanvas, trailCanvas, sampler?.canvas]) {
         if (surface) surface.width = surface.height = 0;
       }
@@ -406,7 +357,7 @@
     if (document.documentElement.dataset.leaving) return;
     destination = link.href;
     document.documentElement.dataset.leaving = 'true';
-    if (!artworkReady || reducedMotion.matches) return navigate();
+    if (!photo || reducedMotion.matches) return navigate();
     exitTimer = setTimeout(navigate, scatterDuration + 250);
     const bounds = link.getBoundingClientRect();
     const x = event.detail ? event.clientX : bounds.left + bounds.width / 2;
@@ -451,6 +402,27 @@
     scatterCanvas = null;
     destination = null;
     delete document.documentElement.dataset.leaving;
-    schedulePaint();
+    paint();
   });
+  // Choose one landscape per load, with fallbacks if a photo cannot be decoded.
+  for (let i = sources.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [sources[i], sources[j]] = [sources[j], sources[i]];
+  }
+  async function loadPhoto() {
+    for (const source of sources) {
+      const candidate = new Image();
+      candidate.src = source;
+      try {
+        await candidate.decode();
+      } catch {
+        continue;
+      }
+      if (workspaceEntered) return;
+      photo = candidate;
+      paint();
+      return;
+    }
+  }
+  if (sampler && context) loadPhoto();
 })();

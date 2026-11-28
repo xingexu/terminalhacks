@@ -97,34 +97,23 @@ body.landing-active > .account-dialog button:enabled { cursor: pointer; }
 }
 
 :where(.landing-layer) .ascii-background canvas,
-:where(.landing-layer) .landing-panels {
+:where(.landing-layer) .ascii-background::before,
+:where(.landing-layer) .ascii-background::after {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
 }
 
-:where(.landing-layer) .landing-panels {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-template-rows: minmax(0, 1fr);
-  gap: clamp(3px, 1.08vw, 16px);
-  background: #fcfcfa;
+:where(.landing-layer) .ascii-background::before {
+  content: "";
+  background: radial-gradient(ellipse at 65% 55%, #1c293a, #101318 80%);
 }
-:where(.landing-layer) .landing-panels img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  object-fit: cover;
-  object-position: var(--scene-x) 50%;
-  filter: saturate(var(--scene-saturation)) brightness(var(--scene-brightness));
+
+:where(.landing-layer) .ascii-background::after {
+  content: "";
+  background: radial-gradient(ellipse min(470px, 92vw) 270px at center, #1013189e, #10131866 55%, transparent);
 }
-:where(.landing-layer) .panel-stars { --scene-x: 48%; --scene-saturation: 0; --scene-brightness: 1.07; background: #444; }
-:where(.landing-layer) .panel-lake { --scene-x: 65%; --scene-saturation: .35; --scene-brightness: .86; background: #687278; }
-:where(.landing-layer) .panel-ocean { --scene-x: 48%; --scene-saturation: .94; --scene-brightness: .98; background: #467084; }
-:where(.landing-layer) .panel-desert { --scene-x: 48%; --scene-saturation: 1.42; --scene-brightness: 1.03; background: #a76042; }
 
 :where(.landing-layer) .ascii-photo { opacity: .96; }
 :where(.landing-layer) .ascii-trail { mix-blend-mode: screen; }
@@ -363,9 +352,10 @@ body.landing-active > .account-dialog button:enabled { cursor: pointer; }
 :where(.landing-layer) .ascii-scatter { opacity: .96; }
 :root[data-leaving] .landing-layer {
   background-color: transparent;
-  transition: background-color 780ms ease-in-out;
+  transition: background-color 740ms ease-in-out;
 }
-:root[data-leaving] .landing-layer .landing-panels {
+:root[data-leaving] .landing-layer .ascii-background::before,
+:root[data-leaving] .landing-layer .ascii-background::after {
   opacity: 0;
   transition: opacity 740ms ease-in-out;
 }
@@ -378,6 +368,7 @@ body.landing-active > .account-dialog button:enabled { cursor: pointer; }
 
 @media (prefers-reduced-motion: reduce) {
   :root[data-leaving] .landing-layer,
-  :root[data-leaving] .landing-layer .landing-panels,
+  :root[data-leaving] .landing-layer .ascii-background::before,
+  :root[data-leaving] .landing-layer .ascii-background::after,
   :root[data-leaving] .landing-layer :is(.preview, .landing-footer, .account-nav) { transition: none; }
 }
