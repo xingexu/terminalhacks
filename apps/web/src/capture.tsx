@@ -148,12 +148,12 @@ export function Capture({ state, base, items, reload, preview, renderMemoryForm 
     </div>}
     {!state.events.length && <p className="empty-inbox">Create a memory before linking a source. <button type="button" className="text-button" disabled={busy || creatingMemory} onClick={() => setCreatingMemory(true)}>Add a memory</button></p>}
     {!items.length && <p className="empty-inbox">New photos, videos, and voice notes will appear here.</p>}
-    {items.map(item => <InboxItem key={item.id} item={item} state={state} base={base} refresh={reload} preview={preview} />)}
+    {items.map(item => <InboxItem key={item.id} item={item} state={state} base={base} refresh={reload} preview={preview} captureBusy={busy} />)}
   </div>;
 }
 
-function InboxItem({ item, state, base, refresh, preview }: {
-  item: Observation; state: Snapshot; base: string; refresh: () => Promise<void>; preview: CaptureProps['preview'];
+function InboxItem({ item, state, base, refresh, preview, captureBusy }: {
+  item: Observation; state: Snapshot; base: string; refresh: () => Promise<void>; preview: CaptureProps['preview']; captureBusy: boolean;
 }) {
   const [eventId, setEventId] = useState(item.candidates[0]?.id ?? state.session.eventId ?? '');
   const [text, setText] = useState('');
@@ -177,7 +177,7 @@ function InboxItem({ item, state, base, refresh, preview }: {
       <label>Link to memory<select value={eventId} onChange={e => setEventId(e.target.value)}><option value="">Select a memory</option>
         {state.events.map(event => <option key={event.id} value={event.id}>{event.title}</option>)}</select></label>
       {matching && <small className="muted">{matching.reason}</small>}
-      <button className="btn compact primary" disabled={!eventId || (!!audio && !text.trim()) || busy} onClick={() => {
+      <button className="btn compact primary" disabled={!eventId || (!!audio && !text.trim()) || busy || captureBusy} onClick={() => {
         setBusy(true);
         preview(item, eventId, text || undefined).catch(err => setError((err as Error).message)).finally(() => setBusy(false));
       }}>Review {audio ? 'recollection' : 'link'}</button></>}

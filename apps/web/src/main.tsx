@@ -35,13 +35,14 @@ function Modal({ title, onClose, children, wide = false }: { title: string; onCl
     dialog?.showModal();
     return () => { dialog?.close(); };
   }, []);
+  useEffect(() => { ref.current?.querySelector<HTMLElement>('#dialog-title')?.focus(); }, [title]);
   return <dialog ref={ref} className={'modal' + (wide ? ' modal-wide' : '')} aria-labelledby="dialog-title"
     onCancel={e => { e.preventDefault(); onClose(); }} onPointerDown={e => {
       if (e.target !== ref.current) return;
       const bounds = e.currentTarget.getBoundingClientRect();
       if (e.clientX < bounds.left || e.clientX > bounds.right || e.clientY < bounds.top || e.clientY > bounds.bottom) onClose();
     }}>
-    <div className="modal-inner"><div className="modal-head"><h2 id="dialog-title">{title}</h2>
+    <div className="modal-inner"><div className="modal-head"><h2 id="dialog-title" tabIndex={-1}>{title}</h2>
       <button className="icon-btn" onClick={onClose} aria-label="Close dialog"><X size={21} /></button></div>{children}</div>
   </dialog>;
 }
@@ -316,6 +317,7 @@ function App() {
   const currentNav = nav.find(item => item.id === state?.session.view) ?? nav[0];
   const currentAnchor = state?.anchors.find(item => item.id === state.session.anchorId && item.eventId === current?.id);
   const hasMedia = state && !!project;
+  const captureOpen = dialog?.kind === 'capture' || (dialog?.kind === 'confirm' && !!dialog.fromCapture);
   const dateLabel = state?.demo && state.events.length ? 'October 12–14, 2024' : current?.startAt ? displayDate(current.startAt) : '';
   const sectionTitles: Record<Dialog['kind'], string> = {
     library: 'Projects', settings: 'Project settings', voice: 'Connect VoiceOS', capture: 'Capture memory',
@@ -366,7 +368,7 @@ function App() {
       </div>}
     </main>
     {notice && <aside className="toast" role="status">{notice}<button className="icon-btn" onClick={() => setNotice('')} aria-label="Dismiss message"><X size={17} /></button></aside>}
-    {dialog && <Modal key={dialog.kind} title={sectionTitles[dialog.kind]} onClose={dismiss} wide={dialog.kind === 'capture' || dialog.kind === 'source'}>
+    {dialog && <Modal key={captureOpen ? 'capture' : dialog.kind} title={sectionTitles[dialog.kind]} onClose={dismiss} wide={captureOpen || dialog.kind === 'source'}>
       {dialog.kind === 'library' && <><p className="muted">Open a project or start a private collection.</p>
         <div className="library-list">{projects.map(item => <button className="workspace-project" key={item.id} onClick={() => { if (item.id !== project) chooseProject(item.id); dismiss(); }}>
           <span className="project-icon"><Images size={17} /></span><span><strong>{item.title}</strong><small>{item.demo ? 'Sample project' : 'Private project'}</small></span><ChevronRight size={17} /></button>)}</div>
@@ -378,7 +380,7 @@ function App() {
       {hasMedia && state && dialog.kind === 'voice' && <VoicePanel base={base} state={state} />}
       {state && current && dialog.kind === 'world' && <WorldForm state={state} event={current} base={base}
         done={async () => { await refresh(); dismiss(); setNotice('Reconstruction uploaded for approval.'); }} />}
-      {hasMedia && state && dialog.kind === 'capture' && <Capture state={state} base={base} items={items} reload={refresh}
+      {hasMedia && state && captureOpen && <div hidden={dialog.kind === 'confirm'}><Capture state={state} base={base} items={items} reload={refresh}
         renderMemoryForm={done => <EventForm name="Create memory" onSubmit={async body => {
           await api(base + '/memories', { ...body, expectedRevision: state.revision }); await refresh(); done();
         }} />}
@@ -387,7 +389,7 @@ function App() {
             eventId, expectedRevision: state.revision, text, ...(eventId === current?.id && currentAnchor && { anchorId: currentAnchor.id })
           });
           setDialog({ kind: 'confirm', revision: state.revision, proposal, command: proposal.command, fromCapture: true });
-        }} />}
+        }} /></div>}
       {state && dialog.kind === 'memory' && <EventForm name="Create memory" onSubmit={async body => {
         await api(base + '/memories', { ...body, expectedRevision: state.revision }); await refresh(); dismiss();
       }} />}
