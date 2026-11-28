@@ -1,13 +1,13 @@
 import {
   ACESFilmicToneMapping, AmbientLight, BoxGeometry, BufferGeometry, CatmullRomCurve3,
   Color, CylinderGeometry, DirectionalLight, DoubleSide, Float32BufferAttribute, Fog, Group,
-  Mesh, MeshBasicMaterial, MeshStandardMaterial, PCFShadowMap, PerspectiveCamera, PlaneGeometry, Scene,
-  ShaderMaterial, SphereGeometry, SRGBColorSpace, Texture, TubeGeometry, Vector3, WebGLRenderer
+  Mesh, MeshBasicMaterial, MeshStandardMaterial, OctahedronGeometry, PCFShadowMap, PerspectiveCamera,
+  PlaneGeometry, Scene, ShaderMaterial, SphereGeometry, SRGBColorSpace, TubeGeometry, Vector3, WebGLRenderer
 } from 'three';
 import { Octree } from 'three/addons/math/Octree.js';
 import { Walker } from './walking';
-import { albumEnd, nearbyPhoto, photoStops, type PhotoStop } from './album-layout';
-import { sourceURL, type Source } from './model';
+import { albumEnd, nearbyPhoto, photoStops } from './album-layout';
+import type { Source } from './model';
 import { loadEnvironment } from './gameplay/environment';
 import { PathRecorder } from './gameplay/path';
 import { FrameMetrics } from './gameplay/performance';
@@ -24,7 +24,7 @@ export type AlbumControls = {
   runtime: RuntimeControls;
 };
 
-export function createAlbumScene(host: HTMLElement, project: string, photos: Source[], onFrame: (frame: AlbumFrame) => void, onError: () => void): AlbumControls {
+export function createAlbumScene(host: HTMLElement, sources: Source[], onFrame: (frame: AlbumFrame) => void, onError: () => void): AlbumControls {
   const renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
   renderer.outputColorSpace = SRGBColorSpace;
@@ -42,8 +42,8 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
   scene.fog = new Fog('#cf94a2', 45, 180);
   const camera = new PerspectiveCamera(65, 1, 0.1, 500);
   camera.rotation.order = 'YXZ';
-  const stops = photoStops(photos);
-  const end = albumEnd(photos.length);
+  const stops = photoStops(sources);
+  const end = albumEnd(sources.length);
   const length = 18 - end;
   let yaw = 0;
   let pitch = -0.02;
@@ -55,10 +55,6 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
   const keys = new Set<string>();
   const geometries = new Set<BufferGeometry>();
   const materials = new Set<MeshStandardMaterial | MeshBasicMaterial | ShaderMaterial>();
-  const downloads = new Map<string, AbortController>();
-  const loaded = new Map<string, { texture: Texture; mesh: Mesh; bitmap: ImageBitmap }>();
-  const failures = new Set<string>();
-  const frames = new Map<string, Mesh>();
   const solids: Mesh[] = [];
   let reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let manuallyPaused = false;
@@ -210,17 +206,13 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
     if (i % 3 === 0) box(5.1, 0.15, 7.1, pink, x, height, z);
   }
 
-  const placeholder = new MeshBasicMaterial({ color: '#30444b' });
+  const waypointBeacon = new OctahedronGeometry(0.27);
+  const waypointPost = new CylinderGeometry(0.065, 0.09, 1.4, 10);
   for (const stop of stops) {
-    const group = new Group();
-    group.position.set(stop.x, 0, stop.z);
-    group.rotation.y = stop.yaw;
-    scene.add(group);
-    box(4.7, 3.9, 0.28, dark, 0, 2, 0, group);
-    box(4.5, 0.035, 0.08, stop.x < 0 ? pink : teal, 0, 3.92, 0.18, group);
-    box(4.9, 0.15, 0.8, stone, 0, 0.06, 0, group);
-    const surface = mesh(new PlaneGeometry(4.3, 2.9), placeholder, 0, 2.15, 0.151, group);
-    frames.set(stop.sourceId, surface);
+    const light = stop.x < 0 ? pink : teal;
+    box(0.58, 0.16, 0.58, stone, stop.x, 0.08, stop.z);
+    solids.push(mesh(waypointPost, dark, stop.x, 0.82, stop.z));
+    mesh(waypointBeacon, light, stop.x, 1.6, stop.z);
   }
 
   scene.updateMatrixWorld(true);
@@ -234,50 +226,8 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
   const collisionWorld = new Octree().fromGraphNode(collisionGeometry);
   const walker = new Walker(collisionWorld, new Vector3(0, 0.05, 6));
 
-  async function loadPhoto(stop: PhotoStop) {
-    const abort = new AbortController();
-    downloads.set(stop.sourceId, abort);
-    try {
-      const response = await fetch(sourceURL(project, stop.sourceId, '?variant=thumb'), { signal: abort.signal });
-      if (!response.ok) throw new Error('Photo unavailable');
-      const bitmap = await createImageBitmap(await response.blob(), { imageOrientation: 'flipY' });
-      if (!active || abort.signal.aborted) { bitmap.close(); return; }
-      const texture = new Texture(bitmap);
-      texture.colorSpace = SRGBColorSpace;
-      texture.needsUpdate = true;
-      texture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-      const surface = frames.get(stop.sourceId)!;
-      const surfaceMaterial = new MeshBasicMaterial({ map: texture });
-      materials.add(surfaceMaterial);
-      surface.material = surfaceMaterial;
-      // Fit the whole image inside its frame, preserving portrait and landscape ratios.
-      const aspect = bitmap.width / bitmap.height;
-      surface.scale.set(Math.min(1, aspect * 2.9 / 4.3), Math.min(1, 4.3 / aspect / 2.9), 1);
-      loaded.set(stop.sourceId, { texture, mesh: surface, bitmap });
-    } catch {
-      if (active && !abort.signal.aborted) failures.add(stop.sourceId);
-    } finally { downloads.delete(stop.sourceId); }
-  }
-  function updatePhotos() {
-    for (const [id, item] of loaded) {
-      const stop = stops.find(value => value.sourceId === id)!;
-      if (Math.abs(stop.z - camera.position.z) <= 45) continue;
-      item.texture.dispose();
-      item.bitmap.close();
-      const surface = item.mesh.material as MeshBasicMaterial;
-      surface.dispose();
-      materials.delete(surface);
-      item.mesh.material = placeholder;
-      loaded.delete(id);
-    }
-    for (const stop of stops) {
-      if (downloads.size >= 3) break;
-      if (Math.abs(stop.z - camera.position.z) < 32 && !loaded.has(stop.sourceId) && !downloads.has(stop.sourceId) && !failures.has(stop.sourceId)) void loadPhoto(stop);
-    }
-  }
-
   const recorder = new PathRecorder(camera, {
-    id: 'album-' + photos.map(photo => photo.id).join('-'), planId: 'designed-coastal-album-v1', revision: 0,
+    id: 'album-' + sources.map(source => source.id).join('-'), planId: 'designed-coastal-album-v1', revision: 0,
     format: 'original_trail', assetId: 'coastal-album-v1', collisionAssetId: 'coastal-album-collision-v1',
     units: 'm', coordinateSystem: 'right-handed-y-up', scaleConfidence: 1,
     boundsMin: [-7, 0, end + 0.8], boundsMax: [7, 8, 11.1], spawn: [0, 1.65, 6],
@@ -359,7 +309,6 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
       lastReport = time;
       const nearby = nearbyPhoto(camera.position, stops);
       onFrame({ x: camera.position.x, y: camera.position.y, z: camera.position.z, yaw, nearby: nearby?.sourceId, environment: environmentReady });
-      updatePhotos();
     }
     renderer.render(scene, camera);
   });
@@ -388,7 +337,6 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
       active = false;
       renderer.setAnimationLoop(null);
       resize.disconnect();
-      downloads.forEach(abort => abort.abort());
       window.removeEventListener('blur', clear);
       document.removeEventListener('visibilitychange', clear);
       canvas.removeEventListener('pointerdown', pointerDown);
@@ -396,7 +344,6 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
       canvas.removeEventListener('pointerup', pointerUp);
       canvas.removeEventListener('pointercancel', pointerUp);
       canvas.removeEventListener('webglcontextlost', contextLost);
-      loaded.forEach(item => { item.texture.dispose(); item.bitmap.close(); });
       geometries.forEach(geometry => geometry.dispose());
       materials.forEach(surface => surface.dispose());
       disposeEnvironment();

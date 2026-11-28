@@ -2,6 +2,7 @@
 .walk-album button { font:inherit; color:inherit; cursor:pointer; border:1px solid #ffffff30; background:#172c39d9; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:11px 15px; min-height:44px; }
 .walk-album button:hover { background:#2c414e; border-color:#fff8; }
 .walk-album button:focus-visible, .walk-canvas:focus-visible { outline:2px solid #91f0db; outline-offset:3px; }
+.walk-coast .walk-canvas:focus-visible { outline-offset:-4px; }
 .walk-canvas { position:absolute; inset:0; outline:none; }
 .walk-canvas canvas { width:100%; height:100%; display:block; touch-action:none; cursor:grab; }
 .walk-canvas canvas:active { cursor:grabbing; }
@@ -10,11 +11,29 @@
 .walk-brand { font-family:'Instrument Serif',serif; font-size:35px; line-height:1; letter-spacing:-1px; text-shadow:0 2px 12px #13222b88; }
 .walk-brand span { display:block; font-family:'DM Sans Variable',sans-serif; font-size:10px; font-weight:600; letter-spacing:2px; text-transform:uppercase; margin-top:9px; }
 .walk-header-actions { display:flex; gap:8px; pointer-events:auto; font-size:12px; }
+.walk-coast .walk-header { z-index:8; gap:10px; }
+.walk-coast .walk-header-actions { align-items:center; justify-content:flex-end; gap:6px; }
+.walk-coast .walk-header-actions > button { white-space:nowrap; }
+.walk-notifications { display:flex; align-items:center; gap:6px; flex:none; min-width:44px; min-height:44px; }
+.walk-notifications button[aria-expanded] { min-width:44px; min-height:44px; padding:0; }
 .walk-exit { background:#182637b3!important; }
 .walk-mission { position:absolute; top:122px; left:38px; max-width:min(480px,55vw); text-shadow:0 2px 16px #18212e99; pointer-events:none; }
 .walk-kicker { font-size:10px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#f5b5c9; }
 .walk-mission h1 { color:#fff5df; font-size:clamp(28px,4vw,56px); line-height:1.04; letter-spacing:-1.7px; font-weight:700; margin:10px 0; text-wrap:balance; overflow-wrap:anywhere; }
 .walk-mission p { font-size:13px; margin:0 0 18px; }
+.walk-coast .walk-mission {
+  padding:16px 22px 18px;
+  background:#151d26d9;
+  border:1px solid #f5ebe94d;
+  border-radius:5px;
+}
+.walk-coast .walk-mission h1 {
+  font-family:'Instrument Serif',Georgia,serif;
+  font-size:clamp(34px,5vw,64px);
+  font-weight:400;
+  letter-spacing:-.02em;
+}
+.walk-coast .walk-count { font-size:12px; color:#eee9e5; }
 .walk-progress { width:155px; height:3px; background:#24344280; border-radius:3px; overflow:hidden; }
 .walk-progress span { display:block; height:100%; background:linear-gradient(90deg,#efa9c4,#8be1cd); transition:width .2s; }
 .walk-count { display:block; font-size:10px; letter-spacing:.4px; margin-top:8px; }
@@ -25,6 +44,30 @@
 .walk-interact strong { display:block; font-size:14px; letter-spacing:0; text-transform:none; font-weight:500; color:#fff4e3; margin-top:5px; max-height:3em; overflow:hidden; }
 .walk-album kbd { font:500 11px 'DM Sans Variable',sans-serif; padding:4px 6px; border:1px solid #fff5; border-radius:3px; background:#11293955; color:#fff; white-space:nowrap; }
 .walk-direction { display:inline-block; padding:8px 14px; border-radius:4px; background:#172b3bba; font-size:12px; line-height:1.6; }
+.walk-dock {
+  position:absolute; inset:auto 36px max(64px,calc(52px + env(safe-area-inset-bottom)));
+  display:grid; grid-template-columns:minmax(158px,1fr) minmax(0,422px) minmax(136px,1fr); grid-template-areas:"map cue move";
+  gap:14px; align-items:end; pointer-events:none;
+}
+.walk-dock :is(.walk-interact,.walk-map,.walk-movement) { position:static; transform:none; pointer-events:auto; }
+.walk-dock .walk-interact { grid-area:cue; width:100%; display:grid; justify-items:stretch; gap:5px; }
+.walk-dock .walk-map { grid-area:map; justify-self:start; }
+.walk-dock .walk-movement { grid-area:move; justify-self:end; }
+.walk-dock .walk-next-action {
+  min-height:58px; min-width:0; padding:9px 13px; justify-content:flex-start;
+  background:#f2efea; color:#17232b; border:1px solid #f2efea;
+}
+.walk-dock .walk-next-action:hover { background:white; border-color:white; }
+.walk-dock .walk-next-action > span { min-width:0; color:inherit; text-transform:none; letter-spacing:0; }
+.walk-dock .walk-next-action strong {
+  margin:0; color:inherit; font-size:15px; font-weight:700; line-height:1.22;
+}
+.walk-dock .walk-next-action small {
+  display:block; color:#4f565b; font-size:12px; line-height:1.25; margin-top:3px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.walk-dock .walk-next-action kbd { background:#161b2720; border-color:#161b2740; color:inherit; }
+.walk-dock .walk-reopen { width:auto; min-height:44px; justify-self:center; padding:6px 12px; font-size:12px; }
 .walk-map { position:absolute; width:158px; left:36px; bottom:62px; border:1px solid #d5b5c54d; border-radius:6px; background:#142c37d9; box-shadow:0 6px 30px #12293855; overflow:hidden; }
 .walk-map-title { display:flex; gap:7px; align-items:center; padding:10px 12px; font-size:10px; }
 .walk-map-title span:last-child { margin-left:auto; color:#b0ded9; }
@@ -32,6 +75,7 @@
 .walk-map-path { position:absolute; inset:0 35%; background:#b9a89b; border:1px solid #e5c7bb; }
 .walk-map-stop { position:absolute; transform:translate(-50%,-50%); width:22px; height:22px; min-height:22px!important; padding:0!important; border-radius:50%!important; background:#e6a1bd!important; border:2px solid #473f54!important; font-size:9px!important; color:#293440!important; }
 .walk-map-stop.visited { background:#95e0c9!important; }
+.walk-dock .walk-map-stop[aria-current="location"] { box-shadow:0 0 0 2px #fff,0 0 12px #fff8; }
 .walk-map-player { position:absolute; width:0; height:0; border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:12px solid white; filter:drop-shadow(0 2px 3px #163a49); pointer-events:none; }
 .walk-map .walk-next { width:100%; font-size:10px; border:0; border-radius:0; min-height:36px; padding:9px; justify-content:space-between; }
 .walk-movement { position:absolute; bottom:66px; right:36px; display:grid; grid-template-columns:repeat(3,42px); grid-template-rows:repeat(2,42px); gap:5px; }
@@ -40,10 +84,12 @@
 .walk-movement .walk-key-a { grid-column:1; grid-row:2; }
 .walk-movement .walk-key-s { grid-column:2; grid-row:2; }
 .walk-movement .walk-key-d { grid-column:3; grid-row:2; }
+.walk-touch-actions { display:none; }
 .walk-footer { position:absolute; left:36px; right:36px; bottom:max(22px,env(safe-area-inset-bottom)); display:flex; align-items:center; justify-content:space-between; gap:18px; font-size:10px; color:#f0e3dd; pointer-events:none; }
 .walk-footer>span:first-child { display:flex; align-items:center; gap:8px; }
 .walk-footer>span:last-child { font-size:9px; opacity:.75; letter-spacing:.5px; }
-.walk-overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:32px; background:#0b1824c7; backdrop-filter:blur(12px); overflow-y:auto; }
+.walk-footer a { pointer-events:auto; }
+.walk-overlay { position:absolute; inset:0; z-index:10; display:flex; align-items:center; justify-content:center; padding:32px; background:#0b1824c7; backdrop-filter:blur(12px); overflow-y:auto; }
 .walk-photo { position:relative; display:grid; grid-template-columns:minmax(0,1.5fr) minmax(260px,1fr); width:min(1100px,100%); max-height:calc(100dvh - 64px); background:#172831; border:1px solid #bdaab83b; border-radius:10px; overflow:auto; box-shadow:0 24px 120px #0006; }
 .walk-photo-image { display:flex; align-items:center; justify-content:center; min-height:300px; background:#101d25; }
 .walk-photo-image img { max-width:100%; width:100%; height:100%; max-height:calc(100dvh - 64px); object-fit:contain; }
@@ -54,9 +100,11 @@
 .walk-photo-copy .walk-photo-meta { font-size:11px; color:#b4c4c8; }
 .walk-photo-copy blockquote { margin:20px 0; padding-left:16px; border-left:2px solid #e5a1b8; font-size:13px; line-height:1.7; }
 .walk-photo-copy cite { display:block; color:#a9c6c8; font-size:10px; margin-top:10px; }
-.walk-photo-close { position:absolute; z-index:1; top:12px; right:12px; width:40px; min-height:40px!important; padding:0!important; }
+.walk-photo-close { position:absolute; z-index:1; top:12px; right:12px; width:44px; min-height:44px!important; padding:0!important; }
 .walk-album .walk-primary { background:#e9b6bd; border-color:#e9b6bd; color:#202f3b; font-weight:600; font-size:12px; }
 .walk-album .walk-primary:hover { background:#f3cdd1; }
+.walk-coast .walk-primary { background:#f2efea; color:#1d242b; border-color:#f2efea; }
+.walk-coast .walk-primary:hover { background:#fff; }
 .walk-help { position:relative; background:#172c38; width:540px; max-width:100%; padding:36px; border-radius:10px; border:1px solid #fff3; }
 .walk-help h2 { font-family:'Instrument Serif',serif; font-size:36px; font-weight:400; margin:14px 0; color:#fff4e0; }
 .walk-help p { font-size:13px; line-height:1.7; }
@@ -64,7 +112,7 @@
 .walk-help dt { color:#f1b2c5; }.walk-help dd { margin:0; line-height:1.5; }
 .walk-help .walk-help-note { color:#aec5c9; font-size:11px; }
 .walk-help-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:24px; font-size:12px; }
-.walk-loading { text-align:center; }.walk-loading p { font-size:14px; }.walk-loading h2 { color:#fff4df; }
+.walk-loading { text-align:center; }.walk-loading p { font-size:14px; margin:8px 0 18px; }.walk-loading h2 { color:#fff4df; }
 .scan-actions { position:absolute; bottom:32px; left:32px; max-width:calc(100% - 210px); padding:18px; border:1px solid #ffffff30; border-radius:8px; background:#182d3ce8; }
 .scan-actions p { font-size:12px; line-height:1.7; margin:0 0 12px; }.scan-actions button { margin-right:8px; font-size:12px; }
 .scan-waypoints { position:absolute; right:32px; top:100px; width:270px; max-height:45vh; overflow:auto; padding:16px; border:1px solid #ffffff30; border-radius:8px; background:#182d3ce8; }
@@ -97,9 +145,75 @@
   .scan-actions { bottom:200px; left:16px; right:16px; max-width:none; padding:14px; }
   .scan-waypoints { right:16px; top:80px; width:230px; max-height:28dvh; }
   .walk-photo-copy { padding:24px; }.walk-photo-copy h2 { font-size:28px; }.walk-help { padding:24px; }.walk-help h2 { font-size:30px; }
+  .walk-coast .walk-mission { top:96px; padding:12px 14px; max-width:calc(100% - 40px); }
+  .walk-coast .walk-mission h1 { font-size:36px; margin:6px 0; }
+  .walk-coast .walk-movement { grid-template-columns:repeat(3,44px); grid-template-rows:repeat(2,44px); }
+  .walk-coast .walk-interact { bottom:max(230px,calc(210px + env(safe-area-inset-bottom))); }
+  .walk-coast .runtime-tools:not([open]) { top:72px; }
+}
+@media (max-width:700px) {
+  .walk-coast .walk-header { left:14px; right:14px; }
+  .walk-coast .walk-header-actions > button { padding-inline:8px; }
+  .walk-coast .walk-brand span { letter-spacing:.075em; }
+  .walk-coast .walk-mission { max-width:calc(100% - 146px); }
+  .walk-dock {
+    inset:auto 14px max(48px,calc(36px + env(safe-area-inset-bottom)));
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    grid-template-areas:"cue cue" "map move";
+    gap:8px 10px;
+  }
+  .walk-dock .walk-interact { max-width:440px; justify-self:center; }
+  .walk-dock .walk-map { width:min(132px,100%); }
+  .walk-dock .walk-map-ground { height:80px; }
+  .walk-dock .walk-next-action { min-height:52px; }
+  .walk-dock .walk-next-action strong { font-size:14px; }
+  .walk-dock .walk-next-action kbd { display:none; }
+  .walk-dock .walk-movement button { min-height:44px; }
+}
+@media (max-width:390px) {
+  .walk-coast .walk-header-actions .walk-exit { width:44px; padding-inline:0; }
+  .walk-coast .walk-exit span { display:none; }
+}
+@media (max-width:360px) {
+  .walk-coast .walk-brand { font-size:21px; }
+  .walk-coast .walk-brand span { display:none; }
+  .walk-coast .walk-mission h1 { font-size:30px; }
+}
+@media (pointer:coarse), (max-width:700px) {
+  .walk-coast .walk-touch-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-column:1 / -1; grid-row:3; gap:4px; }
+  .walk-coast .walk-touch-actions button { min-height:44px; font-size:12px; }
 }
 @media (max-height:500px) and (min-width:701px) {
   .walk-mission { top:100px; }.walk-mission h1 { font-size:28px; }.walk-mission p { display:none; }.walk-map { left:20px; bottom:24px; width:120px; }.walk-map-ground { height:80px; }
   .walk-footer { display:none; }.walk-interact { bottom:30px; }.walk-movement { bottom:30px; }.walk-mission { left:auto; right:36px; text-align:right; max-width:45vw; }.walk-progress { margin-left:auto; }
+}
+@media (max-height:500px) and (max-width:700px) {
+  .walk-coast .walk-mission { top:75px; max-width:50%; }
+  .walk-coast .walk-mission h1 { font-size:30px; }
+  .walk-coast .walk-mission p, .walk-coast .walk-direction { display:none; }
+  .walk-coast .walk-interact { bottom:14px; width:min(40vw,320px); }
+  .walk-coast .walk-map, .walk-coast .walk-movement { bottom:14px; }
+  .walk-coast .walk-footer { display:none; }
+}
+@media (max-height:500px) {
+  .walk-dock {
+    inset:auto 14px max(14px,env(safe-area-inset-bottom));
+    grid-template-columns:minmax(82px,1fr) minmax(0,1.7fr) minmax(104px,1fr);
+    grid-template-areas:"map cue move";
+    gap:8px;
+  }
+  .walk-dock .walk-map { width:min(120px,100%); }
+  .walk-dock .walk-interact { width:100%; }
+  .walk-dock .walk-map-ground { height:62px; }
+  .walk-dock .walk-next-action { min-height:44px; padding:5px 8px; }
+  .walk-dock .walk-next-action > svg:last-child { display:none; }
+  .walk-dock .walk-next-action strong { font-size:13px; }
+  .walk-dock .walk-reopen { min-height:44px; }
+}
+@media (max-height:500px) and (max-width:450px) {
+  .walk-dock {
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    grid-template-areas:"cue cue" "map move";
+  }
 }
 @media (prefers-reduced-motion:reduce) { .walk-progress span { transition:none; } }

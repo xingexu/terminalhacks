@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Footprints, MapPin, MoveUpRight, X } from 'lucide-react';
 import {
@@ -17,12 +17,13 @@ import type { Anchor, Recollection, World } from './model';
 import './album.css';
 
 type Position = [number, number, number];
-export default function Scan({ url, projectId, eventId, worldId, revision, position, generation, onClose, onWaypoint, anchors, selectedAnchor, recollections, onSelectAnchor, onRecollect }: {
+export default function Scan({ url, projectId, eventId, worldId, revision, position, generation, onClose, onWaypoint, anchors, selectedAnchor, recollections, onSelectAnchor, onRecollect, notifications }: {
   projectId: string; eventId: string; worldId: string; revision: number;
   url: string; position?: Position; onClose: () => void; onWaypoint: (position: Position) => void;
   generation?: World['generation'];
   anchors: Anchor[]; selectedAnchor?: Anchor; recollections: Recollection[];
   onSelectAnchor: (id: string) => void; onRecollect: () => void;
+  notifications?: ReactNode;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const wrapper = useRef<HTMLDivElement>(null);
@@ -310,6 +311,7 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
   }, [position?.[0], position?.[1], position?.[2], phase]);
   return createPortal(<div className="walk-album" ref={wrapper} role="dialog" aria-modal="true" aria-label="Walkable reconstruction"
     onKeyDown={event => {
+      if (event.defaultPrevented) return;
       if (event.key === 'Escape') { event.stopPropagation(); onClose(); return; }
       if (event.key === 'Tab') {
         const items = [...(wrapper.current?.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex="0"]') || [])];
@@ -329,7 +331,7 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
       if (event.key !== ' ') keys.current.delete(event.key.toLowerCase());
     }}>
     <div className="walk-canvas" ref={host} tabIndex={0} aria-label="Reconstruction. Choose a floor, then use WASD to walk and drag to look." onBlur={() => keys.current.clear()} />
-    <header className="walk-header"><div className="walk-brand">everwhere<span>Reconstructed · imported mesh</span></div><div className="walk-header-actions"><button onClick={onClose}><X size={16} /> Exit</button></div></header>
+    <header className="walk-header"><div className="walk-brand">everwhere<span>Reconstructed · imported mesh</span></div><div className="walk-header-actions"><button onClick={onClose}><X size={16} /> Exit scene</button>{notifications}</div></header>
     <RuntimeTools runtime={runtime} contextURL={'/projects/' + projectId + '/memories/' + eventId + '/scene-context?world=' + worldId} focus={() => host.current?.focus()} />
     {anchors.length > 0 && <aside className="scan-waypoints" aria-label="Saved places">
       <h2>Saved places</h2>

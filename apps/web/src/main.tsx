@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
-  Archive as ArchiveIcon, ArrowDownToLine, ArrowRight, AudioLines, BookOpen, Box, Camera, ChevronDown, ChevronRight,
-  CircleHelp, Compass, Feather, Film, Fingerprint, Images, LayoutGrid, LockKeyhole, MapPin, Mic, Plus, Settings, X
+  Archive as ArchiveIcon, ArrowDownToLine, ArrowRight, AudioLines, Box, Camera, ChevronDown, ChevronRight,
+  CircleHelp, Compass, Fingerprint, Images, LockKeyhole, MapPin, Mic, Plus, Settings, X
 } from 'lucide-react';
 import '@fontsource-variable/dm-sans';
 import '@fontsource/instrument-serif/400.css';
@@ -13,27 +13,21 @@ import { Tutorial } from './onboarding';
 import { VoicePanel } from './voice';
 import { Capture } from './capture';
 import { GenerationForm } from './generation';
-import { Archive, AtlasMark, Create, Empty, Explore, Remember, Timeline, Watch, type ViewActions } from './views';
-import { updateScenePointer } from './scene';
+import { Archive, AtlasMark, Explore, type ViewActions } from './views';
+import { NotificationBell, type Notification } from './notifications';
+import { AccountControl, type AccountMode, type AccountAction, type Account } from './account';
 import {
-  api, displayDate, isVisual, localDateTime, sourcesFor, sourceURL, type Command, type Lens, type Memory, type Observation, type Project, type Proposal,
-  type Session, type Snapshot, type Source, type View
+  api, displayDate, sourceURL, type Command, type Lens, type Memory, type Observation, type Project, type Proposal,
+  type Session, type Snapshot, type Source
 } from './model';
 
-const nav = [
-  { id: 'universe', name: 'Universe', icon: LayoutGrid },
-  { id: 'remember', name: 'Remember', icon: BookOpen },
-  { id: 'explore', name: 'Explore', icon: Compass },
-  { id: 'watch', name: 'Watch', icon: Film },
-  { id: 'create', name: 'Create', icon: Feather },
-  { id: 'archive', name: 'Archive', icon: ArchiveIcon }
-] as const;
+type Screen = 'explore' | 'archive';
 
 type Dialog =
-  { kind: 'library' | 'settings' | 'voice' | 'capture' | 'memory' | 'recollection' | 'correction' | 'help' | 'world' } |
+  { kind: 'library' | 'settings' | 'voice' | 'capture' | 'memory' | 'recollection' | 'help' | 'world' } |
   { kind: 'generate'; eventId: string } |
   { kind: 'source'; source: Source } |
-  { kind: 'confirm'; proposal: Proposal; revision: number; command?: Command; film?: boolean; fromCapture?: boolean };
+  { kind: 'confirm'; proposal: Proposal; revision: number; command?: Command; fromCapture?: boolean };
 
 function Modal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -58,37 +52,7 @@ function Modal({ title, onClose, children, wide = false }: { title: string; onCl
   </dialog>;
 }
 
-function Universe({ state, event, actions }: { state: Snapshot; event?: Memory; actions: ViewActions }) {
-  if (!event) return <Empty icon={<LayoutGrid size={32} />} title="Start with one memory">
-    <p>Give a moment a name, then collect the photos, clips, or stories that bring it back.</p>
-    <button className="btn primary" onClick={actions.openMemory}><Plus size={17} /> Create a memory</button>
-  </Empty>;
-  const source = sourcesFor(state, event.sourceIds).find(isVisual);
-  const cover = source && sourceURL(state.projectId, source.id, '?variant=thumb');
-  return <div className="universe">
-    <section className="universe-feature" aria-labelledby="featured-memory">
-      <div className="universe-feature-media" onPointerMove={cover ? updateScenePointer : undefined}>
-        {cover ? <>
-          <img className="universe-cover-img" src={cover} alt={source?.caption ?? ''} />
-          <img className="hero-reveal" src={cover} alt="" aria-hidden="true" />
-        </> : <Images size={38} aria-hidden="true" />}
-        {source?.provenance === 'imagined' && <span className="universe-media-label">Illustrated sample</span>}
-      </div>
-      <div className="universe-feature-copy">
-        <h2 id="featured-memory">{event.title}</h2>
-        <p className="universe-meta"><MapPin size={15} aria-hidden="true" /> {event.placeLabel}{event.startAt && <> · {displayDate(event.startAt)}</>}</p>
-        {event.story && <p className="universe-description">{event.story}</p>}
-        <div className="universe-actions">
-          <button className="btn primary" onClick={() => actions.select({ eventId: event.id, view: 'explore' })}><Compass size={17} /> Open memory</button>
-          <button className="btn" onClick={actions.openMemory}><Plus size={16} /> New memory</button>
-        </div>
-      </div>
-    </section>
-    <div className="universe-collections"><Timeline state={state} event={event} actions={actions} /></div>
-  </div>;
-}
-
-function EventForm({ event, name, onSubmit }: { event?: Memory; name: string; onSubmit: (body: Record<string, unknown>) => Promise<void> }) {
+function EventForm({ onSubmit }: { onSubmit: (body: Record<string, unknown>) => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const submit = async (e: FormEvent<HTMLFormElement>) => {
@@ -97,35 +61,25 @@ function EventForm({ event, name, onSubmit }: { event?: Memory; name: string; on
     const title = String(form.get('title')).trim();
     const place = String(form.get('place') || '').trim();
     const date = String(form.get('date') || '');
-    const story = String(form.get('story') || '').trim();
     const lat = String(form.get('lat') || '');
     const lon = String(form.get('lon') || '');
     setBusy(true);
     setError('');
     try {
-      if (!event && Boolean(lat) !== Boolean(lon)) throw new Error('Enter both latitude and longitude.');
-      const originalClock = localDateTime(event?.startAt);
-      const startAt = date === originalClock && event ? event.startAt : date ? new Date(date).toISOString() : null;
-      if (event) {
-        const values = { title, ...(place && { placeLabel: place }), startAt, ...(story && { story }) };
-        const patch = Object.fromEntries(Object.entries(values).filter(([key, value]) => event[key as keyof Memory] !== value));
-        if (!Object.keys(patch).length) throw new Error('Change a field before previewing the correction.');
-        await onSubmit({ patch });
-      } else {
-        await onSubmit({ title, placeLabel: place || undefined, startAt, gps: lat && lon ? [Number(lat), Number(lon)] : null });
-      }
+      if (Boolean(lat) !== Boolean(lon)) throw new Error('Enter both latitude and longitude.');
+      const startAt = date ? new Date(date).toISOString() : null;
+      await onSubmit({ title, placeLabel: place || undefined, startAt, gps: lat && lon ? [Number(lat), Number(lon)] : null });
     } catch (err) { setError((err as Error).message); }
     finally { setBusy(false); }
   };
   return <form className="form-stack" onSubmit={submit}>
-    <label>Memory title<input name="title" required maxLength={180} defaultValue={event?.title} placeholder="A moment worth remembering" /></label>
-    <div className="form-columns"><label>Place<input name="place" maxLength={180} defaultValue={event?.placeLabel} placeholder="Unknown location" /></label>
-      <label>Date and time<input type="datetime-local" name="date" defaultValue={localDateTime(event?.startAt)} /></label></div>
-    {event ? <label>Story<textarea name="story" rows={4} maxLength={4000} defaultValue={event.story} /></label> :
-      <details><summary>Optional map location</summary><div className="form-columns"><label>Latitude<input name="lat" type="number" step="any" min="-90" max="90" /></label>
-        <label>Longitude<input name="lon" type="number" step="any" min="-180" max="180" /></label></div></details>}
+    <label>Memory title<input name="title" required maxLength={180} placeholder="A moment worth remembering" /></label>
+    <div className="form-columns"><label>Place<input name="place" maxLength={180} placeholder="Unknown location" /></label>
+      <label>Date and time<input type="datetime-local" name="date" /></label></div>
+    <details><summary>Optional map location</summary><div className="form-columns"><label>Latitude<input name="lat" type="number" step="any" min="-90" max="90" /></label>
+      <label>Longitude<input name="lon" type="number" step="any" min="-180" max="180" /></label></div></details>
     {error && <p className="form-error" role="alert">{error}</p>}
-    <button className="btn primary self-start" disabled={busy}>{name} <ArrowRight size={16} /></button>
+    <button className="btn primary self-start" disabled={busy}>Create memory <ArrowRight size={16} /></button>
   </form>;
 }
 
@@ -177,13 +131,12 @@ function Confirmation({ value, commit, back }: { value: Extract<Dialog, { kind: 
     {diff.before !== undefined && <div className="diff"><div><small>Previous</small>{showValue(diff.before)}</div><div><small>Proposed</small>{showValue(diff.after)}</div></div>}
     {diff.text && <blockquote>{diff.text}</blockquote>}
     {diff.caption && <p>Source: {diff.caption}</p>}
-    {value.film && <p>{diff.sources} visual {diff.sources === 1 ? 'source' : 'sources'} · 30–60 seconds · local render{diff.narration ? ' · includes a confirmed voice note' : ''}{diff.containsImagined ? ' · includes labeled imagined demo imagery' : ''}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     <div className="button-row"><button className="btn primary" disabled={busy} onClick={async () => {
       setBusy(true); setError('');
       try { await commit(requestId.current); } catch (err) { setError((err as Error).message); }
       finally { setBusy(false); }
-    }}>{value.film ? 'Start render' : 'Confirm change'} <ArrowRight size={16} /></button>
+    }}>Confirm change <ArrowRight size={16} /></button>
       <button className="btn" onClick={back}>Cancel</button></div>
   </div>;
 }
@@ -226,13 +179,13 @@ function SettingsPanel({ base, state, reload, deleteProject }: { base: string; s
     try { await task(); reload(); setConfirm(''); } catch (err) { setError((err as Error).message); }
     finally { setBusy(false); }
   };
-  return <div className="form-stack"><div className="notice"><LockKeyhole size={20} /><div><strong>Private project</strong><p>Project access is tied to this browser session. Capture processing stays on the Everwhere server.</p></div></div>
+  return <div className="form-stack"><div className="notice"><LockKeyhole size={20} /><div><strong>Private project</strong><p>Guests can access their projects in this browser. With an account, you can sign in to reopen your projects. Capture processing stays on the Everwhere server.</p></div></div>
     <h3>Capture permissions</h3>
     {!state.capture.sessions.length && <p className="muted">No capture sessions have been started.</p>}
     {state.capture.sessions.filter(item => item.status !== 'revoked').map(item => <div className="result-row" key={item.id}>
       <strong>{item.source === 'browser_audio' ? 'Voice note' : item.source === 'voiceos_text' ? 'VoiceOS text' : 'Selected files'} · {item.status}</strong>
       <button className="btn compact" disabled={busy} onClick={() => setConfirm(item.grantId)}>Revoke</button>
-      {confirm === item.grantId && <div className="permission-confirm"><p>Withdraw the sources captured in this session and make dependent films unavailable?</p>
+      {confirm === item.grantId && <div className="permission-confirm"><p>Withdraw these sources and make scenes that rely on them unavailable?</p>
         <button className="btn compact danger" onClick={() => perform(() => api(base + '/capture/grants/' + item.grantId + '/revoke', {}))} disabled={busy}>Withdraw sources</button></div>}
     </div>)}
     <hr />
@@ -250,13 +203,26 @@ function App() {
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [items, setItems] = useState<Observation[]>([]);
   const [notice, setNotice] = useState('');
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [startupError, setStartupError] = useState('');
   const [map, setMap] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [startPlaying, setStartPlaying] = useState(false);
+  const [accountEntry] = useState<AccountMode | undefined>(() => {
+    const mode = new URLSearchParams(location.search).get('account');
+    return mode === 'login' || mode === 'register' || mode === 'manage' ? mode : undefined;
+  });
   const ref = useRef('');
-  const earlyRoute = useRef<View | null>(null);
+  const earlyRoute = useRef<Screen | null>(null);
+  const observedJobs = useRef(new Map<string, string>());
   const base = '/projects/' + project;
   const current = state?.events.find(item => item.id === state.session.eventId) ?? state?.events[0];
+
+  const addNotification = useCallback((projectId: string, message: string, id: string = crypto.randomUUID()) => {
+    if (!projectId) return;
+    setNotifications(current => current.some(item => item.projectId === projectId && item.id === id)
+      ? current : [{ id, projectId, message, read: false }, ...current].slice(0, 40));
+  }, []);
 
   const loadProjects = useCallback(async () => {
     const list = await api<Project[]>('/bootstrap');
@@ -279,14 +245,42 @@ function App() {
     loadProjects().then(list => {
       const [, p, id, view] = location.pathname.split('/');
       const requested = p === 'p' && list.some(item => item.id === id) ? id : '';
-      if (requested && nav.some(item => item.id === view)) earlyRoute.current = view as View;
+      const query = new URLSearchParams(location.search);
+      const returnEvent = query.get('generate');
+      const requestedDemo = query.get('play') === '1' && !returnEvent && !requested;
+      const demo = requestedDemo ? list.find(item => item.demo) : undefined;
+      earlyRoute.current = requested && view === 'archive' ? 'archive' : 'explore';
       const last = localStorage.getItem('everwhere-project');
-      chooseProject(requested || list.find(item => item.id === last)?.id || list[0]?.id || '');
-      const returnEvent = new URLSearchParams(location.search).get('generate');
-      setDialog(returnEvent ? { kind: 'generate', eventId: returnEvent } : { kind: 'help' });
+      chooseProject(requested || demo?.id || list.find(item => item.id === last)?.id || list[0]?.id || '');
+      setStartPlaying(!!demo);
+      if (requestedDemo && !demo) setNotice('The built-in demo is unavailable in this workspace.');
+      const showTutorial = !accountEntry && (query.get('tour') === '1' || (query.get('tour') !== '0' && !demo && !requested));
+      setDialog(returnEvent ? { kind: 'generate', eventId: returnEvent } : showTutorial ? { kind: 'help' } : null);
       if (returnEvent) history.replaceState(null, '', location.pathname);
     }).catch(err => setStartupError((err as Error).message)).finally(() => setLoading(false));
-  }, [chooseProject, loadProjects]);
+  }, [accountEntry, chooseProject, loadProjects]);
+
+  useEffect(() => {
+    const refreshIdentity = (event: StorageEvent) => {
+      if (event.key === 'everwhere-auth-change') location.replace('/app?tour=0');
+    };
+    const restorePage = (event: PageTransitionEvent) => {
+      if (event.persisted) location.reload();
+    };
+    window.addEventListener('storage', refreshIdentity);
+    window.addEventListener('pageshow', restorePage);
+    return () => {
+      window.removeEventListener('storage', refreshIdentity);
+      window.removeEventListener('pageshow', restorePage);
+    };
+  }, []);
+
+  const accountChanged = (_account: Account | null, action: AccountAction) => {
+    localStorage.setItem('everwhere-auth-change', crypto.randomUUID());
+    if (action === 'logout') location.replace('/');
+    else if (action === 'register' && project) location.replace('/p/' + project + '/' + screen);
+    else location.replace('/app?tour=0');
+  };
 
   const refresh = useCallback(async () => {
     if (!project) return;
@@ -318,24 +312,40 @@ function App() {
 
   useEffect(() => {
     if (!state || state.projectId !== project) return;
-    const target = '/p/' + project + '/' + state.session.view;
-    if (location.pathname !== target) history.replaceState(null, '', target);
+    const target = '/p/' + project + '/' + (state.session.view === 'archive' ? 'archive' : 'explore');
+    if (location.pathname !== target || location.search) history.replaceState(null, '', target);
     document.title = 'Everwhere · ' + state.title;
   }, [project, state]);
+  useEffect(() => {
+    if (!state) return;
+    for (const job of state.sceneJobs ?? []) {
+      const key = `${state.projectId}:${job.id}`;
+      const previous = observedJobs.current.get(key);
+      observedJobs.current.set(key, job.status);
+      if (!previous || previous === job.status) continue;
+      const title = state.events.find(item => item.id === job.eventId)?.title;
+      if (job.status === 'ready') addNotification(state.projectId, `${title || 'A scene'} is ready for review.`, `scene:${job.id}:ready`);
+      if (job.status === 'failed') addNotification(state.projectId, `Scene generation needs attention${title ? ` for ${title}` : ''}.`, `scene:${job.id}:failed`);
+    }
+  }, [state, addNotification]);
+  useEffect(() => { if (state && startPlaying) setStartPlaying(false); }, [state, startPlaying]);
   useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(''), 5500);
     return () => window.clearTimeout(timer);
   }, [notice]);
 
-  const show = (kind: Extract<Dialog, { kind: 'library' | 'settings' | 'voice' | 'capture' | 'memory' | 'recollection' | 'correction' | 'help' | 'world' }>['kind']) => setDialog({ kind });
+  const show = (kind: Extract<Dialog, { kind: 'library' | 'settings' | 'voice' | 'capture' | 'memory' | 'recollection' | 'help' | 'world' }>['kind']) => setDialog({ kind });
   const dismiss = () => {
     setDialog(null);
   };
+  const report = (message: string) => {
+    addNotification(project, message);
+    if (ref.current === project) setNotice(message);
+  };
   const guarded = (work: () => Promise<unknown>) => { void work().catch(err => setNotice((err as Error).message)); };
   const select = (input: Partial<Session>) => guarded(async () => { await api(base + '/session', input); await refresh(); });
-  const openUniverse = () => select({ view: 'universe' });
-  const openView = (view: View) => {
+  const openView = (view: Screen) => {
     setMap(false);
     select({ view });
     window.scrollTo(0, 0);
@@ -350,62 +360,55 @@ function App() {
     select,
     openSource: source => setDialog({ kind: 'source', source }),
     openCapture: () => show('capture'),
-    openVoice: () => show('voice'),
     openMap: () => { setMap(true); select({ view: 'archive' }); },
     openMemory: () => show('memory'),
-    openCorrection: () => show('correction'),
     openRecollection: () => show('recollection'),
     addWaypoint: (position, sourceId, worldId) => guarded(() => preview('anchor.add', { position, worldId: worldId ?? 'trail-' + current?.id, sourceIds: sourceId ? [sourceId] : [] })),
-    render: () => guarded(async () => {
-      const proposal = await api<Proposal>(base + '/film-preview', { eventId: current?.id, expectedRevision: state?.revision });
-      setDialog({ kind: 'confirm', proposal, film: true, revision: state!.revision });
-    }),
-    approve: job => guarded(() => preview('artifact.approve', { artifactId: job.id, dependencyHash: job.inputHash })),
-    setGrade: preset => guarded(() => preview('profile.set', { preset })),
+    approve: world => guarded(() => preview('artifact.approve', { artifactId: world.id, dependencyHash: world.inputHash })),
     openSettings: () => show('settings'),
     openWorld: () => show('world'),
     openGeneration: () => { if (current) setDialog({ kind: 'generate', eventId: current.id }); },
     undo: () => { if (state?.undo) guarded(() => preview('undo', { revisionToUndo: state.undo!.revision }, state.undo!.targetId)); }
   };
 
-  const currentNav = nav.find(item => item.id === state?.session.view) ?? nav[0];
-  const screen = currentNav.id;
-  const universe = screen === 'universe';
+  const screen = state?.session.view === 'archive' ? 'archive' : 'explore';
   const currentAnchor = state?.anchors.find(item => item.id === state.session.anchorId && item.eventId === current?.id);
   const hasMedia = state && !!project;
   const captureOpen = dialog?.kind === 'capture' || (dialog?.kind === 'confirm' && !!dialog.fromCapture);
+  const bell = <NotificationBell key={project} notifications={notifications.filter(item => item.projectId === project)}
+    markRead={() => setNotifications(current => current.map(item => item.projectId === project && !item.read ? { ...item, read: true } : item))} />;
   const dateLabel = state?.demo && state.events.length ? 'October 12–14, 2024' : current?.startAt ? displayDate(current.startAt) : '';
   const sectionTitles: Record<Dialog['kind'], string> = {
     library: 'Projects', settings: 'Project settings', voice: 'Connect VoiceOS', capture: 'Capture memory',
-    memory: 'New memory', recollection: 'Add a recollection', correction: 'Correct memory',
+    memory: 'New memory', recollection: 'Add a recollection',
     help: 'Welcome to Everwhere', source: 'Source evidence', confirm: 'Review change', world: 'Import 3D scene', generate: 'Step inside your photo'
   };
-  return <div className="app-frame">
+  return <div className="app-frame gameplay-workspace">
     <a className="skip-link" href="#experience">Skip to experience</a>
     <aside className="sidebar" aria-label="Workspace">
-      <a className="brand" href="/" aria-label="Everwhere home"><span className="brand-mark"><AtlasMark size={25} /></span><span>everwhere<span className="brand-period">.</span></span></a>
-      <button className="workspace-project" onClick={() => show('library')} aria-label={'Switch project, current project ' + (state?.title || 'Projects')}><span className="project-icon"><Images size={17} /></span><span><strong>{state?.title || 'Memory projects'}</strong><small>{state?.demo ? 'Illustrated sample' : 'Private project'}</small></span><ChevronDown size={15} /></button>
+      <a className="brand" href="/" aria-label="Everwhere home"><span className="brand-mark"><AtlasMark size={25} /></span><span className="rail-label">everwhere<span className="brand-period">.</span></span></a>
+      <button className="workspace-project" onClick={() => show('library')} aria-label={'Switch project, current project ' + (state?.title || 'Projects')}><span className="project-icon"><Images size={17} /></span><span className="rail-label"><strong>{state?.title || 'Memory projects'}</strong><small>{state?.demo ? 'Illustrated sample' : 'Private project'}</small></span><ChevronDown className="rail-label" size={15} /></button>
       <div className="nav-groups">
         <nav aria-label="Experience">
-          <button className={universe ? 'active' : ''} aria-current={universe ? 'page' : undefined} onClick={openUniverse} disabled={!state}><LayoutGrid size={18} />Universe</button>
-          {nav.slice(1, 5).map(({ id, name, icon: Icon }) => <button key={id} className={screen === id ? 'active' : ''} aria-current={screen === id ? 'page' : undefined}
-            onClick={() => openView(id)} disabled={!state}><Icon size={18} />{name}</button>)}
+          <button className={screen === 'explore' ? 'active' : ''} aria-current={screen === 'explore' ? 'page' : undefined}
+            onClick={() => openView('explore')} disabled={!state}><Compass size={18} /><span className="rail-label">Gameplay</span></button>
         </nav>
       </div>
       <div className="sidebar-bottom">
-        <button className="voice-card" onClick={() => show('voice')} disabled={!state} aria-label="Connect VoiceOS"><span className="voice-icon"><AudioLines size={21} /></span><span><strong>VoiceOS</strong><small>Setup & voice controls</small></span></button>
+        <button className="voice-card" onClick={() => show('voice')} disabled={!state} aria-label="Connect VoiceOS"><span className="voice-icon"><AudioLines size={21} /></span><span className="rail-label"><strong>VoiceOS</strong><small>Setup & voice controls</small></span></button>
         <nav className="nav-utilities" aria-label="Project tools">
-          <button className="text-button" aria-current={screen === 'archive' ? 'page' : undefined} onClick={() => openView('archive')} disabled={!state}><ArchiveIcon size={16} /> Archive</button>
-          <button className="text-button" onClick={() => show('settings')} disabled={!state}><Settings size={16} /> Settings</button>
-          <button className="icon-btn" onClick={() => show('help')} aria-label="Open tutorial" title="Open tutorial"><CircleHelp size={17} /></button>
+          <button className="text-button" aria-current={screen === 'archive' ? 'page' : undefined} onClick={() => openView('archive')} disabled={!state}><ArchiveIcon size={16} /><span className="rail-label">Project history</span></button>
+          <button className="text-button" onClick={() => show('settings')} disabled={!state}><Settings size={16} /><span className="rail-label">Settings</span></button>
+          <button className="icon-btn" onClick={() => show('help')} aria-label="Open tutorial" title="Open tutorial"><CircleHelp size={17} /><span className="rail-label tutorial-label">Tutorial</span></button>
         </nav>
       </div>
     </aside>
     <main className={'main screen-' + screen} id="experience" tabIndex={-1}>
       <header className="topbar">
-        <div className="breadcrumbs"><button onClick={state ? openUniverse : () => show('library')}>My universe</button><ChevronRight size={14} /><button className="breadcrumb-project" onClick={() => show('library')} aria-label="Switch memory project">{state?.title || 'Projects'}</button></div>
+        <div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><button className="breadcrumb-project" onClick={() => show('library')} aria-label="Switch memory project">{state?.title || 'Projects'}</button></div>
         <div className="top-actions"><span className="private-label"><LockKeyhole size={14} /> Private</span>
-          <button className="btn top-capture" onClick={() => state ? show('capture') : show('library')}><Camera size={17} /> <span>{state ? 'Capture memory' : 'Projects'}</span>{items.length > 0 && <span className="pending-count" aria-label={items.length + ' pending sources'}>{items.length}</span>}</button></div>
+          <button className="btn top-capture" onClick={() => state ? show('capture') : show('library')}><Camera size={17} /> <span>{state ? 'Capture memory' : 'Projects'}</span>{items.length > 0 && <span className="pending-count" aria-label={items.length + ' pending sources'}>{items.length}</span>}</button>
+          <AccountControl initialMode={accountEntry} onSessionChange={accountChanged} />{bell}</div>
       </header>
       {startupError && <div className="notice main-notice" role="alert">{startupError}<button className="btn compact" onClick={() => location.reload()}>Retry</button></div>}
       {!startupError && (loading || (!state && project)) && <div className="load-state" role="status"><AtlasMark size={38} /> Opening your universe…</div>}
@@ -422,11 +425,8 @@ function App() {
             aria-pressed={state.session.lens === 'originals'} onClick={() => select({ lens: (state.session.lens === 'originals' ? 'all' : 'originals') as Lens })}>
             <Fingerprint size={16} /><span>Originals only</span><span className="switch-track"><i /></span></button>
         </div>
-        {screen === 'universe' && <Universe state={state} event={current} actions={actions} />}
-        {screen === 'explore' && <Explore state={state} event={current} actions={actions} />}
-        {screen === 'watch' && <Watch state={state} event={current} actions={actions} />}
-        {screen === 'create' && <Create state={state} event={current} actions={actions} />}
-        {screen === 'remember' && <Remember state={state} event={current} actions={actions} />}
+        {screen === 'explore' && <Explore state={state} event={current} actions={actions} startPlaying={startPlaying && state.demo}
+          notifications={<><AccountControl onSessionChange={accountChanged} />{bell}</>} onDiscover={source => addNotification(project, `Waypoint discovered: ${source.caption}`, `waypoint:${current?.id}:${source.id}`)} />}
         {screen === 'archive' && <Archive state={state} event={current} actions={actions} initialMap={map} />}
       </div>}
     </main>
@@ -444,11 +444,11 @@ function App() {
       }} />}
       {hasMedia && state && dialog.kind === 'voice' && <VoicePanel base={base} state={state} />}
       {state && dialog.kind === 'generate' && state.events.filter(event => event.id === dialog.eventId).map(event => <GenerationForm key={event.id} state={state} event={event}
-        done={async () => { await refresh(); dismiss(); setNotice('Scene generation started. Progress appears in Explore.'); }} />)}
+        done={async () => { await refresh(); dismiss(); report('Scene generation started.'); }} />)}
       {state && current && dialog.kind === 'world' && <WorldForm state={state} event={current} base={base}
-        done={async () => { await refresh(); dismiss(); setNotice('Reconstruction uploaded for approval.'); }} />}
+        done={async () => { await refresh(); dismiss(); report('Reconstruction uploaded for approval.'); }} />}
       {hasMedia && state && captureOpen && <div hidden={dialog.kind === 'confirm'}><Capture state={state} base={base} items={items} visible={dialog.kind === 'capture'} reload={refresh}
-        renderMemoryForm={done => <EventForm name="Create memory" onSubmit={async body => {
+        renderMemoryForm={done => <EventForm onSubmit={async body => {
           await api(base + '/memories', { ...body, expectedRevision: state.revision }); await refresh(); done();
         }} />}
         preview={async (item, eventId, text) => {
@@ -457,10 +457,9 @@ function App() {
           });
           setDialog({ kind: 'confirm', revision: state.revision, proposal, command: proposal.command, fromCapture: true });
         }} /></div>}
-      {state && dialog.kind === 'memory' && <EventForm name="Create memory" onSubmit={async body => {
+      {state && dialog.kind === 'memory' && <EventForm onSubmit={async body => {
         await api(base + '/memories', { ...body, expectedRevision: state.revision }); await refresh(); dismiss();
       }} />}
-      {current && dialog.kind === 'correction' && <EventForm name="Preview correction" event={current} onSubmit={payload => preview('event.correct', payload)} />}
       {current && dialog.kind === 'recollection' && <RecollectionForm anchor={currentAnchor?.title} onCapture={() => show('capture')}
         onSubmit={text => preview('recollection.add', { text, ...(currentAnchor && { anchorId: currentAnchor.id }) })} />}
       {state && dialog.kind === 'source' && <div className="source-detail"><span className="eyebrow">{dialog.source.provenance === 'imagined' ? 'IMAGINED DEMO IMAGE' : 'ORIGINAL SOURCE'}</span>
@@ -473,11 +472,10 @@ function App() {
         {dialog.source.provenance === 'original' && <a className="btn self-start" href={sourceURL(project, dialog.source.id, '?download=1&variant=original')}><ArrowDownToLine size={16} /> Download original</a>}</div>}
       {state && dialog.kind === 'confirm' && <Confirmation key={dialog.proposal.previewToken} value={dialog} back={() => dialog.fromCapture ? show('capture') : dismiss()} commit={async requestId => {
         const common = { requestId, previewToken: dialog.proposal.previewToken };
-        if (dialog.film) await api(base + '/jobs', common);
-        else if (dialog.command) await api(base + '/commands', { ...dialog.command, ...common });
+        if (dialog.command) await api(base + '/commands', { ...dialog.command, ...common });
         else throw new Error('This preview does not contain a change.');
         await refresh();
-        setNotice(dialog.film ? 'Film rendering started.' : dialog.fromCapture ? 'Captured evidence linked.' : 'Change confirmed.');
+        report(dialog.fromCapture ? 'Captured evidence linked.' : 'Change confirmed.');
         if (dialog.fromCapture) show('capture');
         else dismiss();
       }} />}

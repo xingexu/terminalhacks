@@ -3,10 +3,10 @@ import { ArrowLeft, ArrowRight, AudioLines, Camera, Check, Compass } from 'lucid
 import { VoiceShortcut } from './voice';
 
 const steps = [
-  { title: 'Keep the moment.', text: 'Start a private project, then use Capture to add selected photos, clips, or a voice note.', icon: Camera, image: 'lake', caption: 'Photos · clips · voice notes' },
-  { title: 'Give it a place.', text: 'Create a memory with a title, place, and date. In the capture inbox, choose the memory, preview the link, and confirm it.', icon: Check, image: 'desert', caption: 'Capture → review → confirm' },
-  { title: 'Come back to it.', text: 'In Explore, choose Step inside this photo. Add remembered details, connect Higgsfield, and generate a scene. Review the reconstruction, then enter and walk with WASD. Create also holds your photo albums, and Watch holds your films.', icon: Compass, image: 'ocean', caption: 'Your memories, connected' },
-  { title: 'Your memories, by voice.', text: 'Open the VoiceOS app from Applications on your Mac. Go to Apps → Custom → Everwhere to check your connection.', icon: AudioLines, image: 'stars', caption: '“What memory is open in Everwhere?”' }
+  { title: 'Take a walk along the coast.', text: 'Choose Play scene to follow memory stops around a designed coast. Move with WASD or the on-screen controls, drag to look around, and press E at a nearby stop.', icon: Compass, image: 'ocean', caption: 'Designed coastal demo' },
+  { title: 'Bring a place you remember.', text: 'Create a private project and a memory, then use Capture to add a photo of the place. Choose that memory in the review inbox and confirm the link.', icon: Camera, image: 'lake', caption: 'Capture → review → confirm' },
+  { title: 'Walk through your own scene.', text: 'Create a reconstruction from a confirmed photo and what you remember, or import a 3D scan. Review and approve it, then choose Walk in scene for a walkable reconstruction.', icon: Check, image: 'desert', caption: 'Review a reconstruction before entering' },
+  { title: 'Describe the place by voice.', text: 'For optional voice controls, open VoiceOS from Applications on your Mac. Go to Apps → Custom → Everwhere to check your connection.', icon: AudioLines, image: 'stars', caption: '“What memory is open in Everwhere?”' }
 ];
 
 export function Tutorial({ finish, create, connectVoice, canConnectVoice }: {
@@ -24,7 +24,7 @@ export function Tutorial({ finish, create, connectVoice, canConnectVoice }: {
       <p className="tutorial-step">A quick introduction · {step + 1} of {steps.length}</p>
       <h3>{current.title}</h3><p>{current.text}</p>
     </div>
-    {step === 0 && <button className="text-button tutorial-create" onClick={create}>Create a private project <ArrowRight size={15} /></button>}
+    {step === 1 && <button className="text-button tutorial-create" onClick={create}>Create a private project <ArrowRight size={15} /></button>}
     {step === steps.length - 1 && <div className="tutorial-voice">
       <p>To describe a scene, focus its memory-description field, hold <kbd>Fn</kbd>, speak, then release. VoiceOS inserts the words for you to review. Set Fn to dictation in VoiceOS Settings.</p>
       <VoiceShortcut />
@@ -35,7 +35,7 @@ export function Tutorial({ finish, create, connectVoice, canConnectVoice }: {
     <div className="tutorial-actions">
       <button className="text-button" onClick={step ? () => setStep(step - 1) : finish}>{step ? <><ArrowLeft size={15} /> Back</> : 'Skip tour'}</button>
       {step < steps.length - 1 ? <button className="btn primary" onClick={() => setStep(step + 1)}>Continue <ArrowRight size={16} /></button> :
-        <div className="button-row"><button className="btn" onClick={finish}>Open workspace</button><button className="btn primary" onClick={canConnectVoice ? connectVoice : create}>{canConnectVoice ? 'Set up VoiceOS' : 'Create a project'} <ArrowRight size={16} /></button></div>}
+        <div className="button-row"><button className="btn" onClick={canConnectVoice ? connectVoice : create}>{canConnectVoice ? 'Set up VoiceOS' : 'Create a project'}</button><button className="btn primary" onClick={finish}>Open Gameplay <ArrowRight size={16} /></button></div>}
     </div>
   </div>;
 }

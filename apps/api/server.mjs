@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import Ajv from 'ajv';
 import formats from 'ajv-formats';
 import { createStore } from './store.mjs';
+import { browserToken, registerAccountRoutes, setBrowserCookie } from './accounts.mjs';
 import { createHiggsfield } from './higgsfield.mjs';
 import { createSceneWorker, queueScene, sceneInputHash } from './scene-jobs.mjs';
 import { visionReady } from './scene-plan.mjs';
@@ -32,10 +33,6 @@ const ajv = new Ajv({ strict: false });
 formats(ajv);
 const toolDefinitions = JSON.parse(readFileSync(join(root, 'packages/contracts/mcp-tools.json'))).tools;
 const toolValidation = new Map(toolDefinitions.map(tool => [tool.name, ajv.compile(tool.inputSchema)]));
-
-function cookie(request, name) {
-  return (request.headers.cookie || '').split(';').map(item => item.trim()).find(item => item.startsWith(name + '='))?.slice(name.length + 1);
-}
 
 async function streamFile(request, reply, path, mime) {
   const { size } = await stat(path);
@@ -84,6 +81,7 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     reply.code(status).send({ ok: false, code: error.status ? error.code : status === 413 ? 'FILE_TOO_LARGE' : 'REQUEST_FAILED', message: safe, ...error.details });
   });
   app.get('/health', async () => ({ ok: true }));
+  registerAccountRoutes(app, store);
 
   function auth(req, projectId) {
     let identity;
@@ -92,7 +90,7 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
       check(identity, 401, 'TOKEN_EXPIRED', 'Pair VoiceOS again to continue.');
       check(identity.project === projectId, 404, 'PROJECT_NOT_FOUND', 'That private project is unavailable.');
     } else {
-      identity = store.browser(cookie(req, 'ew_session'));
+      identity = store.browser(browserToken(req));
       check(identity, 401, 'SESSION_REQUIRED', 'Open Everwhere to start a private workspace.');
     }
     return identity;
@@ -110,11 +108,10 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
   };
 
   app.get('/v1/bootstrap', async (req, reply) => {
-    let identity = store.browser(cookie(req, 'ew_session'));
+    let identity = store.browser(browserToken(req));
     if (!identity) {
       identity = store.newBrowser();
-      const secure = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https';
-      reply.header('Set-Cookie', 'ew_session=' + identity.token + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000' + (secure ? '; Secure' : ''));
+      setBrowserCookie(req, reply, identity.token);
       store.create(identity.actor, 'The Dolomites', true);
     }
     return { ok: true, data: store.list(identity.actor) };

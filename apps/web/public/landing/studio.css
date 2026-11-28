@@ -19,12 +19,49 @@
   background: #101318;
   color: #f3f5f8;
   font-family: system-ui, sans-serif;
+  --bg: #101318;
+  --surface: #1c2026;
+  --surface-2: #272c33;
+  --surface-raised: #313941;
+  --line-strong: #585e68;
+  --quiet: #a8b1bf;
+  --text: #f3f5f8;
+  --text-muted: #bec5ce;
+  --primary-action: #edf0f4;
+  --primary-action-fg: #15171b;
+  --danger: #ffc4b8;
+  --display: 'Instrument Serif', Georgia, serif;
 }
 
 * { box-sizing: border-box; }
 body { margin: 0; isolation: isolate; }
-.landing-footer { position: absolute; bottom: max(24px, env(safe-area-inset-bottom)); left: 0; right: 0; display: flex; justify-content: center; gap: 28px; font: 11px "Space Mono", monospace; }
-.landing-footer a { color: #dce5ef; text-decoration: none; text-shadow: 0 1px 6px #000; }
+.account-nav {
+  position: absolute;
+  z-index: 1;
+  top: max(clamp(12px, 2.5vw, 28px), env(safe-area-inset-top));
+  right: max(clamp(14px, 3vw, 40px), env(safe-area-inset-right));
+}
+.account-nav a, .account-nav .account-control .account-trigger {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid #edf3fa50;
+  border-radius: 50%;
+  background: #141820ec;
+  color: #f3f5f8;
+  cursor: pointer;
+}
+.account-nav a:hover, .account-nav .account-control .account-trigger:hover { background: var(--surface-raised); }
+.account-nav :is(a, button):focus-visible, .account-dialog :is(input, button):focus-visible {
+  outline: 2px solid #c5d9fb;
+  outline-offset: 3px;
+}
+.account-dialog :is(button, input) { font-family: inherit; }
+.account-dialog button:enabled { cursor: pointer; }
+:where(.account-dialog) p { margin-block: 0; }
+.landing-footer { position: absolute; bottom: max(12px, env(safe-area-inset-bottom)); left: 0; right: 0; display: flex; justify-content: center; gap: clamp(14px, 4vw, 28px); padding-inline: 12px; font: 12px "Space Mono", monospace; }
+.landing-footer a { display: inline-flex; align-items: center; min-height: 44px; color: #dce5ef; text-decoration: none; text-shadow: 0 1px 6px #000; }
 .landing-footer a:hover { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
 .landing-footer a:focus-visible { outline: 2px solid #c5d9fb; outline-offset: 6px; }
 

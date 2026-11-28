@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Box, Plus, X } from 'lucide-react';
 import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark';
 import { Color, PerspectiveCamera, Scene, Sphere, Spherical, Vector3, WebGLRenderer } from 'three';
@@ -6,8 +6,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 type Position = [number, number, number];
 
-export default function Spatial({ url, position, onClose, onWaypoint }: {
+export default function Spatial({ url, position, onClose, onWaypoint, notifications }: {
   url: string; position?: Position; onClose: () => void; onWaypoint: (position: Position) => void;
+  notifications?: ReactNode;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<{ move: (position: Position) => void; read: () => Position; orbit: (key: string) => void } | null>(null);
@@ -101,6 +102,7 @@ export default function Spatial({ url, position, onClose, onWaypoint }: {
   useEffect(() => { if (position && phase === 'ready') controlsRef.current?.move(position); }, [position?.[0], position?.[1], position?.[2], phase]);
   return <div className="spatial" tabIndex={0} aria-label="3D scene. Use arrow keys to orbit or zoom."
     onKeyDown={event => {
+      if (event.defaultPrevented) return;
       if (event.key === 'Escape') { event.stopPropagation(); onClose(); }
       if (event.target !== event.currentTarget) return;
       const key = event.key.toLowerCase();
@@ -110,9 +112,9 @@ export default function Spatial({ url, position, onClose, onWaypoint }: {
     }}>
     <div className="spatial-canvas" ref={host} />
     <div className="spatial-bar"><span className="glass-pill"><Box size={15} /> Imported SPZ · Guided inspection · Scale unverified</span>
-      <button className="glass-icon" onClick={onClose} aria-label="Close 3D scene"><X size={18} /></button></div>
+      <div className="spatial-header-actions"><button className="glass-icon" onClick={onClose} aria-label="Close 3D scene"><X size={18} /></button>{notifications}</div></div>
     {phase === 'load' && <div className="spatial-state" role="status">Loading the reconstruction…</div>}
-    {phase === 'error' && <div className="spatial-state" role="status"><p>The 3D scene could not be loaded on this device.</p><button className="btn" onClick={onClose}>Return to photo trail</button></div>}
+    {phase === 'error' && <div className="spatial-state" role="status"><p>The 3D scene could not be loaded on this device.</p><button className="btn" onClick={onClose}>Back to Gameplay</button></div>}
     {phase === 'ready' && <div className="spatial-help"><span>Drag to orbit · Scroll to zoom · Walking requires a collision mesh</span><button className="btn compact" onClick={() => {
       const point = controlsRef.current?.read();
       if (point) onWaypoint(point);
