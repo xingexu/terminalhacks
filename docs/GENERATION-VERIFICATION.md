@@ -139,3 +139,7 @@ Codex ran `node --test tests/storyboard.test.mjs tests/application.test.mjs`: **
 This is a source-montage fidelity improvement. It does not establish realistic world generation, subjective visual acceptance, native spoken VoiceOS, deployment or submission.
 
 Native interactive Claude session `02ced386-0060-4c3d-8089-5ed9652eb6b2` independently reviewed the final application/test delta and approved with no remaining material findings after the alpha and missing-source fixes. Its review was static plus a synthetic Sharp alpha probe; Codex ran the MP4 and API tests. Existing completed films stay cached; this improvement applies to newly queued renders.
+
+## Integrated revision check — November 28, after 4:45 a.m.
+
+Codex independently ran the full `npm test` suite on `52f4fa086000613c17ec37f88a4b2762ce70c0de`: **114/114 passed**, no skipped tests, 11.7 seconds. This supersedes the earlier 111-test baseline for code verification and includes the three original-image regressions. `npm run typecheck` and `npm run build` also passed; the existing large Three/Spark chunk warning remains. The running local server returned healthy. Tests use disposable synthetic inputs; they do not establish personal-source consent, final-asset quality, native spoken VoiceOS or deployment/submission. No new browser rehearsal was performed while the owner sign-in handoff was pending.

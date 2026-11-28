@@ -1,11 +1,15 @@
 # Release acceptance matrix
 Record each test as PASS / FAIL / NOT RUN, with commit, environment, elapsed time, evidence link and owner. All P0 must pass for full claim; fallback never silently counts as primary feature. Targets below are internal, not measured results.
 
-## November 27–28 procedural demo scope
+## Current November 28 goal
 
 The owner reports organizer approval for the existing repository and coding before the public Saturday window. This is a user-provided clarification; it is not evidence that the public rules changed. The official event deadline remains Saturday November 28 at 4 p.m. Toronto, with a five-minute live demo and no slides. Reserve 2:30–4 p.m. for freeze, rehearsal and submission checks.
 
-The owner selected a clearly labelled procedural world because no world-generation provider is configured. **A05's original reconstruction requirement is not met by this fallback.** The demo claim is photos + metadata + recollection + optional cited place context → reviewed imagined scene → approval → exploration. Native VoiceOS A01/A13 and submission/deployment A15 remain independent gates, even when MCP transport and local browser checks pass. No rubric weights below are represented as official judging weights.
+The owner initially selected a clearly labelled procedural fallback, then activated a goal requiring a **convincing, realistic walkable memory**. The procedural baseline does not satisfy that requirement or A05. Krish selected Mont-Tremblant in winter; the exact photographed area, trip date and authorized personal files still need confirmation. Do not substitute the public room benchmark or invented trip details for those inputs.
+
+The current finish line is authorized photos/video + retained timestamps/location + cited place context + actual spoken VoiceOS recollections → one reviewed scene/story plan → an approved walkable world, album, journal and playable 1080p film. Approval, navigation, source inspection, corrections, recovery, revocation and save/reopen must work on that same memory. Astra's actual design must be integrated, and the user or designated teammate must accept the final visuals. Use existing credits only; no new scope after 12:30 p.m. or provider/renderer/design work after 2:30 p.m. The execution plan and handoffs are in `research/everwhere/TEAM-DISCUSSION-2026-11-27.md` in the parent workspace.
+
+Native VoiceOS A01/A13, final-asset performance/visual acceptance and release A15 remain independent gates, even when MCP transport and local tests pass. Record deployment and submission separately. The matrix below retains the full acceptance targets; an individual milestone does not prove every row. No rubric weights below are represented as official judging weights.
 
 | ID | Test | Pass condition | Owner |
 |---|---|---|---|
