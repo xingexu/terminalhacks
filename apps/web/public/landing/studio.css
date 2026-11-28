@@ -282,3 +282,18 @@ body { margin: 0; isolation: isolate; }
   .wordmark-object { transform: none; }
   .is-tilted .wordmark-layer { opacity: 0; }
 }
+
+.burst {
+  margin: 0 0 clamp(8px, 2.4svh, 22px);
+  color: #fff;
+  display: inline-block;
+  padding: 14px 20px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, #101318f2, #101318b3 62%, transparent);
+  font: clamp(24px, 2.7vw, 36px)/1 "Space Mono", ui-monospace, monospace;
+  text-shadow: 0 0 14px #ffffffb3, 0 2px 8px #000;
+  animation: burst-in 900ms cubic-bezier(.2, .8, .2, 1) both, burst-pulse 3.6s ease-in-out 900ms infinite;
+}
+@keyframes burst-in { from { opacity: 0; transform: scale(.4) rotate(-40deg); } }
+@keyframes burst-pulse { 50% { opacity: .55; transform: scale(.92); } }
+@media (prefers-reduced-motion: reduce) { .burst { animation: none; } }

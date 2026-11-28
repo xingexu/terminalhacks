@@ -451,4 +451,8 @@ function App() {
   </div>;
 }
 
-createRoot(document.getElementById('root')!).render(<App />);
+// A bare /app visit starts at the landing page; "Try it out" there brings the visitor back here.
+let entered = true;
+try { entered = sessionStorage.getItem('everwhere-entered') === '1'; } catch { /* Storage may be unavailable. */ }
+if (location.pathname === '/app' && !location.search && !location.hash && !entered) location.replace('/');
+else createRoot(document.getElementById('root')!).render(<App />);

@@ -3,6 +3,9 @@
   const wordmark = document.querySelector('.wordmark');
   const tryLink = document.querySelector('.try-link');
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  // The workspace sends first-time visitors here; this marks that they came through the front door.
+  const enter = () => { try { sessionStorage.setItem('everwhere-entered', '1'); } catch { /* Storage may be unavailable. */ } };
+  document.querySelectorAll('a[href^="/app"]').forEach(link => link.addEventListener('click', enter));
 
   const resetTilt = () => {
     wordmark.classList.remove('is-tilted');
