@@ -74,7 +74,7 @@ function Universe({ state, event, actions }: { state: Snapshot; event?: Memory; 
           <AsciiImage key={cover} src={cover} />
           <img className="universe-cover-img" src={cover} alt={source?.caption ?? ''} />
           <img className="hero-reveal" src={cover} alt="" aria-hidden="true" />
-        </> : <Images size={38} aria-hidden="true" />}
+        </> : <AsciiArt art={art.photo} />}
         {source?.provenance === 'imagined' && <span className="universe-media-label">Illustrated sample</span>}
       </div>
       <div className="universe-feature-copy">
@@ -377,6 +377,10 @@ function App() {
   const currentAnchor = state?.anchors.find(item => item.id === state.session.anchorId && item.eventId === current?.id);
   const hasMedia = state && !!project;
   const captureOpen = dialog?.kind === 'capture' || (dialog?.kind === 'confirm' && !!dialog.fromCapture);
+  // "Originals only" can empty a memory whose pictures are all illustrated; say so instead of showing blank frames.
+  const memoryPictures = state && current ? state.media.filter(item => current.sourceIds.includes(item.id) && isVisual(item)) : [];
+  const hiddenByLens = state?.session.lens === 'originals' ? memoryPictures.filter(item => item.provenance !== 'original').length : 0;
+  const lensHidesAll = hiddenByLens > 0 && hiddenByLens === memoryPictures.length;
   const dateLabel = state?.demo && state.events.length ? 'October 12–14, 2024' : current?.startAt ? displayDate(current.startAt) : '';
   const sectionTitles: Record<Dialog['kind'], string> = {
     library: 'Projects', settings: 'Project settings', voice: 'Connect VoiceOS', capture: 'Capture memory',
@@ -425,6 +429,9 @@ function App() {
             aria-pressed={state.session.lens === 'originals'} onClick={() => select({ lens: (state.session.lens === 'originals' ? 'all' : 'originals') as Lens })}>
             <Fingerprint size={16} /><span>Originals only</span><span className="switch-track"><i /></span></button>
         </div>
+        {lensHidesAll && <div className="notice lens-notice" role="status"><Fingerprint size={18} /><div><strong>Originals only is on</strong>
+          <p>{hiddenByLens} {hiddenByLens === 1 ? 'picture in this memory is illustrated or imagined, so it is' : 'pictures in this memory are illustrated or imagined, so they are'} hidden.</p></div>
+          <button className="btn compact" onClick={() => select({ lens: 'all' })}>Show all pictures</button></div>}
         {screen === 'universe' && <Universe state={state} event={current} actions={actions} />}
         {screen === 'explore' && <Explore state={state} event={current} actions={actions} />}
         {screen === 'watch' && <Watch state={state} event={current} actions={actions} />}

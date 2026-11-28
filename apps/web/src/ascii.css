@@ -27,6 +27,8 @@
 }
 .hero-img:not(.hero-reveal), .universe-cover-img, .film-preview > img:not(.film-reveal) { transition: opacity 320ms ease, filter 420ms ease; }
 .universe-feature-media, .hero, .film-stage { background: #0c0c0c; }
+.universe-feature-media { display: grid; place-items: center; }
+.lens-notice { margin-bottom: 22px; }
 /* A storyboard that is playing, or a finished film, shows the photograph itself. */
 .view-watch:is(.is-film-ready, .is-storyboard-playing) .film-preview > .ascii-image { opacity: 0; animation: none; transition: opacity 320ms ease; }
 .view-watch:is(.is-film-ready, .is-storyboard-playing) .film-preview > .ascii-image + img { opacity: 1; }
