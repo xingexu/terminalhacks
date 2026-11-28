@@ -293,6 +293,9 @@ function App() {
     const bar = tabs.current;
     const active = bar?.querySelector<HTMLElement>('.active');
     if (!bar || !active) return;
+    // The highlight slides to the current view instead of jumping.
+    bar.style.setProperty('--pill-x', active.offsetLeft + 'px');
+    bar.style.setProperty('--pill-w', active.offsetWidth + 'px');
     if (active.offsetLeft < bar.scrollLeft) bar.scrollLeft = active.offsetLeft - 8;
     else if (active.offsetLeft + active.offsetWidth > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = active.offsetLeft + active.offsetWidth - bar.clientWidth + 8;
   }, [activeView]);
@@ -354,7 +357,7 @@ function App() {
   return <div className="app-frame">
     <a className="skip-link" href="#experience">Skip to experience</a>
     <header className="menubar">
-      <a className="brand" href="/" aria-label="Everwhere home"><span className="brand-mark"><AsciiArt art={art.mark} /></span><span className="brand-name">everwhere<span className="brand-period">.</span></span></a>
+      <a className="brand" href="/" aria-label="Everwhere home"><img className="brand-logo" src="/landing/everwhere-logo.webp" alt="Everwhere" width="480" height="174" /></a>
       <button className="workspace-project" onClick={() => show('library')} aria-label={'Switch project, current project ' + (state?.title || 'Projects')}><span className="project-icon"><Images size={17} /></span><strong>{state?.title || 'Projects'}</strong><ChevronDown size={15} /></button>
       <nav className="menu" aria-label="Views" ref={tabs}>{nav.map(({ id, name, icon: Icon }) =>
         <button key={id} className={screen === id ? 'active' : ''} aria-current={screen === id ? 'page' : undefined}
@@ -371,7 +374,6 @@ function App() {
       {!loading && !state && !project && <div className="load-state"><AsciiArt art={art.universe} /><h1>Every life is a world.</h1><button className="btn primary" onClick={() => show('library')}><Plus size={17} /> Create a project</button></div>}
       {state && <div className="main-content">
         <div className="project-head"><div>
-          {state.demo && <p className="eyebrow project-kicker">Illustrated sample</p>}
           <h1>{state.title}</h1>
           <div className="project-details">{dateLabel && <span>{dateLabel}</span>}{dateLabel && current && <span className="dot-separator" />}
             {current && <span><MapPin size={14} />{state.demo ? 'The Italian Alps' : current.placeLabel}</span>}

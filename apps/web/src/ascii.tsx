@@ -131,10 +131,6 @@ export function AsciiImage({ src, focusY = 0.5, className = '' }: { src: string;
 }
 
 export const art = {
-  mark: String.raw`
- \|/
---*--
- /|\ `,
   universe: String.raw`
      .            *        .
   *       .-''''''-.
