@@ -12,7 +12,7 @@ The prepared memory is **Winter in Mont-Tremblant**. Its reviewed route has thre
 
 ### Integrated website
 
-The team’s streamlined website from `origin/main` (`130ec1f`) is integrated with the existing API, capture/review and Street View/VoiceOS paths. Its single menu exposes **Explore, Remember, Watch and Create**; project settings live in the project switcher. Cached `universe` and `archive` requests resolve to Explore on both API and browser paths. Reload preserves the chosen source lens. The older Higgsfield generation UI was not restored.
+The team’s streamlined website from `origin/main` (`96f7c7d`, including the later logo/menu polish) is integrated with the existing API, capture/review and Street View/VoiceOS paths. Its single menu exposes **Explore, Remember, Watch and Create**; project settings live in the project switcher. Cached `universe` and `archive` requests resolve to Explore on both API and browser paths. Reload preserves the chosen source lens. The older Higgsfield generation UI was not restored.
 
 ### Run locally
 
@@ -76,3 +76,5 @@ The real browser accepted a new Ccheck7 public-reference photo with credits, pre
 ### Website integration verification
 
 All four menu views, project settings, capture inputs, ambiguous/unknown place errors, entrance/interior/return, 320px and 390px layouts, source-lens persistence and recovery in all four views passed in actual Playwright-driven Chrome. Keyboard movement changed a real provider panorama and preserved the authored stop/heading on reopen. Direct paired MCP turn/forward/back/stop returned matching browser completion receipts; these were not spoken commands. Native Claude reviewed the merge; both findings (filter recovery and first-write legacy navigation preservation) are fixed and checked. Full suite: 187 tests; typecheck/build pass.
+
+The later team logo/animation polish is integrated. The active menu highlight now remeasures on viewport/font changes; actual browser checks cover 1440→390→320→1440 widths and confirm the walkthrough still fills the viewport.
