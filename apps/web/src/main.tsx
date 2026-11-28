@@ -4,6 +4,9 @@ import {
   Archive as ArchiveIcon, ArrowDownToLine, ArrowRight, AudioLines, BookOpen, Box, Camera, ChevronDown, ChevronRight,
   CircleHelp, Compass, Feather, Film, Fingerprint, Images, LockKeyhole, MapPin, Mic, Plus, Settings, X
 } from 'lucide-react';
+import '@fontsource-variable/dm-sans';
+import '@fontsource/instrument-serif/400.css';
+import '@fontsource/instrument-serif/400-italic.css';
 import './style.css';
 import './experience.css';
 import { Tutorial } from './onboarding';
@@ -335,7 +338,7 @@ function App() {
             onClick={() => { setMap(false); select({ view: id }); }} disabled={!state}><Icon size={19} />{name}{currentNav.id === id && <ChevronRight size={15} className="nav-caret" />}</button>)}</nav>
       </div>
       <div className="sidebar-bottom">
-        <button className="voice-card" onClick={() => show('voice')} disabled={!state} aria-label="Connect VoiceOS"><span className="voice-icon"><AudioLines size={21} /></span><span><strong>VoiceOS</strong><small>Voice controls</small></span><ArrowRight size={15} /></button>
+        <button className="voice-card" onClick={() => show('voice')} disabled={!state} aria-label="Connect VoiceOS"><span className="voice-icon"><AudioLines size={21} /></span><span><strong>VoiceOS</strong><small>Setup & voice controls</small></span><ArrowRight size={15} /></button>
         <div className="sidebar-footer"><button className="text-button" onClick={() => show('settings')} disabled={!state} aria-label="Project settings"><Settings size={18} /> Settings</button><button className="icon-btn" onClick={() => show('help')} aria-label="Open tutorial" title="Open tutorial"><CircleHelp size={20} /></button></div>
       </div>
     </aside>
@@ -373,7 +376,9 @@ function App() {
         <div className="library-list">{projects.map(item => <button className="workspace-project" key={item.id} onClick={() => { if (item.id !== project) chooseProject(item.id); dismiss(); }}>
           <span className="project-icon"><Images size={17} /></span><span><strong>{item.title}</strong><small>{item.demo ? 'Sample project' : 'Private project'}</small></span><ChevronRight size={17} /></button>)}</div>
         <NameForm handle={async title => { const created = await api<Project>('/projects', { title }); await loadProjects(); chooseProject(created.id); dismiss(); }} /></>}
-      {dialog.kind === 'help' && <Tutorial finish={dismiss} create={() => { localStorage.setItem('everwhere-tour-v1', 'done'); show('library'); }} />}
+      {dialog.kind === 'help' && <Tutorial finish={dismiss} canConnectVoice={!!state}
+        connectVoice={() => { localStorage.setItem('everwhere-tour-v1', 'done'); show('voice'); }}
+        create={() => { localStorage.setItem('everwhere-tour-v1', 'done'); show('library'); }} />}
       {hasMedia && state && dialog.kind === 'settings' && <SettingsPanel state={state} base={base} reload={() => void refresh().catch(() => {})} deleteProject={async () => {
         await api(base, { confirm: true }, 'DELETE'); const list = await loadProjects(); chooseProject(list[0]?.id || ''); dismiss();
       }} />}

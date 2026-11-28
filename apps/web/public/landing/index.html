@@ -3,35 +3,36 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Everwhere — Your life, worth keeping</title>
-  <meta name="description" content="A private home for your photos, places, and stories. Collect a moment, tell its story, and come back to it with Everwhere.">
-  <meta name="theme-color" content="#f7f7f2">
+  <title>Everwhere — A place for your memories</title>
+  <meta name="description" content="Keep your photos, places, and stories together. Revisit a memory, tell its story, and make a film with Everwhere.">
+  <meta name="theme-color" content="#101318">
   <base href="/landing/">
-  <link rel="preload" href="photos/lake.webp" as="image">
+  <link rel="preload" href="fonts/instrument-serif-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/space-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="studio.css">
+  <script src="ascii-background.js" defer></script>
 </head>
 <body>
-  <header class="site-header">
-    <a class="brand" href="/" aria-label="Everwhere home">Everwhere<span aria-hidden="true">.</span></a>
-    <a class="intro-link" href="/app?tour=1">How it works <span aria-hidden="true">↗</span></a>
-  </header>
-  <main>
-    <section class="welcome" aria-labelledby="title">
-      <div class="welcome-copy">
-        <h1 id="title">Your life.<br>A little closer.</h1>
-        <p>A private home for the photos, places, and stories you want to come back to.</p>
-        <a class="open-button" href="/app">Open Everwhere <span aria-hidden="true">→</span></a>
+  <div class="ascii-background" aria-hidden="true">
+    <canvas class="ascii-photo"></canvas>
+    <canvas class="ascii-trail"></canvas>
+  </div>
+  <main class="preview" aria-labelledby="title">
+    <div>
+      <div class="wordmark">
+        <div class="wordmark-object">
+          <div class="wordmark-layers" aria-hidden="true">
+            <span class="wordmark-layer wordmark-layer--far" data-text="Everwhere"></span>
+            <span class="wordmark-layer wordmark-layer--middle" data-text="Everwhere"></span>
+            <span class="wordmark-layer wordmark-layer--near" data-text="Everwhere"></span>
+          </div>
+          <h1 id="title">Everwhere</h1>
+        </div>
       </div>
-      <div class="memory-collection" aria-label="Photographs of places to remember">
-        <figure class="photo photo-ocean"><img src="photos/ocean.webp" alt="Waves meeting a quiet coastline" width="420" height="560"></figure>
-        <figure class="photo photo-lake"><img src="photos/lake.webp" alt="A mountain reflected in a still alpine lake" width="600" height="740" fetchpriority="high"></figure>
-        <figure class="photo photo-desert"><img src="photos/desert.webp" alt="Sandstone formations in the desert" width="420" height="510"></figure>
-      </div>
-    </section>
-    <section class="collection-details" aria-label="What you can keep">
-      <p>Photos &amp; films</p><p>Places &amp; timelines</p><p>Stories in your own words</p>
-    </section>
+      <p>A place for your memories.</p>
+      <a class="try-link" href="/app">Step inside</a>
+    </div>
   </main>
-  <footer><span>Made for your memories.</span><a href="https://github.com/xingexu/terminalhacks" target="_blank" rel="noreferrer">View on GitHub</a></footer>
+  <footer class="landing-footer"><a href="/app?tour=1">A quick introduction</a><a href="https://github.com/xingexu/terminalhacks" target="_blank" rel="noreferrer">GitHub</a></footer>
 </body>
 </html>
