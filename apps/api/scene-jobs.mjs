@@ -6,6 +6,7 @@ import { storeMesh } from '../../packages/media/mesh.mjs';
 import { interpretPhoto, scenePython, visionModel } from './scene-plan.mjs';
 
 const active = ['queued', 'interpreting', 'building'];
+const operationStatuses = new Set(['queued', 'running', 'succeeded', 'failed', 'timed_out', 'expired']);
 export const sceneInputHash = (state, eventId, sourceId) => digest(sceneDependencies(state, eventId, sourceId));
 
 export function queueScene(state, input) {
@@ -84,15 +85,20 @@ export function createSceneWorker(store, dataDir, provider) {
     check(job && currentInput(state, job), 409, 'SCENE_STALE', 'The memory changed during generation.');
     return job;
   };
+  function readOperation(result) {
+    const operation = result?.operation;
+    check(operation && typeof operation === 'object' && !Array.isArray(operation) && operationStatuses.has(operation.status),
+      502, 'SCENE_RESPONSE', 'Higgsfield returned an invalid operation status. Check the operation before resuming.');
+    return operation;
+  }
   async function settle(client, projectId, operationId, first, signal) {
-    let result = first;
-    while (!['succeeded', 'failed', 'timed_out', 'expired'].includes(result.operation?.status)) {
+    let operation = readOperation(first);
+    while (['queued', 'running'].includes(operation.status)) {
       signal.throwIfAborted();
       await delay(1000, undefined, { signal });
-      result = await client.call('scene_builder_3d_get_operation', { projectId, operationId, waitSeconds: 30 });
+      operation = readOperation(await client.call('scene_builder_3d_get_operation', { projectId, operationId, waitSeconds: 30 }));
     }
-    check(result.operation.status === 'succeeded', 502, 'SCENE_BUILD', 'Higgsfield could not finish the scene build. Review the scene in Higgsfield before retrying.');
-    return result.operation;
+    return operation;
   }
   async function build(actor, project, original) {
     let client;
@@ -129,24 +135,38 @@ export function createSceneWorker(store, dataDir, provider) {
       }
       const projectId = job.providerProjectId;
       let operation;
+      let failedRevisionBefore;
       if (job.operationId) {
         operation = await settle(client, projectId, job.operationId,
           await client.call('scene_builder_3d_get_operation', { projectId, operationId: job.operationId, waitSeconds: 30 }), signal);
-      } else {
+        if (operation.status !== 'succeeded') {
+          check(job.retryRequested === true, 502, 'SCENE_BUILD', 'Higgsfield reported a terminal scene failure. Check the scene, then resume to retry safely.');
+          failedRevisionBefore = Number.isSafeInteger(operation.revisionBefore) ? operation.revisionBefore : job.operationBaseRevision;
+          check(Number.isSafeInteger(failedRevisionBefore), 409, 'SCENE_REVISION_UNKNOWN',
+            'The failed scene revision could not be verified. Create a new scene to preserve provider changes.');
+          operation = undefined;
+        }
+      }
+      if (!operation) {
         const details = await client.call('scene_builder_3d_get_project', { projectId });
         check(!details.project?.activeOperationId, 409, 'SCENE_BUSY', 'Another edit is running in the Higgsfield scene. Let it finish before retrying.');
-        const queryId = job.id + '-inspect';
+        const queryId = uid();
         const query = await settle(client, projectId, queryId, await client.call('scene_builder_3d_query_python', {
           projectId, operationId: queryId, code: "result = {'objects': len(bpy.context.scene.objects), 'units': bpy.context.scene.unit_settings.system}", waitSeconds: 8
         }), signal);
-        check(Number.isInteger(query.revisionBefore) && Number.isInteger(query.sceneSequenceAfter), 502, 'SCENE_RESPONSE', 'The scene version could not be verified.');
+        check(query.status === 'succeeded', 502, 'SCENE_INSPECTION', 'Higgsfield could not inspect the scene. Check it and resume before building again.');
+        check(Number.isSafeInteger(query.revisionBefore) && Number.isSafeInteger(query.sceneSequenceAfter),
+          502, 'SCENE_RESPONSE', 'The scene version could not be verified.');
+        if (failedRevisionBefore !== undefined) check(query.revisionBefore === failedRevisionBefore, 409, 'SCENE_CHANGED',
+          'The Higgsfield scene changed after the failed generation. Create a new scene to preserve those changes.');
         const code = scenePython(job.plan);
-        const operationId = job.id + '-build';
-        job = patch(actor, project, job.id, { operationId });
+        const operationId = uid();
+        job = patch(actor, project, job.id, { operationId, operationBaseRevision: query.revisionBefore, retryRequested: false });
         operation = await settle(client, projectId, operationId, await client.call('scene_builder_3d_run_python', {
           projectId, operationId, code, revision: query.revisionBefore, expectedSceneSequence: query.sceneSequenceAfter, waitSeconds: 8
         }), signal);
       }
+      check(operation.status === 'succeeded', 502, 'SCENE_BUILD', 'Higgsfield could not finish the scene build. Review it before retrying.');
       assertCurrent(actor, project, job.id);
       check(Number.isInteger(operation.revisionAfter), 502, 'SCENE_RESPONSE', 'The generated scene revision could not be verified.');
       const download = await client.call('scene_builder_3d_get_glb', { projectId, revision: operation.revisionAfter });

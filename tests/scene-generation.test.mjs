@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { setTimeout as delay } from 'node:timers/promises';
 import { createMemory, appendChange, uid } from '../packages/runtime/memory.mjs';
 import { createEvent, getSnapshot } from '../apps/api/service.mjs';
-import { queueScene, finishScene } from '../apps/api/scene-jobs.mjs';
+import { createSceneWorker, queueScene, finishScene } from '../apps/api/scene-jobs.mjs';
 import { scenePython, validatePlan } from '../apps/api/scene-plan.mjs';
 
 function setup() {
@@ -16,6 +17,123 @@ function setup() {
   const asset = { id: uid(), storage: '/private/scene.glb', contentHash: 'generated-content-hash', format: 'glb', points: 24 };
   return { state, event, input, plan, asset };
 }
+
+function queuedWorker() {
+  const context = setup();
+  const job = queueScene(context.state, context.input);
+  Object.assign(job, { status: 'queued', plan: context.plan, providerProjectId: 'provider-project',
+    operationId: 'previous-build', operationBaseRevision: 4, retryRequested: true });
+  return { ...context, job };
+}
+
+async function runWorker(state, respond) {
+  const calls = [];
+  let finish;
+  const finished = new Promise(resolve => { finish = resolve; });
+  const store = {
+    read: () => state,
+    all: () => [{ id: 'project', actor: 'actor', state }],
+    update: (_actor, _project, _kind, mutate) => {
+      const data = mutate(state);
+      if (state.sceneJobs.some(job => ['failed', 'ready', 'stale'].includes(job.status))) finish();
+      return { data };
+    }
+  };
+  const provider = { connect: async () => ({
+    call: async (name, args) => { calls.push({ name, args }); return respond(name, args); },
+    close: async () => {}
+  }) };
+  const worker = createSceneWorker(store, '/private/scenes', provider);
+  worker.kick();
+  const timeout = new AbortController();
+  try {
+    await Promise.race([finished, delay(5000, undefined, { signal: timeout.signal }).then(() => {
+      throw new Error('Scene worker did not settle');
+    })]);
+  } finally { timeout.abort(); }
+  await worker.stop();
+  return calls;
+}
+
+test('scene worker retries terminal failures with fresh guarded operation IDs', async () => {
+  const { state, job, plan } = queuedWorker();
+  let queryCount = 0;
+  const respond = async (name, args) => {
+    if (name === 'scene_builder_3d_get_operation') {
+      assert.equal(args.operationId, 'previous-build');
+      return { operation: { status: 'failed' } };
+    }
+    if (name === 'scene_builder_3d_get_project') return { project: { activeOperationId: null } };
+    if (name === 'scene_builder_3d_query_python') {
+      queryCount++;
+      return queryCount === 1
+        ? { operation: { status: 'failed' } }
+        : { operation: { status: 'succeeded', revisionBefore: 4, sceneSequenceAfter: 27 } };
+    }
+    if (name === 'scene_builder_3d_run_python') {
+      assert.equal(job.operationId, args.operationId, 'Persist the fresh mutation ID before submission');
+      assert.equal(job.operationBaseRevision, args.revision, 'Persist the revision guard before submission');
+      return { operation: { status: 'failed', revisionBefore: 4 } };
+    }
+    assert.fail('Unexpected Higgsfield operation: ' + name);
+  };
+
+  const first = await runWorker(state, respond);
+  assert.equal(first.filter(call => call.name === 'scene_builder_3d_run_python').length, 0);
+  const firstQueryId = first.find(call => call.name === 'scene_builder_3d_query_python').args.operationId;
+  assert.equal(job.operationId, 'previous-build');
+  assert.equal(job.status, 'failed');
+
+  job.status = 'queued';
+  job.error = undefined;
+  job.retryRequested = true;
+  const second = await runWorker(state, respond);
+  const secondQueryId = second.find(call => call.name === 'scene_builder_3d_query_python').args.operationId;
+  const run = second.find(call => call.name === 'scene_builder_3d_run_python');
+  assert.notEqual(firstQueryId, secondQueryId);
+  assert.notEqual(secondQueryId, job.id + '-inspect');
+  assert.notEqual(run.args.operationId, 'previous-build');
+  assert.equal(run.args.revision, 4);
+  assert.equal(run.args.expectedSceneSequence, 27);
+  assert.equal(job.operationId, run.args.operationId);
+  assert.equal(job.operationBaseRevision, 4);
+  assert.equal(job.retryRequested, false);
+  assert.equal(job.providerProjectId, 'provider-project');
+  assert.equal(job.plan, plan);
+});
+
+test('scene worker refuses to retry a failed mutation after the provider scene changed', async () => {
+  const { state, job } = queuedWorker();
+  job.operationBaseRevision = 3;
+  const calls = await runWorker(state, async name => {
+    if (name === 'scene_builder_3d_get_operation') return { operation: { status: 'failed', revisionBefore: 4 } };
+    if (name === 'scene_builder_3d_get_project') return { project: { activeOperationId: null } };
+    if (name === 'scene_builder_3d_query_python') return { operation: { status: 'succeeded', revisionBefore: 5, sceneSequenceAfter: 28 } };
+    assert.fail('Unexpected Higgsfield operation: ' + name);
+  });
+  assert.equal(calls.some(call => call.name === 'scene_builder_3d_run_python'), false);
+  assert.equal(job.status, 'failed');
+  assert.match(job.error, /scene changed after the failed generation/i);
+  assert.equal(job.operationId, 'previous-build');
+});
+
+test('scene worker retains unresolved mutation IDs without replay', async () => {
+  for (const missingStatus of [false, true]) {
+    const { state, job } = queuedWorker();
+    const originalId = job.operationId;
+    const calls = await runWorker(state, async name => {
+      assert.equal(name, 'scene_builder_3d_get_operation');
+      if (missingStatus) return { operation: {} };
+      throw new Error('Temporary operation lookup failure');
+    });
+    assert.equal(calls[0].args.operationId, originalId);
+    assert.equal(calls.some(call => call.name === 'scene_builder_3d_run_python'), false);
+    assert.equal(calls.some(call => call.name === 'scene_builder_3d_query_python'), false);
+    assert.equal(job.operationId, originalId);
+    assert.equal(job.status, 'failed');
+    if (missingStatus) assert.match(job.error, /invalid operation status/i);
+  }
+});
 
 test('scene requests are idempotent, source-linked, and require explicit permission', () => {
   const { state, input } = setup();
