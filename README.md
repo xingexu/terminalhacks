@@ -16,10 +16,10 @@ Open `http://localhost:4173`. Set `PORT` to change the port and `EVERWHERE_DATA`
 
 ## Try the workflow
 
-1. Create or select a memory. Open **Capture memory**, confirm permission, and choose photos, clips, or a voice note. Each upload waits in the review inbox.
-2. Use the candidate reasons to choose a memory, preview the link or attributed recollection, and confirm it. Switch between **Explore**, **Create**, and **Remember** to see the updated memory. **Archive** records revisions.
-3. In **Watch**, preview a film, render it, and approve it before playback or download. A confirmed voice note can become narration. Corrections and revocation can make a prior film stale.
-4. **Explore** can open a photo trail or import a prebuilt `.spz` reconstruction. To use the reconstruction, link an original image, import the SPZ, and approve it. Turn off **Originals only** to open the scene.
+1. Create or select a memory. Open **Capture**, confirm permission, and choose photos, clips, or a voice note. Each upload waits in the review inbox. Use **New memory** in the inbox when you need a destination.
+2. Use the candidate reasons to choose a memory, preview the link or attributed recollection, and confirm it. Switch between **Memories**, **Studio**, and **Stories** to see the updated memory. **Library** records revisions.
+3. In **Films**, preview a film, render it, and approve it before playback or download. A confirmed voice note can become narration. Corrections and revocation can make a prior film stale.
+4. **Memories** can open a photo trail or import a prebuilt `.spz` reconstruction. To use the reconstruction, link an original image, import the SPZ, and approve it. Turn off **Originals only** to open the scene.
 5. Use **Project settings** to revoke a capture grant or delete a project.
 
 ## VoiceOS

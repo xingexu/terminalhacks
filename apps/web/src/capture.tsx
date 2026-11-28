@@ -1,15 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AudioLines, Camera, Check, FolderOpen, Image, Mic, Square, Trash2, Upload, X } from 'lucide-react';
 import { api, displayDate, sourceURL, type Observation, type Snapshot } from './model';
 
 type CaptureProps = {
   state: Snapshot; base: string; items: Observation[];
+  visible: boolean;
   reload: () => Promise<void>;
   preview: (item: Observation, eventId: string, text?: string) => Promise<void>;
-  addMemory: () => void;
+  renderMemoryForm: (onCreated: () => void) => ReactNode;
 };
 
-export function Capture({ state, base, items, reload, preview, addMemory }: CaptureProps) {
+export function Capture({ state, base, items, visible, reload, preview, renderMemoryForm }: CaptureProps) {
   const [consent, setConsent] = useState(false);
   const [keepLocation, setKeepLocation] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
@@ -20,11 +21,16 @@ export function Capture({ state, base, items, reload, preview, addMemory }: Capt
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
   const [failures, setFailures] = useState<string[]>([]);
+  const [creatingMemory, setCreatingMemory] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const mounted = useRef(false);
   const folder = useRef<HTMLInputElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!visible) content.current?.querySelectorAll('audio').forEach(audio => audio.pause());
+  }, [visible]);
   useEffect(() => {
     mounted.current = true;
     folder.current?.setAttribute('webkitdirectory', '');
@@ -114,7 +120,7 @@ export function Capture({ state, base, items, reload, preview, addMemory }: Capt
       setQueued(false);
     }
   }
-  return <div className="capture-content">
+  return <div className="capture-content" ref={content}>
     <div className="capture-info"><Camera size={23} /><p>Choose photos, clips, or a voice note. Review each source before it becomes part of a memory.</p></div>
     <label className="check-row"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} disabled={busy} />
       <span>I have permission to keep these sources in this private project.</span></label>
@@ -140,15 +146,19 @@ export function Capture({ state, base, items, reload, preview, addMemory }: Capt
     {progress && <p className="muted" role="status">{progress}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     {!!failures.length && <ul className="form-error">{failures.map((item, i) => <li key={i}>{item}</li>)}</ul>}
-    <div className="inbox-title"><h3>Review inbox</h3><span>{items.length} pending</span></div>
-    {!state.events.length && <p className="empty-inbox">Create a memory before linking a source. <button className="text-button" onClick={addMemory}>Add a memory</button></p>}
+    <div className="inbox-title"><h3>Review inbox</h3><span>{items.length} pending</span><button type="button" className="text-button" disabled={busy || creatingMemory} onClick={() => setCreatingMemory(true)}>New memory</button></div>
+    {creatingMemory && <div className="surface">
+      <div className="inbox-title"><h3>Create a memory</h3><button type="button" className="text-button" onClick={() => setCreatingMemory(false)}>Cancel new memory</button></div>
+      {renderMemoryForm(() => setCreatingMemory(false))}
+    </div>}
+    {!state.events.length && <p className="empty-inbox">Create a memory before linking a source. <button type="button" className="text-button" disabled={busy || creatingMemory} onClick={() => setCreatingMemory(true)}>Add a memory</button></p>}
     {!items.length && <p className="empty-inbox">New photos, videos, and voice notes will appear here.</p>}
-    {items.map(item => <InboxItem key={item.id} item={item} state={state} base={base} refresh={reload} preview={preview} />)}
+    {items.map(item => <InboxItem key={item.id} item={item} state={state} base={base} refresh={reload} preview={preview} captureBusy={busy} />)}
   </div>;
 }
 
-function InboxItem({ item, state, base, refresh, preview }: {
-  item: Observation; state: Snapshot; base: string; refresh: () => Promise<void>; preview: CaptureProps['preview'];
+function InboxItem({ item, state, base, refresh, preview, captureBusy }: {
+  item: Observation; state: Snapshot; base: string; refresh: () => Promise<void>; preview: CaptureProps['preview']; captureBusy: boolean;
 }) {
   const [eventId, setEventId] = useState(item.candidates[0]?.id ?? state.session.eventId ?? '');
   const [text, setText] = useState('');
@@ -172,7 +182,7 @@ function InboxItem({ item, state, base, refresh, preview }: {
       <label>Link to memory<select value={eventId} onChange={e => setEventId(e.target.value)}><option value="">Select a memory</option>
         {state.events.map(event => <option key={event.id} value={event.id}>{event.title}</option>)}</select></label>
       {matching && <small className="muted">{matching.reason}</small>}
-      <button className="btn compact primary" disabled={!eventId || (!!audio && !text.trim()) || busy} onClick={() => {
+      <button className="btn compact primary" disabled={!eventId || (!!audio && !text.trim()) || busy || captureBusy} onClick={() => {
         setBusy(true);
         preview(item, eventId, text || undefined).catch(err => setError((err as Error).message)).finally(() => setBusy(false));
       }}>Review {audio ? 'recollection' : 'link'}</button></>}
