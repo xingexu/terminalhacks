@@ -50,6 +50,12 @@
   let height = background.clientHeight;
   let scale = Math.min(window.devicePixelRatio, 2);
   let photo;
+  let glyphWidth;
+  let glyphHeight;
+  let exitFrame = 0;
+  let exitTimer = 0;
+  let destination;
+  let scatterCanvas;
 
   function sizeCanvas(canvas, context) {
     canvas.width = Math.round(width * scale);
@@ -68,6 +74,8 @@
 
     const cellHeight = fontSize * 1.18;
     const cellWidth = context.measureText('M').width;
+    glyphWidth = cellWidth;
+    glyphHeight = cellHeight;
     const columns = Math.ceil(width / cellWidth);
     const rows = Math.ceil(height / cellHeight);
     sampler.canvas.width = columns;
@@ -154,7 +162,7 @@
   document.addEventListener('visibilitychange', clearTrail);
   window.addEventListener('blur', clearTrail);
   window.addEventListener('pointermove', ({ clientX, clientY, pointerType }) => {
-    if (!trailContext || pointerType === 'touch' || !photo || reducedMotion.matches || document.hidden) return;
+    if (!trailContext || destination || pointerType === 'touch' || !photo || reducedMotion.matches || document.hidden) return;
 
     const last = trail.at(-1);
     if (last && Math.hypot(clientX - last.x, clientY - last.y) < 8) return;
@@ -175,6 +183,170 @@
     if (trailContext) sizeCanvas(trailCanvas, trailContext);
     paint();
   }).observe(background);
+
+  // Each instance carries one original cell from the painted, full-resolution canvas.
+  function glyphScatter(canvas, gl, originX, originY) {
+    function shader(type, source) {
+      const result = gl.createShader(type);
+      gl.shaderSource(result, source);
+      gl.compileShader(result);
+      return result;
+    }
+    const program = gl.createProgram();
+    gl.attachShader(program, shader(gl.VERTEX_SHADER, `#version 300 es
+      in vec2 corner;
+      uniform vec2 viewport, cell, origin;
+      uniform int columns;
+      uniform float progress;
+      out vec2 uv;
+      void main() {
+        vec2 grid = vec2(gl_InstanceID % columns, gl_InstanceID / columns);
+        vec2 start = grid * cell;
+        vec2 extent = min(cell, viewport - start);
+        vec2 center = start + extent * .5;
+        vec2 ray = center - origin;
+        float spread = length(viewport);
+        float seed = fract(sin(dot(grid, vec2(12.9898, 78.233))) * 43758.5453);
+        float delay = .20 * length(ray) / spread + .045 * seed;
+        float t = clamp((progress - delay) / (1.0 - delay), 0.0, 1.0);
+        float angle = (length(ray) < .01 ? seed * 6.283 : atan(ray.y, ray.x)) + (seed - .5) * .60;
+        float travel = spread * (1.08 + .35 * seed) * t * (.40 + .60 * t);
+        float spin = (seed - .5) * 1.8 * t;
+        vec2 offset = (corner - .5) * extent;
+        vec2 pos = center + vec2(cos(angle), sin(angle)) * travel
+          + mat2(cos(spin), sin(spin), -sin(spin), cos(spin)) * offset;
+        uv = (start + corner * extent) / viewport;
+        gl_Position = vec4(pos / viewport * vec2(2.0, -2.0) + vec2(-1.0, 1.0), 0.0, 1.0);
+      }`));
+    gl.attachShader(program, shader(gl.FRAGMENT_SHADER, `#version 300 es
+      precision highp float;
+      uniform sampler2D artwork;
+      in vec2 uv;
+      out vec4 pixel;
+      void main() { pixel = texture(artwork, uv); }`));
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return null;
+    gl.useProgram(program);
+    const corner = gl.getAttribLocation(program, 'corner');
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(corner);
+    gl.vertexAttribPointer(corner, 2, gl.FLOAT, false, 0, 0);
+    gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, photoCanvas);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    const columns = Math.ceil(width / glyphWidth);
+    const count = columns * Math.ceil(height / glyphHeight);
+    gl.uniform1i(gl.getUniformLocation(program, 'columns'), columns);
+    gl.uniform2f(gl.getUniformLocation(program, 'viewport'), width, height);
+    gl.uniform2f(gl.getUniformLocation(program, 'cell'), glyphWidth, glyphHeight);
+    gl.uniform2f(gl.getUniformLocation(program, 'origin'), originX, originY);
+    const progress = gl.getUniformLocation(program, 'progress');
+    return t => {
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.uniform1f(progress, t);
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
+    };
+  }
+
+  // With 2D rendering, group adjacent glyphs to bound the draw calls on large displays.
+  function canvasScatter(canvas, originX, originY) {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    const group = Math.max(1, Math.ceil(Math.sqrt(width * height / (glyphWidth * glyphHeight * 2200))));
+    const stepX = glyphWidth * group, stepY = glyphHeight * group;
+    const spread = Math.hypot(width, height);
+    const fragments = [];
+    for (let y = 0; y < height; y += stepY) {
+      for (let x = 0; x < width; x += stepX) {
+        const w = Math.min(width - x, stepX), h = Math.min(height - y, stepY);
+        const dx = x + w / 2 - originX, dy = y + h / 2 - originY;
+        const seed = Math.random();
+        const angle = Math.atan2(dy, dx) + (seed - .5) * .60;
+        const travel = spread * (1.08 + .35 * seed);
+        fragments.push({ x, y, w, h, dx: Math.cos(angle) * travel, dy: Math.sin(angle) * travel,
+          delay: .20 * Math.hypot(dx, dy) / spread + .045 * seed });
+      }
+    }
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    return progress => {
+      ctx.clearRect(0, 0, width, height);
+      for (const p of fragments) {
+        const t = Math.max(0, (progress - p.delay) / (1 - p.delay));
+        const motion = t * (.40 + .60 * t);
+        ctx.drawImage(photoCanvas, p.x * scale, p.y * scale, p.w * scale, p.h * scale,
+          p.x + p.dx * motion, p.y + p.dy * motion, p.w, p.h);
+      }
+    };
+  }
+
+  function makeSurface() {
+    const surface = document.createElement('canvas');
+    surface.className = 'ascii-scatter';
+    surface.width = photoCanvas.width;
+    surface.height = photoCanvas.height;
+    return surface;
+  }
+
+  function navigate() {
+    if (!destination) return;
+    clearTimeout(exitTimer);
+    cancelAnimationFrame(exitFrame);
+    location.assign(destination);
+  }
+
+  document.addEventListener('click', event => {
+    const link = event.target.closest?.('.try-link, .landing-footer a');
+    if (!link || link.origin !== location.origin || link.pathname !== '/app' ||
+      link.target && link.target !== '_self' || event.defaultPrevented || event.button !== 0 ||
+      event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    if (!photo || reducedMotion.matches) return;
+    event.preventDefault();
+    if (destination) return;
+    destination = link.href;
+    document.documentElement.dataset.leaving = 'true';
+    exitTimer = setTimeout(navigate, 850);
+    const bounds = link.getBoundingClientRect();
+    const x = event.detail ? event.clientX : bounds.left + bounds.width / 2;
+    const y = event.detail ? event.clientY : bounds.top + bounds.height / 2;
+    clearTrail();
+    scatterCanvas = makeSurface();
+    const gl = scatterCanvas.getContext('webgl2', { antialias: false, depth: false, stencil: false });
+    let draw = gl && glyphScatter(scatterCanvas, gl, x, y);
+    if (!draw) {
+      if (gl) scatterCanvas = makeSurface();
+      draw = canvasScatter(scatterCanvas, x, y);
+    }
+    if (!draw) return navigate();
+    background.append(scatterCanvas);
+    draw(0);
+    const started = performance.now();
+    function tick(now) {
+      const progress = Math.min(1, (now - started) / 740);
+      draw(progress);
+      if (progress < 1) exitFrame = requestAnimationFrame(tick);
+      else navigate();
+    }
+    exitFrame = requestAnimationFrame(tick);
+  });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) navigate(); });
+  window.addEventListener('pagehide', () => {
+    clearTimeout(exitTimer);
+    cancelAnimationFrame(exitFrame);
+  });
+  window.addEventListener('pageshow', () => {
+    scatterCanvas?.remove();
+    scatterCanvas = null;
+    destination = null;
+    delete document.documentElement.dataset.leaving;
+  });
 
   // Choose one landscape per load, with fallbacks if a photo cannot be decoded.
   for (let i = sources.length - 1; i > 0; i--) {

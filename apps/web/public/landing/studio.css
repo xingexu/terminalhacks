@@ -319,3 +319,11 @@ body { margin: 0; isolation: isolate; }
   .wordmark-object { transform: none; }
   .is-tilted .wordmark-layer { opacity: 0; }
 }
+
+.ascii-scatter { opacity: .96; }
+:root[data-leaving] :is(.ascii-photo, .ascii-trail) { visibility: hidden; }
+:root[data-leaving] :is(.preview, .landing-footer, .account-nav) {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease-out;
+}
