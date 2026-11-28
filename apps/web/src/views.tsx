@@ -95,7 +95,8 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
   const [spatial, setSpatial] = useState<string | null>(null);
   const activeEvent = event?.id;
   const selectedAnchor = state.anchors.find(item => item.id === state.session.anchorId);
-  const lastAnchor = useRef(state.session.anchorId);
+  const lastAnchor = useRef<typeof state.session.anchorId | undefined>(undefined);
+  useEffect(() => { setEntered(false); setShowStory(false); }, [activeEvent, state.session.lens]);
   useEffect(() => {
     if (lastAnchor.current !== state.session.anchorId && selectedAnchor?.worldId === 'trail-' + activeEvent) setEntered(true);
     lastAnchor.current = state.session.anchorId;
@@ -105,7 +106,6 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
   const world = worlds.find(item => item.id === spatial) ?? worlds.at(-1);
   useEffect(() => { setSpatial(worlds.some(item => item.id === selectedAnchor?.worldId) ? selectedAnchor!.worldId : null); },
     [activeEvent, selectedAnchor?.worldId, state.session.lens]);
-  useEffect(() => { setEntered(false); setShowStory(false); }, [activeEvent, state.session.lens]);
   if (!event) return <Empty icon={<Compass size={33} />} title="Start with a place you remember">
     <p>Give a moment a name, then add the photos and stories you want to keep.</p>
     <button className="btn primary" onClick={actions.openMemory}><Plus size={17} /> Add a memory</button>
