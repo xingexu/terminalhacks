@@ -249,7 +249,9 @@ export default function Scan({ url, position, onClose, onWaypoint, anchors, sele
         event.preventDefault();
         if (key !== ' ' || !event.repeat) keys.current.add(key);
       }
-    }} onKeyUp={event => keys.current.delete(event.key.toLowerCase())}>
+    }} onKeyUp={event => {
+      if (event.key !== ' ') keys.current.delete(event.key.toLowerCase());
+    }}>
     <div className="walk-canvas" ref={host} tabIndex={0} aria-label="Reconstruction. Choose a floor, then use WASD to walk and drag to look." onBlur={() => keys.current.clear()} />
     <header className="walk-header"><div className="walk-brand">everwhere<span>Reconstructed · imported mesh</span></div><div className="walk-header-actions"><button onClick={onClose}><X size={16} /> Exit</button></div></header>
     {anchors.length > 0 && <aside className="scan-waypoints" aria-label="Saved places">

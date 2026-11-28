@@ -116,7 +116,9 @@ export default function WalkableAlbum({ state, photos, title, onClose, onWaypoin
     { key: 'd', name: 'Step right', icon: ArrowRight }
   ];
   return createPortal(<div className="walk-album" role="dialog" aria-modal="true" aria-label={title + ' immersive album'} ref={dialog}
-    onKeyDown={keyDown} onKeyUp={event => controls.current?.keys.delete(event.key.toLowerCase())}>
+    onKeyDown={keyDown} onKeyUp={event => {
+      if (event.key !== ' ') controls.current?.keys.delete(event.key.toLowerCase());
+    }}>
     <div className="walk-canvas" ref={host} tabIndex={0} aria-label="Walk through your album. WASD to move, arrow keys to turn, drag to look, E to open a nearby photo."
       onBlur={() => controls.current?.keys.clear()} />
     <div className="walk-vignette" />

@@ -1,7 +1,7 @@
 import {
   ACESFilmicToneMapping, AmbientLight, BoxGeometry, BufferGeometry, CatmullRomCurve3,
   Color, CylinderGeometry, DirectionalLight, DoubleSide, Float32BufferAttribute, Fog, Group,
-  Mesh, MeshBasicMaterial, MeshStandardMaterial, PCFSoftShadowMap, PerspectiveCamera, PlaneGeometry, Scene,
+  Mesh, MeshBasicMaterial, MeshStandardMaterial, PCFShadowMap, PerspectiveCamera, PlaneGeometry, Scene,
   ShaderMaterial, SphereGeometry, SRGBColorSpace, Texture, TubeGeometry, Vector3, WebGLRenderer
 } from 'three';
 import { Octree } from 'three/addons/math/Octree.js';
@@ -25,7 +25,7 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.15;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = PCFSoftShadowMap;
+  renderer.shadowMap.type = PCFShadowMap;
   const canvas = renderer.domElement;
   canvas.setAttribute('aria-hidden', 'true');
   host.appendChild(canvas);
