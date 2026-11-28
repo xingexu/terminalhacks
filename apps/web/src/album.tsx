@@ -16,7 +16,7 @@ export default function WalkableAlbum({ state, photos, title, onClose, onWaypoin
   const controls = useRef<AlbumControls | null>(null);
   const lastStop = useRef(-1);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [frame, setFrame] = useState<AlbumFrame>({ x: 0, z: 6, yaw: 0 });
+  const [frame, setFrame] = useState<AlbumFrame>({ x: 0, y: 1.65, z: 6, yaw: 0 });
   const [inspectedId, setInspectedId] = useState<string | null>(null);
   const [imageFailed, setImageFailed] = useState(false);
   const [help, setHelp] = useState(false);
@@ -65,7 +65,7 @@ export default function WalkableAlbum({ state, photos, title, onClose, onWaypoin
   useEffect(() => {
     const anchor = state.anchors.find(item => item.id === state.session.anchorId && item.worldId === 'trail-' + item.eventId);
     const index = photos.findIndex(photo => anchor?.sourceIds.includes(photo.id));
-    if (index >= 0) controls.current?.visit(index);
+    if (index >= 0) controls.current?.visit(index, anchor?.position);
   }, [state.session.anchorId, photoKey]);
 
   useEffect(() => {
@@ -186,7 +186,7 @@ export default function WalkableAlbum({ state, photos, title, onClose, onWaypoin
         {memory?.story && <p>{memory.story}</p>}
         {recollections.map(item => <blockquote key={item.id}>{item.text}<cite>{item.contributor} · Recollection</cite></blockquote>)}
         <div className="walk-help-actions"><button className="walk-primary" onClick={() => setInspectedId(null)}>Continue exploring <ArrowRight size={16} /></button>
-          {onWaypoint && <button onClick={() => onWaypoint(inspected.id, [frame.x, 1.6, frame.z])}><MapPin size={16} /> Save photo waypoint</button>}
+          {onWaypoint && <button onClick={() => onWaypoint(inspected.id, [frame.x, frame.y, frame.z])}><MapPin size={16} /> Save photo waypoint</button>}
         </div>
       </div>
     </article></div>}

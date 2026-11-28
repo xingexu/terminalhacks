@@ -14,11 +14,11 @@ import { FrameMetrics } from './gameplay/performance';
 import { safeCameraPosition } from './collision';
 import type { RuntimeControls } from './gameplay/tools';
 
-export type AlbumFrame = { x: number; z: number; yaw: number; nearby?: string; environment?: boolean };
+export type AlbumFrame = { x: number; y: number; z: number; yaw: number; nearby?: string; environment?: boolean };
 export type AlbumControls = {
   keys: Set<string>;
   pause: (value: boolean) => void;
-  visit: (index: number) => void;
+  visit: (index: number, position?: [number, number, number]) => void;
   reset: () => void;
   dispose: () => void;
   runtime: RuntimeControls;
@@ -283,11 +283,15 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
     capability: 'free_roam', provenance: 'imagined'
   }, point => safeCameraPosition(collisionWorld, point));
   function reset() { recorder.interrupt(); walker.place(new Vector3(0, 0.05, 6)); camera.position.copy(walker.eye); yaw = 0; pitch = -0.02; keys.clear(); }
-  function visit(index: number) {
+  function visit(index: number, position?: [number, number, number]) {
     recorder.interrupt();
     const stop = stops[index];
     if (!stop) return;
-    walker.place(new Vector3(stop.x < 0 ? -1.8 : 1.8, 0.05, stop.z + 0.1));
+    const saved = position && position.every(Number.isFinite) && position[0] >= -6.7 && position[0] <= 6.7 &&
+      position[1] >= 1.55 && position[1] <= 7 && position[2] >= end + 0.8 && position[2] <= 11.1 &&
+      safeCameraPosition(collisionWorld, position);
+    walker.place(saved ? new Vector3().fromArray(position).add(new Vector3(0, -1.6, 0)) :
+      new Vector3(stop.x < 0 ? -1.8 : 1.8, 0.05, stop.z + 0.1));
     camera.position.copy(walker.eye);
     yaw = stop.x < 0 ? Math.PI / 2 : -Math.PI / 2;
     pitch = 0.06;
@@ -352,7 +356,7 @@ export function createAlbumScene(host: HTMLElement, project: string, photos: Sou
     if (time - lastReport > 120) {
       lastReport = time;
       const nearby = nearbyPhoto(camera.position, stops);
-      onFrame({ x: camera.position.x, z: camera.position.z, yaw, nearby: nearby?.sourceId, environment: environmentReady });
+      onFrame({ x: camera.position.x, y: camera.position.y, z: camera.position.z, yaw, nearby: nearby?.sourceId, environment: environmentReady });
       updatePhotos();
     }
     renderer.render(scene, camera);
