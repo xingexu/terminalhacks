@@ -2,6 +2,8 @@
 
 Use one consented memory, three original photos and one short personal recollection. Keep the local server running. Synthetic rehearsal fixtures are labelled as test inputs and must not be presented as a real person's memory.
 
+This is the verified procedural baseline rehearsal. The active goal still requires an accepted realistic scene, native spoken VoiceOS and a film of the 3D walk; this script does not establish those missing gates. For the current photo/video film, generate/import and **approve the chosen world first**, then review and render the film. A new world, changed sources or a correction retires a prior cut. Review the named world, shot order, omitted evidence and any timed narration excerpt before rendering, then separately approve playback. The album and journal retain every available visual source in the shared order.
+
 | Time | Action | Claim supported |
 |---|---|---|
 | 0:00–0:40 | Open the memory; show original photos, recorded time and location. | A scattered collection becomes one reviewable memory. Unknown metadata stays unknown. |

@@ -110,11 +110,15 @@ export async function renderFilm(manifest, outputDir, outputId, demoDir) {
   await mkdir(working, { recursive: true });
   const runFfmpeg = args => run(ffmpeg, ['-nostdin', '-loglevel', 'error', '-y', ...args], { timeout: 130000 });
   try {
-    const sources = manifest.media.slice(0, 8);
-    const segmentSeconds = Math.max(4, Math.ceil(30 / sources.length));
+    const frames = manifest.storyboard.frames;
+    if (!frames.length || frames.length > 8) throw new Error('Review a valid source storyboard before rendering.');
     const clips = [];
     const lines = [];
-    for (const [index, item] of sources.entries()) {
+    let elapsed = 0;
+    for (const [index, frame] of frames.entries()) {
+      const item = manifest.media.find(item => item.id === frame.sourceId);
+      const segmentSeconds = frame.seconds;
+      if (!item || !Number.isFinite(segmentSeconds) || segmentSeconds < 4 || segmentSeconds > 30) throw new Error('The reviewed storyboard is invalid.');
       const name = 'clip-' + index + '.mp4';
       const image = item.mime.startsWith('image/');
       const input = item.demoFile ? join(demoDir, item.demoFile) : (image ? item.thumb : item.storage);
@@ -126,9 +130,12 @@ export async function renderFilm(manifest, outputDir, outputId, demoDir) {
         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22', '-threads', '2', join(working, name)]);
       clips.push("file '" + name + "'");
       const context = [manifest.event.placeLabel, manifest.event.startAt?.slice(0, 10)].filter(Boolean).join(' · ');
-      const content = [index === 0 ? [manifest.event.title, context].filter(Boolean).join(' · ') : item.caption, item.provenance === 'imagined' ? 'Imagined demo imagery' : 'Original source']
-        .map(line => line.replace(/[\r\n<>]/g, ' ').slice(0, 150)).join('\n');
-      lines.push({ start: index * segmentSeconds, end: (index + 1) * segmentSeconds, content });
+      const content = [...(index === 0 ? [[manifest.event.title, context].filter(Boolean).join(' · ')] : []), frame.caption,
+        frame.provenance === 'imagined' ? 'Imagined demo imagery' : 'Original source',
+        ...(frame.recollection ? ['You recalled' + (frame.recollection.excerpt ? ' (excerpt)' : '') + ': ' + frame.recollection.text] : [])]
+        .map(line => line.replace(/[\r\n<>]/g, ' ')).join('\n');
+      lines.push({ start: elapsed, end: elapsed + segmentSeconds, content });
+      elapsed += segmentSeconds;
     }
     const list = join(working, 'list.txt');
     const subs = join(working, 'film.srt');
@@ -138,9 +145,15 @@ export async function renderFilm(manifest, outputDir, outputId, demoDir) {
     await writeFile(subs, textCues(','));
     await writeFile(captions, 'WEBVTT\n\n' + textCues('.'));
     const audio = manifest.narration;
+    const narration = manifest.storyboard.narration;
+    if (audio && (!narration || narration.sourceId !== audio.id || !Number.isFinite(narration.startSeconds) ||
+      !Number.isFinite(narration.seconds) || narration.startSeconds < 0 || narration.seconds <= 0 ||
+      narration.startSeconds + narration.seconds > elapsed)) throw new Error('Review valid narration timing before rendering.');
     const audioInput = audio ? ['-i', audio.playback || audio.storage] : ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'];
     await runFfmpeg(['-f', 'concat', '-safe', '1', '-i', list, ...audioInput,
-      '-i', subs, '-map', '0:v:0', '-map', '1:a:0', '-map', '2:s:0', ...(audio ? ['-af', 'apad', '-ar', '48000', '-ac', '2'] : []), '-t', String(sources.length * segmentSeconds),
+      '-i', subs, '-map', '0:v:0', '-map', '1:a:0', '-map', '2:s:0', ...(audio ? ['-af',
+        `atrim=duration=${narration.seconds},asetpts=PTS-STARTPTS,adelay=${Math.round(narration.startSeconds * 1000)}:all=1,apad`,
+        '-ar', '48000', '-ac', '2'] : []), '-t', String(elapsed),
       '-c:v', 'copy', '-c:a', 'aac', '-c:s', 'mov_text', '-metadata:s:s:0', 'language=eng', '-movflags', '+faststart', output]);
     return { output, captions };
   } catch (error) {

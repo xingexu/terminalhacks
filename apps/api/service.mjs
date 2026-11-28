@@ -33,8 +33,8 @@ export function cleanMedia(media) {
 }
 
 function cleanJob(job) {
-  const { manifest, output, captions, ...details } = job;
-  return details;
+  const { manifest, output, captions, storyboard, ...details } = job;
+  return { ...details, ...(['queued', 'running', 'ready'].includes(job.status) && manifest?.storyboard && { storyboard: manifest.storyboard }) };
 }
 
 export function getSnapshot(projectId, state) {
@@ -44,6 +44,7 @@ export function getSnapshot(projectId, state) {
     media: state.media.filter(item => !item.revoked && !item.pending).map(cleanMedia),
     recollections: state.recollections.map(({ actor, ...item }) => ({ ...item, contributor: 'You' })),
     jobs: state.jobs.map(cleanJob), history: state.history,
+    storyboards: Object.fromEntries(state.events.map(event => [event.id, eventDependencies(state, event.id, state.session.lens).storyboard])),
     worlds: (state.worlds || []).filter(item => !item.revoked).map(({ storage, contentHash, plan, evidenceHash, ...item }) => item),
     undo: state.changes[0] ? { revision: state.changes[0].revision, targetId: state.changes[0].targetId } : null,
     capture: { sessions: state.capture.sessions.map(session => ({ ...session, status: session.status === 'active' && session.expires <= Date.now() ? 'expired' : session.status })) }
@@ -290,7 +291,7 @@ export function revokeCapture(state, id, discard = false) {
   const outputs = [];
   for (const job of state.jobs) {
     const manifest = job.manifest;
-    if (!manifest || !(manifest.media.some(item => ids.has(item.id)) || ids.has(manifest.narration?.id) ||
+    if (!manifest || !(manifest.media.some(item => ids.has(item.id)) || worlds.some(world => world.id === manifest.world?.id) || ids.has(manifest.narration?.id) ||
       manifest.recollections.some(item => withdrawnRecollections.has(item.id) || ids.has(item.audioMediaId)))) continue;
     outputs.push({ id: job.id, output: job.output, captions: job.captions });
     Object.assign(job, { status: 'stale', approved: false });
@@ -334,11 +335,12 @@ export function previewFilm(state, { eventId, expectedRevision }, actor) {
   revision(state, expectedRevision);
   const lens = state.session.lens;
   const manifest = eventDependencies(state, eventId, lens);
-  check(manifest?.media.length, 400, 'FILM_NEEDS_MEDIA', 'Link at least one photo or clip before rendering a film.');
+  check(manifest?.storyboard.frames.length, 400, 'FILM_NEEDS_MEDIA', 'Link at least one photo or clip before rendering a film.');
   const inputHash = digest(manifest);
   return savePreview(state, {
     kind: 'film', actor, expectedRevision, eventId, lens, inputHash,
-    diff: { label: 'Render a 1080p MP4', sources: Math.min(8, manifest.media.length), containsImagined: manifest.media.some(item => item.provenance === 'imagined'),
+    diff: { label: 'Render a 1080p memory film', sources: manifest.storyboard.frames.length,
+      storyboard: manifest.storyboard, containsImagined: manifest.storyboard.frames.some(item => item.provenance === 'imagined'),
       narration: Boolean(manifest.narration), cost: 'Local render' }
   });
 }
@@ -347,7 +349,11 @@ export function queueFilm(state, input, actor) {
   check(text(input.requestId, 128) && text(input.previewToken, 128), 400, 'INVALID_REQUEST', 'Confirm a current film preview.');
   const key = 'film:' + input.requestId;
   const prior = replay(state, key, input);
-  if (prior) return prior;
+  if (prior) {
+    const job = state.jobs.find(item => item.id === prior.id);
+    check(job, 409, 'FILM_UNAVAILABLE', 'This film is unavailable. Review a new storyboard.');
+    return cleanJob(job);
+  }
   const preview = resolvePreview(state, input.previewToken, actor, 'film');
   revision(state, preview.expectedRevision);
   check(preview.lens === state.session.lens, 409, 'LENS_CHANGED', 'The source filter changed. Preview the film again.');
@@ -359,17 +365,21 @@ export function queueFilm(state, input, actor) {
     revision: state.revision, status: 'queued', approved: false, createdAt: now(), format: 'mp4' };
   if (!equivalent) state.jobs.unshift(job);
   delete state.previews[input.previewToken];
-  return record(state, key, input, cleanJob(job));
+  record(state, key, input, { id: job.id });
+  return cleanJob(job);
 }
 
 export function createFilmWorker(store, dataDir, demoDir) {
   let promise = null;
   let stopped = false;
   for (const { id, actor, state } of store.all()) {
-    if (state.jobs.some(job => job.status === 'running')) store.update(actor, id, 'job.changed', current => {
+    if (state.jobs.some(job => job.status === 'running' || (['queued', 'ready'].includes(job.status) && !job.manifest?.storyboard))) store.update(actor, id, 'job.changed', current => {
       for (const job of current.jobs.filter(item => item.status === 'running')) {
         job.status = 'failed';
         job.error = 'The server restarted during this render. Start a new render to retry.';
+      }
+      for (const job of current.jobs.filter(item => ['queued', 'ready'].includes(item.status) && !item.manifest?.storyboard)) {
+        Object.assign(job, { status: 'stale', approved: false, error: 'Review the current storyboard and render a new film.' });
       }
     });
   }

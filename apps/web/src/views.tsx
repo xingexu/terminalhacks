@@ -4,8 +4,8 @@ import {
   Clapperboard, Compass, Eye, Film, Image, LocateFixed, Map, MapPin, Maximize, Pause, Play, Plus, Search, Sparkles, X
 } from 'lucide-react';
 import {
-  allowed, api, artifactURL, displayDate, isVisual, sourceURL, sourcesFor,
-  type Anchor, type Job, type Lens, type Memory, type Profile, type SearchResult, type Snapshot, type Source, type View, type World
+  allowed, api, artifactURL, displayDate, isVisual, sourceURL, sourcesFor, storyboardBasis,
+  type Anchor, type Job, type Lens, type Memory, type Profile, type SearchResult, type Snapshot, type Source, type Storyboard, type View, type World
 } from './model';
 
 const Spatial = lazy(() => import('./spatial'));
@@ -46,6 +46,15 @@ export function Empty({ icon, title, children }: { icon: ReactNode; title: strin
 function Thumb({ project, source, className = '' }: { project: string; source?: Source; className?: string }) {
   return source ? <img className={className} src={sourceURL(project, source.id, '?variant=thumb')} alt="" loading="lazy" /> :
     <span className={'thumb-empty ' + className}><Image size={21} /></span>;
+}
+
+export function NarrationPreview({ projectId, narration }: { projectId: string; narration: NonNullable<Storyboard['narration']> }) {
+  return <section className="form-stack" aria-label="Film narration">
+    <strong>Original voice note</strong>
+    <p>The film uses the first {narration.seconds} seconds of this note, starting {narration.startSeconds} seconds into the film. Preview the original note below.</p>
+    <audio controls preload="none" aria-label="Preview original voice note" style={{ width: '100%' }}
+      src={sourceURL(projectId, narration.sourceId, '?variant=playback')} />
+  </section>;
 }
 
 function MediaGrid({ state, sources, open }: { state: Snapshot; sources: Source[]; open: ViewActions['openSource'] }) {
@@ -100,8 +109,9 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
     <p>Give a moment a name, then add the photos and stories you want to keep.</p>
     <button className="btn primary" onClick={actions.openMemory}><Plus size={17} /> Add a memory</button>
   </Empty>;
-  const media = sourcesFor(state, event.sourceIds).filter(isVisual);
-  const photos = orderedPhotos(media);
+  const storyboard = state.storyboards[event.id];
+  const media = sourcesFor(state, storyboard?.sourceIds ?? event.sourceIds).filter(isVisual);
+  const photos = storyboard ? media.filter(item => item.mime.startsWith('image/')) : orderedPhotos(media);
   const anchors = state.anchors.filter(anchor => anchor.eventId === event.id && anchor.worldId === 'trail-' + event.id && anchor.sourceIds.some(id => media.some(source => source.id === id)));
   const anchor = anchors.find(item => item.id === state.session.anchorId) ?? anchors[0];
   const active = sourcesFor(state, anchor?.sourceIds ?? []).find(isVisual) ?? media[0];
@@ -213,36 +223,55 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
 export function Watch({ state, event, actions }: { state: Snapshot; event?: Memory; actions: ViewActions }) {
   const [playing, setPlaying] = useState(false);
   const [frame, setFrame] = useState(0);
-  const media = event ? sourcesFor(state, event.sourceIds).filter(isVisual) : [];
-  const source = media[frame % (media.length || 1)];
-  useEffect(() => { setFrame(0); setPlaying(false); }, [event?.id, state.session.lens]);
-  useEffect(() => {
-    if (!playing || !media.length) return;
-    const timer = window.setInterval(() => setFrame(value => (value + 1) % media.length), 4800);
-    return () => window.clearInterval(timer);
-  }, [playing, media.length]);
   const jobs = state.jobs.filter(item => item.eventId === event?.id && item.lens === state.session.lens);
   const current = jobs.find(item => ['queued', 'running', 'ready'].includes(item.status));
+  const storyboard = current ? current.storyboard : event && state.storyboards[event.id];
+  const storyboardWorld = state.worlds.find(world => world.id === storyboard?.worldId);
+  const frames = storyboard?.frames ?? [];
+  const activeFrame = frames[frame % (frames.length || 1)];
+  const source = activeFrame && sourcesFor(state, [activeFrame.sourceId])[0];
+  const excluded = sourcesFor(state, storyboard?.excludedSourceIds ?? []);
   const showVideo = current?.status === 'ready' && current.approved;
+  useEffect(() => { setFrame(0); setPlaying(false); }, [event?.id, state.session.lens, storyboard?.id, showVideo]);
+  useEffect(() => {
+    if (!playing || !activeFrame || showVideo) return;
+    const timer = window.setTimeout(() => setFrame(value => (value + 1) % frames.length), activeFrame.seconds * 1000);
+    return () => window.clearTimeout(timer);
+  }, [playing, frame, frames.length, activeFrame?.seconds, showVideo]);
   return <div className={'view-stack grade-' + state.visualProfile}>
     <div className="section-heading page-section"><h2>Films from your memories</h2>
-      <button className="btn primary" onClick={actions.render} disabled={!media.length || ['queued', 'running', 'ready'].includes(current?.status || '')}><Clapperboard size={17} /> Render MP4</button></div>
+      <button className="btn primary" onClick={actions.render} disabled={!frames.length || Boolean(current)}><Clapperboard size={17} /> Render MP4</button></div>
+    {storyboard && <p className="muted">Photo/video montage · {storyboard.durationSeconds} seconds. {storyboardBasis[storyboard.basis]} This film does not record the 3D walk.</p>}
+    {storyboardWorld && <p className="muted">Based on world: <strong>{storyboardWorld.title}</strong></p>}
     {showVideo && current ? <div className="film-stage"><video controls playsInline preload="metadata" src={artifactURL(state.projectId, current.id)} poster={source && sourceURL(state.projectId, source.id, '?variant=thumb')}>
       <track default kind="captions" label="English captions" srcLang="en" src={artifactURL(state.projectId, current.id, 'captions')} />
     </video></div> : source ? <div className="film-stage film-preview">
       <Thumb project={state.projectId} source={source} />
       <span className="glass-pill film-tag"><Film size={14} /> Storyboard preview</span>
       <button className="film-play" aria-label={playing ? 'Pause storyboard' : 'Play storyboard'} onClick={() => setPlaying(!playing)}>{playing ? <Pause size={29} fill="currentColor" /> : <Play size={29} fill="currentColor" />}</button>
-      <div className="film-caption"><strong>{event?.title}</strong><span>{source.caption} · {source.provenance === 'imagined' ? 'Imagined demo' : 'Original source'}</span></div>
-    </div> : <Empty icon={<Film size={30} />} title="Your film starts with a source"><p>Link a photo or video to this memory.</p><button className="btn" onClick={actions.openCapture}>Add sources</button></Empty>}
+      <div className="film-caption" style={{ right: 17, overflowWrap: 'anywhere' }}><strong>{event?.title}</strong><span>{activeFrame.caption} · {activeFrame.provenance === 'imagined' ? 'Imagined demo' : 'Original source'} · {activeFrame.seconds}s</span></div>
+    </div> : current ? <div className="notice"><p>The saved film has no reviewable storyboard. Its original export remains available after approval.</p></div> :
+      <Empty icon={<Film size={30} />} title="Your film starts with a source"><p>Link a photo or video to this memory.</p><button className="btn" onClick={actions.openCapture}>Add sources</button></Empty>}
+    {!showVideo && activeFrame?.recollection && <blockquote>{activeFrame.recollection.text}<br /><small>{activeFrame.recollection.contributor} · Recollection{activeFrame.recollection.excerpt ? ' excerpt' : ''}</small></blockquote>}
+    {storyboard?.narration && <NarrationPreview projectId={state.projectId} narration={storyboard.narration} />}
     {current && <div className="notice render-notice"><Film size={19} /><div><strong>{current.status === 'ready' ? current.approved ? '1080p film ready' : 'Film rendered and awaiting approval' : 'Rendering the 1080p film'}</strong>
       <p>{current.status === 'ready' ? 'Saved from memory revision ' + current.revision + '.' : 'You can keep exploring while FFmpeg renders.'}</p></div>
       {current.status === 'ready' && (current.approved ? <a className="btn compact" href={artifactURL(state.projectId, current.id) + '?download=1'}><ArrowDownToLine size={16} /> Download</a> :
         <button className="btn compact primary" onClick={() => actions.approve(current)}><Check size={16} /> Approve film</button>)}</div>}
     {!current && jobs[0] && <div className="notice"><CircleHelp size={18} /><p>{jobs[0].status === 'stale' ? 'The previous film is out of date because this memory changed. Render a new cut to use the current evidence.' : jobs[0].error || 'This film is unavailable.'}</p></div>}
-    {media.length > 0 && <><div className="section-heading"><h2>Storyboard</h2><span className="muted">{media.length} {media.length === 1 ? 'source' : 'sources'}</span></div>
-      <div className="storyboard">{media.map((item, index) => <button className={'storyboard-card' + (source?.id === item.id ? ' selected' : '')}
-        key={item.id} onClick={() => showVideo ? actions.openSource(item) : setFrame(index)}><Thumb project={state.projectId} source={item} /><span>{item.caption}</span></button>)}</div></>}
+    {frames.length > 0 && <><div className="section-heading"><h2>Storyboard</h2><span className="muted">{frames.length} {frames.length === 1 ? 'source' : 'sources'} · {storyboard?.durationSeconds}s</span></div>
+      <div className="storyboard">{frames.map((item, index) => {
+        const visual = sourcesFor(state, [item.sourceId])[0];
+        return <button className={'storyboard-card' + (source?.id === item.sourceId ? ' selected' : '')} key={item.sourceId}
+          aria-pressed={!showVideo && frame === index} disabled={!visual} onClick={() => showVideo ? actions.openSource(visual) : setFrame(index)}>
+          <Thumb project={state.projectId} source={visual} /><span>{index + 1}. {item.caption}<br />{item.seconds}s · {displayDate(item.capturedAt, true)}</span></button>;
+      })}</div>
+      {!!storyboard?.omittedRecollections && <p className="muted">{storyboard.omittedRecollections} additional {storyboard.omittedRecollections === 1 ? 'recollection remains' : 'recollections remain'} in your journal, outside this cut.</p>}
+    </>}
+    {excluded.length > 0 && <section><div className="section-heading"><h2>Outside this cut</h2><span className="muted">{excluded.length} {excluded.length === 1 ? 'source' : 'sources'}</span></div>
+      <p className="muted">These sources remain in your memory, album and journal.</p>
+      <MediaGrid state={state} sources={excluded} open={actions.openSource} />
+    </section>}
   </div>;
 }
 
@@ -257,8 +286,10 @@ function PhotoAlbum({ state, event, actions }: { state: Snapshot; event?: Memory
   const [scope, setScope] = useState<'memory' | 'project'>('memory');
   const [excluded, setExcluded] = useState<string[]>([]);
   const [entered, setEntered] = useState(false);
-  const sourceIds = scope === 'memory' ? event?.sourceIds || [] : [...new Set(state.events.flatMap(memory => memory.sourceIds))];
-  const photos = orderedPhotos(sourcesFor(state, sourceIds));
+  const storyboard = event && state.storyboards[event.id];
+  const sourceIds = scope === 'memory' ? storyboard?.sourceIds ?? event?.sourceIds ?? [] : [...new Set(state.events.flatMap(memory => memory.sourceIds))];
+  const sources = sourcesFor(state, sourceIds);
+  const photos = scope === 'memory' && storyboard ? sources.filter(item => item.mime.startsWith('image/')) : orderedPhotos(sources);
   const selected = photos.filter(photo => !excluded.includes(photo.id));
   const title = scope === 'project' ? state.title : event?.title || 'Photo album';
   useEffect(() => { setExcluded([]); setEntered(false); }, [scope]);
@@ -272,7 +303,7 @@ function PhotoAlbum({ state, event, actions }: { state: Snapshot; event?: Memory
     </div>
     {photos.length ? <>
       <div className="album-launch">
-        <div><span className="eyebrow">Immersive photo album</span><h3>{title}</h3><p>{selected.length} photos selected · Ordered by capture date</p></div>
+        <div><span className="eyebrow">Immersive photo album</span><h3>{title}</h3><p>{selected.length} photos selected · {scope === 'memory' && storyboard ? 'Storyboard order, then remaining sources' : 'Ordered by capture date'}</p></div>
         <button className="btn primary" disabled={!selected.length} onClick={() => setEntered(true)}><Compass size={18} /> Enter album <ArrowRight size={16} /></button>
       </div>
       <p className="album-instruction">Choose photos for your walk. Open a photo to view its original source.</p>
@@ -296,7 +327,7 @@ function PhotoAlbum({ state, event, actions }: { state: Snapshot; event?: Memory
 export function Create({ state, event, actions }: { state: Snapshot; event?: Memory; actions: ViewActions }) {
   const [tab, setTab] = useState<'photos' | 'clips' | 'journal'>('photos');
   const [compare, setCompare] = useState(false);
-  const items = event ? sourcesFor(state, event.sourceIds) : [];
+  const items = event ? sourcesFor(state, state.storyboards[event.id]?.sourceIds ?? event.sourceIds) : [];
   const media = items.filter(source => source.mime.startsWith(tab === 'photos' ? 'image/' : 'video/'));
   const first = items.find(source => source.mime.startsWith('image/'));
   const rec = state.recollections.filter(item => item.eventId === event?.id);

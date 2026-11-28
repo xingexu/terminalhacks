@@ -13,9 +13,9 @@ import { Tutorial } from './onboarding';
 import { VoicePanel } from './voice';
 import { Generation } from './generation';
 import { Capture } from './capture';
-import { Archive, AtlasMark, Create, Explore, Remember, Watch, type ViewActions } from './views';
+import { Archive, AtlasMark, Create, Explore, NarrationPreview, Remember, Watch, type ViewActions } from './views';
 import {
-  api, displayDate, localDateTime, sourceURL, type Command, type Lens, type Memory, type Observation, type Project, type Proposal,
+  api, displayDate, localDateTime, sourceURL, storyboardBasis, type Command, type Lens, type Memory, type Observation, type Project, type Proposal,
   type Session, type Snapshot, type Source, type View
 } from './model';
 
@@ -150,7 +150,7 @@ function RecollectionForm({ onSubmit, onCapture, anchor }: { onSubmit: (text: st
   </form>;
 }
 
-function Confirmation({ value, commit, back }: { value: Extract<Dialog, { kind: 'confirm' }>; commit: (requestId: string) => Promise<void>; back: () => void }) {
+function Confirmation({ value, projectId, worldTitle, commit, back }: { value: Extract<Dialog, { kind: 'confirm' }>; projectId: string; worldTitle?: string; commit: (requestId: string) => Promise<void>; back: () => void }) {
   const requestId = useRef(crypto.randomUUID());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -165,7 +165,20 @@ function Confirmation({ value, commit, back }: { value: Extract<Dialog, { kind: 
     {diff.before !== undefined && <div className="diff"><div><small>Previous</small>{showValue(diff.before)}</div><div><small>Proposed</small>{showValue(diff.after)}</div></div>}
     {diff.text && <blockquote>{diff.text}</blockquote>}
     {diff.caption && <p>Source: {diff.caption}</p>}
-    {value.film && <p>{diff.sources} visual {diff.sources === 1 ? 'source' : 'sources'} · 30–60 seconds · local render{diff.narration ? ' · includes a confirmed voice note' : ''}{diff.containsImagined ? ' · includes labeled imagined demo imagery' : ''}</p>}
+    {value.film && <>
+      <p>{diff.sources} visual {diff.sources === 1 ? 'source' : 'sources'} · {diff.storyboard?.durationSeconds ?? '30–60'} seconds · local photo/video montage{diff.narration ? ' · includes a confirmed voice note' : ''}{diff.containsImagined ? ' · includes labeled imagined demo imagery' : ''}</p>
+      {diff.storyboard && <>
+        <p>{storyboardBasis[diff.storyboard.basis]} This film does not record the 3D walk.</p>
+        {worldTitle && <p>Based on world: <strong>{worldTitle}</strong></p>}
+        <ol className="form-stack" aria-label="Film storyboard">{diff.storyboard.frames.map(item => <li key={item.sourceId} style={{ overflowWrap: 'anywhere' }}>
+          <strong>{item.caption}</strong> · {item.seconds}s · {item.provenance === 'imagined' ? 'Imagined demo' : 'Original source'} · {displayDate(item.capturedAt, true)}
+          {item.recollection && <blockquote>{item.recollection.text}<br /><small>{item.recollection.contributor} · Recollection{item.recollection.excerpt ? ' excerpt' : ''}</small></blockquote>}
+        </li>)}</ol>
+        {diff.storyboard.narration && <NarrationPreview projectId={projectId} narration={diff.storyboard.narration} />}
+        {!!diff.storyboard.excludedSourceIds.length && <p>{diff.storyboard.excludedSourceIds.length} additional visual {diff.storyboard.excludedSourceIds.length === 1 ? 'source remains' : 'sources remain'} in your album and journal, outside this cut.</p>}
+        {!!diff.storyboard.omittedRecollections && <p>{diff.storyboard.omittedRecollections} additional {diff.storyboard.omittedRecollections === 1 ? 'recollection remains' : 'recollections remain'} in your journal, outside this cut.</p>}
+      </>}
+    </>}
     {error && <p className="form-error" role="alert">{error}</p>}
     <div className="button-row"><button className="btn primary" disabled={busy} onClick={async () => {
       setBusy(true); setError('');
@@ -279,8 +292,8 @@ function App() {
   const earlyRoute = useRef<View | null>(null);
   const base = '/projects/' + project;
   const current = state?.events.find(item => item.id === state.session.eventId) ?? state?.events[0];
-  const activeContext = useRef({ dialog, project, eventId: current?.id });
-  activeContext.current = { dialog, project, eventId: current?.id };
+  const activeContext = useRef({ dialog, project, eventId: current?.id, revision: state?.revision, lens: state?.session.lens });
+  activeContext.current = { dialog, project, eventId: current?.id, revision: state?.revision, lens: state?.session.lens };
 
   const loadProjects = useCallback(async () => {
     const list = await api<Project[]>('/bootstrap');
@@ -345,6 +358,13 @@ function App() {
     const timer = window.setTimeout(() => setNotice(''), 5500);
     return () => window.clearTimeout(timer);
   }, [notice]);
+  useEffect(() => {
+    if (!state || dialog?.kind !== 'confirm' || !dialog.film) return;
+    if (state.revision !== dialog.revision || dialog.proposal.diff.storyboard?.id !== state.storyboards[current?.id || '']?.id) {
+      setDialog(null);
+      setNotice('The memory changed. Review the current storyboard before rendering.');
+    }
+  }, [state, current?.id, dialog]);
 
   const show = (kind: Extract<Dialog, { kind: 'library' | 'settings' | 'voice' | 'capture' | 'memory' | 'recollection' | 'correction' | 'help' | 'world' | 'generation' }>['kind']) => setDialog({ kind });
   const dismiss = () => {
@@ -368,7 +388,11 @@ function App() {
     openRecollection: () => show('recollection'),
     addWaypoint: (position, sourceId, worldId) => guarded(() => preview('anchor.add', { position, worldId: worldId ?? 'trail-' + current?.id, sourceIds: sourceId ? [sourceId] : [] })),
     render: () => guarded(async () => {
+      const context = activeContext.current;
       const proposal = await api<Proposal>(base + '/film-preview', { eventId: current?.id, expectedRevision: state?.revision });
+      const latest = activeContext.current;
+      if (latest.dialog !== context.dialog || latest.project !== context.project || latest.eventId !== context.eventId ||
+        latest.revision !== context.revision || latest.lens !== context.lens) return;
       setDialog({ kind: 'confirm', proposal, film: true, revision: state!.revision });
     }),
     approve: job => guarded(() => preview('artifact.approve', { artifactId: job.id, dependencyHash: job.inputHash })),
@@ -490,12 +514,16 @@ function App() {
         <p className="muted">{!dialog.source.capturedAt && dialog.source.capturedLocal ? dialog.source.capturedLocal.replace('T', ' · ') + ' · Timezone unknown' : displayDate(dialog.source.capturedAt)}</p>
         {dialog.source.gps && <p className="muted">Embedded coordinates: {dialog.source.gps.map(value => value.toFixed(5)).join(', ')}</p>}
         {dialog.source.provenance === 'original' && <a className="btn self-start" href={sourceURL(project, dialog.source.id, '?download=1&variant=original')}><ArrowDownToLine size={16} /> Download original</a>}</div>}
-      {state && dialog.kind === 'confirm' && <Confirmation key={dialog.proposal.previewToken} value={dialog} back={() => dialog.fromCapture ? show('capture') : dismiss()} commit={async requestId => {
+      {state && dialog.kind === 'confirm' && <Confirmation key={dialog.proposal.previewToken} value={dialog} projectId={project}
+        worldTitle={state.worlds.find(world => world.id === dialog.proposal.diff.storyboard?.worldId)?.title}
+        back={() => dialog.fromCapture ? show('capture') : dismiss()} commit={async requestId => {
         const common = { requestId, previewToken: dialog.proposal.previewToken };
         if (dialog.film) await api(base + '/jobs', common);
         else if (dialog.command) await api(base + '/commands', { ...dialog.command, ...common });
         else throw new Error('This preview does not contain a change.');
         await refresh();
+        if (dialog.film && (activeContext.current.dialog !== dialog || activeContext.current.project !== project ||
+          activeContext.current.eventId !== current?.id)) return;
         setNotice(dialog.film ? 'Film rendering started.' : dialog.fromCapture ? 'Captured evidence linked.' : 'Change confirmed.');
         if (dialog.fromCapture) show('capture');
         else dismiss();

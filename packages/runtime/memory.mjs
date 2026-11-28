@@ -74,14 +74,54 @@ export const lensAllows = (item, lens) => Boolean(item && !item.revoked && (lens
 export function eventDependencies(state, eventId, lens) {
   const event = eventById(state, eventId);
   if (!event) return null;
-  const material = event.sourceIds.map(id => mediaById(state, id)).filter(item => lensAllows(item, lens));
-  const recollections = state.recollections.filter(item => item.eventId === eventId && (!item.audioMediaId || mediaById(state, item.audioMediaId)));
+  const time = value => Number.isFinite(Date.parse(value)) ? Date.parse(value) : Infinity;
+  const material = event.sourceIds.map(id => mediaById(state, id)).filter(item => !item?.pending && lensAllows(item, lens));
+  const recollections = state.recollections.filter(item => item.eventId === eventId && (!item.audioMediaId || mediaById(state, item.audioMediaId)))
+    .sort((a, b) => (time(a.at) - time(b.at) || a.id.localeCompare(b.id)));
+  const media = material.filter(item => item.mime.startsWith('image/') || item.mime.startsWith('video/'))
+    .sort((a, b) => (time(a.capturedAt) - time(b.capturedAt) || a.id.localeCompare(b.id)));
+  const available = new Set(media.map(item => item.id));
+  const worlds = lens === 'all' ? (state.worlds || []).filter(world => world.eventId === eventId && world.approved &&
+    !world.revoked && world.status === 'ready' && world.sourceIds.length && world.sourceIds.every(id => available.has(id)) &&
+    (!world.evidenceHash || world.evidenceHash === digest(generationDependencies(state, eventId, world.evidenceRefs)))) : [];
+  const world = worlds.filter(item => item.format === 'glb').at(-1) ?? worlds.at(-1);
+  const planned = world?.plan?.sourceIds?.filter(id => world.sourceIds.includes(id) && available.has(id)) || [];
+  const selected = [...new Set([...planned, ...media.filter(item => !world || world.sourceIds.includes(item.id)).map(item => item.id)])];
+  const sourceIds = [...selected, ...media.filter(item => !selected.includes(item.id)).map(item => item.id)];
+  const cut = selected.slice(0, 8);
+  const seconds = cut.length ? Math.max(4, Math.ceil(30 / cut.length)) : 0;
+  const usedAccounts = new Set();
+  const frames = cut.map(sourceId => {
+    const item = media.find(item => item.id === sourceId);
+    const account = recollections.find(item => !usedAccounts.has(item.id) && item.text?.trim() &&
+      item.anchorId && state.anchors.some(anchor => anchor.id === item.anchorId && anchor.sourceIds.includes(sourceId))) ??
+      recollections.find(item => !usedAccounts.has(item.id) && item.text?.trim() && !item.anchorId);
+    if (account) usedAccounts.add(account.id);
+    const accountText = Array.from(account?.text.replace(/\s+/g, ' ').trim() ?? '');
+    return { sourceId, seconds, caption: item.caption, provenance: item.provenance, capturedAt: item.capturedAt ?? null,
+      ...(account && { recollection: { id: account.id, contributor: 'You',
+        text: accountText.slice(0, 180).join('') + (accountText.length > 180 ? '…' : ''), excerpt: accountText.length > 180 } }) };
+  });
+  const narratedAccount = recollections.find(item => {
+    const audio = mediaById(state, item.audioMediaId);
+    return usedAccounts.has(item.id) && audio?.mime.startsWith('audio/') && !audio.pending && lensAllows(audio, lens);
+  });
+  const narration = narratedAccount ? mediaById(state, narratedAccount.audioMediaId) : null;
+  const narratedFrame = frames.findIndex(frame => frame.recollection?.id === narratedAccount?.id);
+  const narrationPlan = narration ? { sourceId: narration.id, recollectionId: narratedAccount.id,
+    startSeconds: frames.slice(0, narratedFrame).reduce((sum, frame) => sum + frame.seconds, 0),
+    seconds: Math.min(Number.isFinite(narration.duration) && narration.duration > 0 ? narration.duration : Infinity, frames[narratedFrame].seconds) } : null;
+  const cutPlan = { eventId, kind: 'source_montage', basis: planned.length ? 'world_plan' : world ? 'world_sources' : 'memory_sources',
+    worldId: world?.id ?? null, planId: planned.length ? world.planId ?? world.plan.id ?? null : null,
+    sourceIds, excludedSourceIds: sourceIds.slice(cut.length), frames, durationSeconds: cut.length * seconds, narration: narrationPlan,
+    omittedRecollections: recollections.filter(item => item.text?.trim() && !usedAccounts.has(item.id)).length };
   return {
     event, profile: state.visualProfile, lens,
-    media: material.filter(item => item.mime.startsWith('image/') || item.mime.startsWith('video/')),
+    media, storyboard: { id: digest(cutPlan), ...cutPlan },
+    world: world ? { id: world.id, inputHash: world.inputHash, contentHash: world.contentHash } : null,
     anchors: state.anchors.filter(anchor => anchor.eventId === eventId),
     recollections,
-    narration: recollections.map(item => mediaById(state, item.audioMediaId)).find(item => item && lensAllows(item, lens)) ?? null
+    narration
   };
 }
 
@@ -118,6 +158,7 @@ export function invalidateJobs(state) {
   }
   for (const [token, preview] of Object.entries(state.previews || {})) {
     if (preview.kind === 'world' && preview.plan.inputHash !== digest(generationDependencies(state, preview.plan.eventId))) delete state.previews[token];
+    if (preview.kind === 'film' && preview.inputHash !== digest(eventDependencies(state, preview.eventId, preview.lens))) delete state.previews[token];
   }
 }
 
