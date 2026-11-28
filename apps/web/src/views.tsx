@@ -1,12 +1,13 @@
 import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import {
-  ArrowLeft, BookOpen, Box, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, Compass, Eye, Image, LocateFixed, Map, MapPin, Play, Plus, Upload, X
+  ArrowLeft, BookOpen, Box, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, Compass, Eye, Image, Map, MapPin, Play, Plus, Upload, X
 } from 'lucide-react';
 import {
   displayDate, isVisual, sourceURL, sourcesFor, type Lens, type Memory, type Snapshot, type Source, type View, type World
 } from './model';
 import { orderedPhotos } from './album-layout';
 import { updateScenePointer, useScenePalette } from './scene';
+import { art, AsciiArt, AsciiImage, AsciiMap } from './ascii';
 import './gameplay-launcher.css';
 
 const Spatial = lazy(() => import('./spatial'));
@@ -28,21 +29,13 @@ export type ViewActions = {
   undo: () => void;
 };
 
-export function AtlasMark({ size = 24 }: { size?: number }) {
-  return <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true">
-    <circle cx="16" cy="16" r="11.5" stroke="currentColor" strokeWidth=".8" opacity=".55" />
-    <path d="M16 1.5 18.4 13.6 30.5 16 18.4 18.4 16 30.5 13.6 18.4 1.5 16 13.6 13.6 16 1.5Z" fill="currentColor" />
-    <path d="M16 4v24M4 16h24" stroke="#192018" opacity=".65" strokeWidth=".65" />
-  </svg>;
-}
-
 export function Empty({ icon, title, children }: { icon: ReactNode; title: string; children?: ReactNode }) {
   return <div className="empty">{icon}<h3>{title}</h3>{children}</div>;
 }
 
 function Thumb({ project, source, className = '' }: { project: string; source?: Source; className?: string }) {
   return source ? <img className={className} src={sourceURL(project, source.id, '?variant=thumb')} alt="" loading="lazy" /> :
-    <span className={'thumb-empty ' + className}><Image size={21} /></span>;
+    <span className={'thumb-empty ' + className}><AsciiArt art={art.frame} /></span>;
 }
 
 function MediaPicture({ project, source, className }: { project: string; source?: Source; className: string }) {
@@ -74,8 +67,8 @@ export function Timeline({ state, event, actions }: { state: Snapshot; event?: M
 
 type SceneEntry = { eventId: string; lens: Lens; worldId: string | null };
 
-export function Explore({ state, event, actions, startPlaying = false, notifications, onDiscover }: {
-  state: Snapshot; event?: Memory; actions: ViewActions; startPlaying?: boolean;
+export function Explore({ state, event, actions, startPlaying = false, startInWorkspace = false, notifications, onDiscover }: {
+  state: Snapshot; event?: Memory; actions: ViewActions; startPlaying?: boolean; startInWorkspace?: boolean;
   notifications?: ReactNode; onDiscover?: (source: Source) => void;
 }) {
   const activeEvent = event?.id;
@@ -85,7 +78,7 @@ export function Explore({ state, event, actions, startPlaying = false, notificat
     startPlaying && state.demo && activeEvent ? { eventId: activeEvent, lens, worldId: null } : null);
   const [showStory, setShowStory] = useState(false);
   const storyId = useId();
-  const handledNavigation = useRef(startPlaying ? state.session.anchorNavigationId : null);
+  const handledNavigation = useRef(startInWorkspace || startPlaying ? state.session.anchorNavigationId : null);
   const primaryAction = useRef<HTMLButtonElement>(null);
   const storyAction = useRef<HTMLButtonElement>(null);
   const closeWorldFocus = useRef(false);
@@ -134,7 +127,7 @@ export function Explore({ state, event, actions, startPlaying = false, notificat
   }, [playingWorld?.id]);
 
   if (!event) return <section className="view-explore gameplay-launcher">
-    <Empty icon={<Compass size={33} />} title="Start with a memory">
+    <Empty icon={<AsciiArt art={art.compass} />} title="Start with a memory">
       <p>Add a memory to take a first-person walk. You can attach photos after you start.</p>
       <button className="btn primary" onClick={actions.openMemory}><Plus size={17} /> Add a memory</button>
     </Empty>
@@ -204,6 +197,7 @@ export function Explore({ state, event, actions, startPlaying = false, notificat
         </div>
       </div> : <div className={'hero gameplay-hero' + (previewUrl ? '' : ' hero-empty')} onPointerMove={updateScenePointer}>
         {previewUrl && <>
+          <AsciiImage key={previewUrl} src={previewUrl} focusY={0.55} />
           <img className="hero-img" src={previewUrl} alt={active.caption} />
           <img className="hero-img hero-reveal" src={previewUrl} alt="" aria-hidden="true" />
         </>}
@@ -274,9 +268,11 @@ export function Explore({ state, event, actions, startPlaying = false, notificat
   </section>;
 }
 
+const degrees = (value: number, positive: string, negative: string) => Math.abs(value).toFixed(2) + '° ' + (value < 0 ? negative : positive);
+
 export function MemoryMap({ state, actions }: { state: Snapshot; actions: ViewActions }) {
   const located = state.events.filter(memory => memory.gps);
-  if (!located.length) return <Empty icon={<Map size={29} />} title="No confirmed map locations"><p>Add coordinates when you create a memory to place it on the map.</p></Empty>;
+  if (!located.length) return <Empty icon={<AsciiArt art={art.map} />} title="No confirmed map locations"><p>Add coordinates when you create a memory to place it on the map.</p></Empty>;
   const lats = located.map(item => item.gps![0]);
   const lons = located.map(item => item.gps![1]);
   const dist = Math.max(0.05, Math.max(...lats) - Math.min(...lats), Math.max(...lons) - Math.min(...lons));
@@ -285,14 +281,14 @@ export function MemoryMap({ state, actions }: { state: Snapshot; actions: ViewAc
   const points = located.map(memory => ({ memory, x: 50 + (memory.gps![1] - lonCenter) * 76 / dist, y: 50 - (memory.gps![0] - latCenter) * 74 / dist }));
   return <div className="map-view">
     <div className="map-canvas" aria-label="Schematic map of confirmed memory locations">
-      <div className="map-north"><LocateFixed size={15} /> N</div>
-      <svg className="map-route" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline points={points.map(point => point.x + ',' + point.y).join(' ')}
-        stroke="#b7b5ae" strokeDasharray="2 2" fill="none" vectorEffect="non-scaling-stroke" strokeWidth="1.5" /></svg>
+      <AsciiMap points={points} />
+      <div className="map-north" aria-hidden="true">^ N</div>
       {points.map(({ memory, x, y }, i) => <button key={memory.id} className={'map-point' + (memory.id === state.session.eventId ? ' selected' : '')}
         style={{ left: x + '%', top: y + '%' }} title={memory.title} aria-label={'Explore ' + memory.title}
-        onClick={() => actions.select({ eventId: memory.id, view: 'explore' })}>{i + 1}</button>)}
+        onClick={() => actions.select({ eventId: memory.id, view: 'explore' })}><span>{i + 1}</span></button>)}
     </div>
-    <p className="muted">Schematic map · Dashed lines show memory order.</p>
+    <p className="map-caption"><span>Schematic map · The line follows memory order.</span>
+      <span>{degrees(Math.min(...lats), 'N', 'S')} to {degrees(Math.max(...lats), 'N', 'S')} · {degrees(Math.min(...lons), 'E', 'W')} to {degrees(Math.max(...lons), 'E', 'W')}</span></p>
     <div className="map-legend">{points.map(({ memory }, i) => <button className="btn compact" key={memory.id} onClick={() => actions.select({ eventId: memory.id, view: 'explore' })}>
       <span>{i + 1}.</span>{memory.title}</button>)}</div>
   </div>;

@@ -1,6 +1,6 @@
 # Everwhere
 
-Everwhere is a private memory app for walking through places and stories. Choose **Play demo** on the landing page for a designed coastal walkthrough with illustrated Dolomites memories, or open the workspace to explore a private project. The **How to play** tour is also available through the workspace help button.
+Everwhere is a private memory app for walking through places and stories. Choose **Try it out** on the landing page to open the workspace. Explore your private projects there, or choose **Play scene** in the Dolomites sample for a coastal walkthrough. The **How to play** tour is also available through the workspace help button.
 
 ## Run locally
 
@@ -16,7 +16,7 @@ Open `http://localhost:4173`. Set `PORT` to change the port and `EVERWHERE_DATA`
 
 ## Try the workflow
 
-1. Choose **Play demo** on the landing page. Follow the coast to discover memory stops. Use WASD or the on-screen controls to move, drag to look, Shift to sprint, Space to jump, and E to open a nearby stop. The map lets you jump between stops. This level uses a designed coastline and illustrated stories.
+1. Choose **Try it out** on the landing page, then **Play scene** in the sample workspace. Follow the coast to discover memory stops. Use WASD or the on-screen controls to move, drag to look, Shift to sprint, Space to jump, and E to open a nearby stop. The map lets you jump between stops. This level uses a designed coastline and illustrated stories.
 2. To make a memory of your own, open the workspace and create a private project and a memory. Open **Capture**, confirm permission, and choose photos, clips, or a voice note. Select a destination in the review inbox, preview the link or attributed recollection, and confirm it. **Project history** records revisions.
 3. In **Gameplay**, choose **Play scene** for a walkthrough with your memory stops in the designed coastal setting. To explore a reconstruction of the original place, generate a scene from your photo and recollection, or import an existing reconstruction.
 4. **Import 3D scene** accepts prebuilt `.spz` reconstructions or self-contained `.glb` meshes from LiDAR or photogrammetry. Link an original photo documenting the place, import the scene, and approve it. Turn off **Originals only** and select **Walk in scene** for GLB or **Inspect scene** for SPZ. For GLB, choose **Choose floor to walk**, then click an open floor surface. Movement uses capsule collisions, gravity, and fixed physics steps against the mesh. Scans need meter units, Y-up orientation, embedded textures, at most 250,000 triangles, and a file size below 48 MB.

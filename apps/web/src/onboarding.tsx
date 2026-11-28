@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowLeft, ArrowRight, AudioLines, Camera, Check, Compass } from 'lucide-react';
 import { VoiceShortcut } from './voice';
+import { AsciiImage } from './ascii';
 
 const steps = [
   { title: 'Take a walk along the coast.', text: 'Choose Play scene to follow memory stops around a designed coast. Move with WASD or the on-screen controls, drag to look around, and press E at a nearby stop.', icon: Compass, image: 'ocean', caption: 'Designed coastal demo' },
@@ -17,11 +18,12 @@ export function Tutorial({ finish, create, connectVoice, canConnectVoice }: {
   const Icon = current.icon;
   return <div className="tutorial">
     <div className="tutorial-image">
+      <AsciiImage key={current.image} src={'/landing/photos/' + current.image + '.webp'} />
       <img src={'/landing/photos/' + current.image + '.webp'} alt="" />
       <span><Icon size={18} />{current.caption}</span>
     </div>
     <div className="tutorial-copy" aria-live="polite" aria-atomic="true">
-      <p className="tutorial-step">A quick introduction · {step + 1} of {steps.length}</p>
+      <p className="tutorial-step">A quick introduction · <span className="tutorial-count">[{steps.map((item, index) => index <= step ? '#' : '.').join('')}] {step + 1}/{steps.length}</span></p>
       <h3>{current.title}</h3><p>{current.text}</p>
     </div>
     {step === 1 && <button className="text-button tutorial-create" onClick={create}>Create a private project <ArrowRight size={15} /></button>}

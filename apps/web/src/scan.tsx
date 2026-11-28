@@ -210,6 +210,21 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
             recorder.manifest.spawn = camera.position.toArray();
             setNotice('Reconstructed from your photo and memory. Scale and unseen areas are inferred. WASD to walk · Drag to look');
           }
+        } else {
+          const entryCamera = gltf.scene.getObjectByProperty('isPerspectiveCamera', true);
+          if (entryCamera) {
+            const eye = entryCamera.getWorldPosition(new Vector3());
+            const overviewOrientation = camera.quaternion.clone();
+            entryCamera.getWorldQuaternion(camera.quaternion);
+            const entryPitch = camera.rotation.x;
+            if (sceneBounds.containsPoint(eye) && place(eye.add(new Vector3(0, -1.6, 0)))) {
+              pitch = Math.max(-1.2, Math.min(1.2, entryPitch));
+              recorder.manifest.spawn = camera.position.toArray();
+              setNotice('Scale is unverified. WASD to walk · Drag to look');
+            } else {
+              camera.quaternion.copy(overviewOrientation);
+            }
+          }
         }
       } catch (error) {
         if (active) { setNotice((error as Error).message); setPhase('error'); }
