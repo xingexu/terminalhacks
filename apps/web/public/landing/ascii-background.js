@@ -3,6 +3,9 @@
   const wordmark = document.querySelector('.wordmark');
   const tryLink = document.querySelector('.try-link');
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  // The workspace sends first-time visitors here; this marks that they came through the front door.
+  const enter = () => { try { sessionStorage.setItem('everwhere-entered', '1'); } catch { /* Storage may be unavailable. */ } };
+  document.querySelectorAll('a[href^="/app"]').forEach(link => link.addEventListener('click', enter));
 
   const resetTilt = () => {
     wordmark.classList.remove('is-tilted');
@@ -57,8 +60,9 @@
     context.setTransform(scale, 0, 0, scale, 0, 0);
   }
 
+  let dissolving = false;
   function paint() {
-    if (!photo || !width || !height) return;
+    if (dissolving || !photo || !width || !height) return;
 
     sizeCanvas(photoCanvas, context);
     const fontSize = width < 680 ? 7 : 8;
@@ -175,6 +179,70 @@
     if (trailContext) sizeCanvas(trailCanvas, trailContext);
     paint();
   }).observe(background);
+
+  // "Try it out": the characters drift away from the click, nearest first, before the workspace opens.
+  function dissolve(originX, originY, done) {
+    dissolving = true;
+    clearTrail();
+    const snapshot = document.createElement('canvas');
+    snapshot.width = photoCanvas.width;
+    snapshot.height = photoCanvas.height;
+    snapshot.getContext('2d').drawImage(photoCanvas, 0, 0);
+    const size = 14;
+    const reach = Math.hypot(Math.max(originX, width - originX), Math.max(originY, height - originY));
+    const tiles = [];
+    for (let y = 0; y < height; y += size) {
+      for (let x = 0; x < width; x += size) {
+        const dx = x + size / 2 - originX;
+        const dy = y + size / 2 - originY;
+        const angle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 1.1;
+        tiles.push({ x, y, delay: Math.hypot(dx, dy) / reach * 900 + Math.random() * 320,
+          driftX: Math.cos(angle) * (50 + Math.random() * 150), driftY: Math.sin(angle) * (50 + Math.random() * 150) - 40 - Math.random() * 60,
+          spin: (Math.random() - 0.5) * 1.6 });
+      }
+    }
+    const life = 1250;
+    const total = 900 + 320 + life;
+    let started = 0;
+    const frame = now => {
+      started ||= now;
+      const elapsed = now - started;
+      context.setTransform(scale, 0, 0, scale, 0, 0);
+      context.globalCompositeOperation = 'source-over';
+      context.clearRect(0, 0, width, height);
+      for (const tile of tiles) {
+        const progress = (elapsed - tile.delay) / life;
+        if (progress >= 1) continue;
+        if (progress <= 0) {
+          context.globalAlpha = 1;
+          context.drawImage(snapshot, tile.x * scale, tile.y * scale, size * scale, size * scale, tile.x, tile.y, size, size);
+          continue;
+        }
+        const eased = 1 - (1 - progress) ** 3;
+        const shrink = 1 - eased * 0.55;
+        context.globalAlpha = (1 - progress) ** 1.6;
+        context.save();
+        context.translate(tile.x + size / 2 + tile.driftX * eased, tile.y + size / 2 + tile.driftY * eased);
+        context.rotate(tile.spin * eased);
+        context.drawImage(snapshot, tile.x * scale, tile.y * scale, size * scale, size * scale, -size * shrink / 2, -size * shrink / 2, size * shrink, size * shrink);
+        context.restore();
+      }
+      context.globalAlpha = 1;
+      if (elapsed < total) requestAnimationFrame(frame);
+      else done();
+    };
+    requestAnimationFrame(frame);
+  }
+  tryLink.addEventListener('click', event => {
+    if (dissolving) { event.preventDefault(); return; }
+    if (reducedMotion.matches || !photo || event.metaKey || event.ctrlKey || event.shiftKey || event.button) return;
+    event.preventDefault();
+    const box = tryLink.getBoundingClientRect();
+    document.body.classList.add('is-leaving');
+    dissolve(event.clientX || box.left + box.width / 2, event.clientY || box.top + box.height / 2, () => location.assign(tryLink.href));
+  });
+  // Coming back with the browser's Back button restores a frozen page; redraw it.
+  window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
 
   // Choose one landscape per load, with fallbacks if a photo cannot be decoded.
   for (let i = sources.length - 1; i > 0; i--) {

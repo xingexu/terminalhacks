@@ -97,6 +97,14 @@ kbd { display: inline-block; font: 11px ui-monospace, monospace; color: var(--te
 .tour-do { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .tour-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 14px; border-top: 1px dashed #3e3e3b; }
 .tour-actions .text-button { color: var(--text-muted); font-size: .86rem; }
+/* Hybrid steps: the card docks in a corner and the real control is lit and usable. */
+.tour-backdrop { transition: background-color 380ms ease, backdrop-filter 380ms ease; }
+.tour-backdrop.is-docked { place-items: end; padding: 22px; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; pointer-events: none; overflow: visible; }
+.tour-backdrop.is-docked.dock-left { place-items: end start; }
+.is-docked .tour { width: min(430px, 100%); pointer-events: auto; position: relative; z-index: 1; }
+.is-docked .tour-body { min-height: 0; }
+.is-docked .tour-body h3 { font-size: 2rem; }
+.tour-spot { position: fixed; border: 2px solid #fffefa; border-radius: 18px; box-shadow: 0 0 0 200vmax #0a0a0ab3; pointer-events: none; transition: top 380ms cubic-bezier(.2, .8, .2, 1), left 380ms cubic-bezier(.2, .8, .2, 1), width 380ms cubic-bezier(.2, .8, .2, 1), height 380ms cubic-bezier(.2, .8, .2, 1); animation: fade-in 320ms ease both; }
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes fade-out { to { opacity: 0; } }
 @keyframes rise-in { from { opacity: 0; transform: translateY(18px) scale(.975); } }
@@ -106,3 +114,7 @@ kbd { display: inline-block; font: 11px ui-monospace, monospace; color: var(--te
 .modal[open] { animation: rise-in 300ms cubic-bezier(.2, .8, .2, 1) both; }
 .modal[open]::backdrop { animation: fade-in 260ms ease both; }
 .toast { animation: rise-in 300ms cubic-bezier(.2, .8, .2, 1) both; }
+
+/* The workspace gathers itself as the landing page's characters finish scattering. */
+.app-frame { animation: app-in 1100ms cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes app-in { from { opacity: 0; filter: blur(10px); transform: scale(1.015); } }

@@ -23,10 +23,6 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; isolation: isolate; }
-.landing-footer { position: absolute; bottom: max(24px, env(safe-area-inset-bottom)); left: 0; right: 0; display: flex; justify-content: center; gap: 28px; font: 11px "Space Mono", monospace; }
-.landing-footer a { color: #dce5ef; text-decoration: none; text-shadow: 0 1px 6px #000; }
-.landing-footer a:hover { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
-.landing-footer a:focus-visible { outline: 2px solid #c5d9fb; outline-offset: 6px; }
 
 .ascii-background {
   position: fixed;
@@ -282,3 +278,9 @@ body { margin: 0; isolation: isolate; }
   .wordmark-object { transform: none; }
   .is-tilted .wordmark-layer { opacity: 0; }
 }
+
+/* Leaving for the workspace: the words lift away while the characters scatter. */
+.preview > div { transition: opacity 900ms ease, transform 1400ms cubic-bezier(.2, .7, .2, 1), filter 900ms ease; }
+.is-leaving .preview > div { opacity: 0; transform: scale(1.06); filter: blur(6px); pointer-events: none; }
+.ascii-background::after { transition: opacity 900ms ease; }
+.is-leaving .ascii-background::after { opacity: 0; }
