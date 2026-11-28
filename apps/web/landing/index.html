@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Everwhere · Walk through a memory</title>
+  <meta name="description" content="Walk through an illustrated coastal demo, or turn a photo and a recollection into a private 3D scene you can explore.">
+  <meta name="theme-color" content="#101318">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23111'/%3E%3Cpath d='M16 6v20M6 16h20M9 9l14 14M23 9 9 23' stroke='%23f3f2ee' stroke-width='2.4'/%3E%3C/svg%3E">
+  <base href="/landing/">
+  <link rel="preload" href="/landing/fonts/instrument-serif-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/landing/fonts/space-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/landing/studio.css">
+  <script src="/landing/ascii-background.js" defer></script>
+  <script type="module" src="/src/landing-account.tsx"></script>
+</head>
+<body class="landing-active">
+  <div id="workspace-root" tabindex="-1" inert aria-hidden="true">
+    <div class="workspace-loading" role="status">Opening workspace…</div>
+  </div>
+  <div class="landing-layer">
+    <div class="ascii-background" aria-hidden="true">
+      <canvas class="ascii-photo"></canvas>
+      <canvas class="ascii-trail"></canvas>
+    </div>
+    <nav class="account-nav" id="landing-account" aria-label="Account">
+      <a href="/app?account=login" aria-label="Sign in or register" title="Sign in or register">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+      </a>
+    </nav>
+    <main class="preview" aria-labelledby="title">
+      <div>
+        <div class="wordmark">
+          <div class="wordmark-object">
+            <div class="wordmark-layers" aria-hidden="true">
+              <span class="wordmark-layer wordmark-layer--far" data-text="Everwhere"></span>
+              <span class="wordmark-layer wordmark-layer--middle" data-text="Everwhere"></span>
+              <span class="wordmark-layer wordmark-layer--near" data-text="Everwhere"></span>
+            </div>
+            <h1 id="title">Everwhere</h1>
+          </div>
+        </div>
+        <p>Walk into the places you remember.</p>
+        <a class="try-link" href="/app?tour=0">Try it out</a>
+      </div>
+    </main>
+    <footer class="landing-footer"><a href="/app?tour=1">How to play</a><a href="https://github.com/xingexu/terminalhacks" target="_blank" rel="noreferrer">GitHub</a></footer>
+  </div>
+</body>
+</html>

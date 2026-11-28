@@ -1,0 +1,107 @@
+.notification-bell {
+  position: relative;
+  z-index: 6;
+  flex: 0 0 auto;
+}
+
+.notification-bell .notification-trigger {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: #f3f3f1;
+  background: #171a20e8;
+  border: 1px solid #c0c7d34d;
+  border-radius: 6px;
+}
+
+.notification-bell .notification-trigger:hover,
+.notification-bell .notification-trigger[aria-expanded='true'] {
+  background: #33383e;
+  border-color: #c0c7d3a6;
+}
+
+.notification-bell button:focus-visible {
+  outline: 2px solid #eceeeb;
+  outline-offset: 3px;
+}
+
+.notification-dot {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a9e0ca;
+  box-shadow: 0 0 0 2px #20252c;
+}
+
+.notification-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: min(328px, calc(100vw - 32px));
+  max-height: min(320px, 65dvh);
+  overflow: auto;
+  text-align: left;
+  color: #f3f3f1;
+  background: #1d2026;
+  border: 1px solid #5a616d;
+  border-radius: 8px;
+  box-shadow: 0 12px 38px #07080aa6;
+}
+
+.notification-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 5px 14px;
+  border-bottom: 1px solid #3b414b;
+}
+
+.notification-heading h2 {
+  margin: 0;
+  font: inherit;
+  font-size: .95rem;
+  font-weight: 700;
+}
+
+.notification-heading .notification-read {
+  min-height: 36px;
+  padding: 3px 0;
+  border: 0;
+  color: #cce3da;
+  background: transparent;
+  font-size: .78rem;
+}
+
+.notification-read:hover { text-decoration: underline; }
+.notification-empty { margin: 0; padding: 16px 14px; color: #c2c7ce; font-size: .87rem; }
+.notification-list { margin: 0; padding: 0; list-style: none; }
+.notification-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 11px 14px;
+  border-bottom: 1px solid #333942;
+  color: #c2c7ce;
+  font-size: .88rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.notification-list li:last-child { border-bottom: 0; }
+.notification-list .notification-unread { color: #f3f3f1; background: #26302f; }
+.notification-item-dot { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; }
+.notification-unread .notification-item-dot { background: #a9e0ca; }
+
+.spatial-bar .spatial-header-actions { display: flex; align-items: center; gap: 8px; }
+
+@media (max-width: 470px) {
+  .gameplay-workspace .breadcrumbs > :is(span, svg) { display: none; }
+  .gameplay-workspace .top-actions { gap: 6px; }
+}

@@ -14,6 +14,9 @@ export function createStore(dir) {
     CREATE TABLE IF NOT EXISTS browser_sessions (
       token TEXT PRIMARY KEY, actor TEXT NOT NULL, expires INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS accounts (
+      actor TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, salt BLOB NOT NULL, password_hash BLOB NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY, actor TEXT NOT NULL, title TEXT NOT NULL, state TEXT NOT NULL
     );
@@ -25,6 +28,9 @@ export function createStore(dir) {
   if (!db.prepare('PRAGMA table_info(pairings)').all().some(column => column.name === 'last_seen')) {
     db.exec('ALTER TABLE pairings ADD COLUMN last_seen INTEGER');
   }
+  if (!db.prepare('PRAGMA table_info(browser_sessions)').all().some(column => column.name === 'guest_actor')) {
+    db.exec('ALTER TABLE browser_sessions ADD COLUMN guest_actor TEXT');
+  }
   const updates = new EventEmitter();
   updates.setMaxListeners(0);
   const generateToken = () => randomBytes(32).toString('base64url');
@@ -33,18 +39,65 @@ export function createStore(dir) {
   const insertProject = db.prepare('INSERT INTO projects VALUES (?, ?, ?, ?)');
   const decode = row => row && JSON.parse(row.state);
 
+  function rotateBrowser(oldToken, nextIdentity) {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const current = store.browser(oldToken);
+      const { actor, guestActor } = nextIdentity(current);
+      if (current) db.prepare('DELETE FROM browser_sessions WHERE token = ?').run(digest(oldToken));
+      const session = store.newBrowser(actor, guestActor);
+      db.exec('COMMIT');
+      return session;
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   const store = {
-    newBrowser() {
+    newBrowser(actor = uid(), guestActor = null) {
       const token = generateToken();
-      const actor = uid();
       const expires = Date.now() + 30 * 86400_000;
-      db.prepare('INSERT INTO browser_sessions VALUES (?, ?, ?)').run(digest(token), actor, expires);
+      db.prepare('INSERT INTO browser_sessions (token, actor, expires, guest_actor) VALUES (?, ?, ?, ?)')
+        .run(digest(token), actor, expires, guestActor);
       return { token, actor, expires };
     },
     browser(token) {
       if (!token || token.length > 200) return null;
-      return db.prepare('SELECT actor, expires FROM browser_sessions WHERE token = ? AND expires > ?')
+      return db.prepare('SELECT actor, expires, guest_actor FROM browser_sessions WHERE token = ? AND expires > ?')
         .get(digest(token), Date.now()) ?? null;
+    },
+    account(actor) {
+      return actor ? db.prepare('SELECT email FROM accounts WHERE actor = ?').get(actor) ?? null : null;
+    },
+    credentials(email) {
+      return db.prepare('SELECT actor, salt, password_hash FROM accounts WHERE email = ?').get(email);
+    },
+    registerAccount(token, email, salt, hash) {
+      return rotateBrowser(token, current => {
+        requireCondition(!store.account(current?.actor), 409, 'ALREADY_SIGNED_IN', 'Sign out before creating another account.');
+        requireCondition(!store.credentials(email), 409, 'EMAIL_UNAVAILABLE', 'This email is already registered. Sign in to continue.');
+        const actor = current?.actor ?? uid();
+        db.prepare('INSERT INTO accounts (actor, email, salt, password_hash) VALUES (?, ?, ?, ?)').run(actor, email, salt, hash);
+        if (!current) store.create(actor, 'The Dolomites', true);
+        return { actor };
+      });
+    },
+    signIn(token, actor) {
+      return rotateBrowser(token, current => {
+        requireCondition(!store.account(current?.actor), 409, 'ALREADY_SIGNED_IN', 'Sign out before signing in again.');
+        return { actor, guestActor: current?.actor ?? null };
+      });
+    },
+    signOut(token) {
+      const session = store.browser(token);
+      if (!store.account(session?.actor)) return null;
+      return rotateBrowser(token, current => {
+        if (current?.guest_actor && !store.account(current.guest_actor)) return { actor: current.guest_actor };
+        const actor = uid();
+        store.create(actor, 'The Dolomites', true);
+        return { actor };
+      });
     },
     pair(actor, project) {
       store.read(actor, project);
