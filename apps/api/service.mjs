@@ -60,7 +60,7 @@ export function createEvent(state, input) {
     startAt: input.startAt || null, gps: input.gps ?? null, sourceIds: [], version: 0, story: ''
   };
   state.events.push(event);
-  state.session = { ...state.session, eventId: event.id, anchorId: null };
+  state.session = { ...state.session, eventId: event.id, anchorId: null, anchorNavigationId: null };
   appendChange(state, 'Created ' + event.title, event.id);
   return event;
 }
@@ -95,6 +95,7 @@ export function updateSession(state, input) {
     }
     Object.assign(state.session, { anchorId, eventId: anchor.eventId });
   }
+  state.session.anchorNavigationId = anchorId !== undefined ? uid() : null;
   return state.session;
 }
 

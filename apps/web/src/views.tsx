@@ -95,12 +95,10 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
   const [spatial, setSpatial] = useState<string | null>(null);
   const activeEvent = event?.id;
   const selectedAnchor = state.anchors.find(item => item.id === state.session.anchorId);
-  const lastAnchor = useRef<typeof state.session.anchorId | undefined>(undefined);
-  useEffect(() => { setEntered(false); setShowStory(false); }, [activeEvent, state.session.lens]);
   useEffect(() => {
-    if (lastAnchor.current !== state.session.anchorId && selectedAnchor?.worldId === 'trail-' + activeEvent) setEntered(true);
-    lastAnchor.current = state.session.anchorId;
-  }, [state.session.anchorId, activeEvent]);
+    setEntered(Boolean(state.session.anchorNavigationId && selectedAnchor?.worldId === 'trail-' + activeEvent));
+    setShowStory(false);
+  }, [state.session.anchorNavigationId, activeEvent, state.session.lens]);
   const worlds = state.worlds.filter(item => item.eventId === activeEvent && item.approved && state.session.lens === 'all' &&
     item.sourceIds.every(id => event?.sourceIds.includes(id)));
   const world = worlds.find(item => item.id === spatial) ?? worlds.at(-1);

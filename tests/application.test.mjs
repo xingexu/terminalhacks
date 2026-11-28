@@ -216,8 +216,16 @@ test('MCP stdio uses the real API, applies a correction and recollection, and pu
     await voice('switch_view', { view: 'universe' });
     assert.equal((await snap()).session.view, 'universe');
     assert.equal((await voice('get_context')).data.view, 'universe');
+    await voice('navigate_anchor', { anchorId: 'a-boats' });
+    const navigation = (await snap()).session;
+    assert.equal(navigation.view, 'explore');
+    assert.equal(navigation.anchorId, 'a-boats');
+    assert.ok(navigation.anchorNavigationId);
+    await voice('navigate_anchor', { anchorId: 'a-boats' });
+    assert.notEqual((await snap()).session.anchorNavigationId, navigation.anchorNavigationId);
     await voice('switch_view', { view: 'explore' });
     assert.equal((await snap()).session.view, 'explore');
+    assert.equal((await snap()).session.anchorNavigationId, null);
     assert.ok((await request(p + '/pairing')).lastSeen > 0);
     const sse = await fetch(root + p + '/events', { headers: { Cookie: cookie }, signal: stream.signal });
     assert.equal(sse.status, 200);
