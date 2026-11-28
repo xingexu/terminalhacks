@@ -39,7 +39,6 @@
   const trailCanvas = background.querySelector('.ascii-trail');
   const trailContext = trailCanvas.getContext('2d');
   const sampler = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
-  if (!sampler || !context) return;
 
   const sources = ['photos/lake.webp', 'photos/ocean.webp', 'photos/stars.webp', 'photos/desert.webp'];
   const glyphs = ' .,:;-~+=!iltfrxvuznXYTLCJ0OZQwm#MW&8%B@$';
@@ -56,6 +55,8 @@
   let exitTimer = 0;
   let destination;
   let scatterCanvas;
+  let scatterGL;
+  let workspaceEntered = false;
 
   function sizeCanvas(canvas, context) {
     canvas.width = Math.round(width * scale);
@@ -161,17 +162,18 @@
   reducedMotion.addEventListener('change', clearTrail);
   document.addEventListener('visibilitychange', clearTrail);
   window.addEventListener('blur', clearTrail);
-  window.addEventListener('pointermove', ({ clientX, clientY, pointerType }) => {
-    if (!trailContext || destination || pointerType === 'touch' || !photo || reducedMotion.matches || document.hidden) return;
+  function pointerTrail({ clientX, clientY, pointerType }) {
+    if (!trailContext || document.documentElement.dataset.leaving || pointerType === 'touch' || !photo || reducedMotion.matches || document.hidden) return;
 
     const last = trail.at(-1);
     if (last && Math.hypot(clientX - last.x, clientY - last.y) < 8) return;
     trail.push({ x: clientX, y: clientY, time: performance.now() });
     if (trail.length > 16) trail.shift();
     if (!trailFrame) trailFrame = requestAnimationFrame(drawTrail);
-  }, { passive: true });
+  }
+  window.addEventListener('pointermove', pointerTrail, { passive: true });
   if (trailContext) sizeCanvas(trailCanvas, trailContext);
-  new ResizeObserver(() => {
+  const backgroundObserver = new ResizeObserver(() => {
     const nextWidth = background.clientWidth;
     const nextHeight = background.clientHeight;
     const nextScale = Math.min(window.devicePixelRatio, 2);
@@ -182,7 +184,8 @@
     clearTrail();
     if (trailContext) sizeCanvas(trailCanvas, trailContext);
     paint();
-  }).observe(background);
+  });
+  backgroundObserver.observe(background);
 
   // Each instance carries one original cell from the painted, full-resolution canvas.
   function glyphScatter(canvas, gl, originX, originY) {
@@ -297,31 +300,53 @@
 
   function navigate() {
     if (!destination) return;
+    const href = destination;
+    destination = null;
     clearTimeout(exitTimer);
     cancelAnimationFrame(exitFrame);
-    location.assign(destination);
+    const enter = new CustomEvent('everwhere:enter-workspace', { cancelable: true, detail: { href } });
+    if (window.dispatchEvent(enter)) {
+      location.assign(href);
+    } else {
+      workspaceEntered = true;
+      clearTrail();
+      window.removeEventListener('pointermove', pointerTrail);
+      backgroundObserver.disconnect();
+      scatterGL?.getExtension('WEBGL_lose_context')?.loseContext();
+      scatterGL = null;
+      scatterCanvas?.remove();
+      scatterCanvas = null;
+      photo = null;
+      for (const surface of [photoCanvas, trailCanvas, sampler?.canvas]) {
+        if (surface) surface.width = surface.height = 0;
+      }
+    }
   }
 
-  document.addEventListener('click', event => {
-    const link = event.target.closest?.('.try-link, .landing-footer a');
-    if (!link || link.origin !== location.origin || link.pathname !== '/app' ||
+  tryLink.addEventListener('click', event => {
+    const link = event.currentTarget;
+    if (workspaceEntered || link.origin !== location.origin || link.pathname !== '/app' || link.search !== '?tour=0' ||
       link.target && link.target !== '_self' || event.defaultPrevented || event.button !== 0 ||
       event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-    if (!photo || reducedMotion.matches) return;
     event.preventDefault();
-    if (destination) return;
+    if (document.documentElement.dataset.leaving) return;
     destination = link.href;
     document.documentElement.dataset.leaving = 'true';
+    if (!photo || !glyphWidth || reducedMotion.matches) return navigate();
     exitTimer = setTimeout(navigate, 850);
     const bounds = link.getBoundingClientRect();
     const x = event.detail ? event.clientX : bounds.left + bounds.width / 2;
     const y = event.detail ? event.clientY : bounds.top + bounds.height / 2;
     clearTrail();
     scatterCanvas = makeSurface();
-    const gl = scatterCanvas.getContext('webgl2', { antialias: false, depth: false, stencil: false });
-    let draw = gl && glyphScatter(scatterCanvas, gl, x, y);
+    scatterGL = scatterCanvas.getContext('webgl2', { antialias: false, depth: false, stencil: false });
+    let draw = scatterGL && glyphScatter(scatterCanvas, scatterGL, x, y);
     if (!draw) {
-      if (gl) scatterCanvas = makeSurface();
+      if (scatterGL) {
+        scatterGL.getExtension('WEBGL_lose_context')?.loseContext();
+        scatterGL = null;
+        scatterCanvas = makeSurface();
+      }
       draw = canvasScatter(scatterCanvas, x, y);
     }
     if (!draw) return navigate();
@@ -341,7 +366,10 @@
     clearTimeout(exitTimer);
     cancelAnimationFrame(exitFrame);
   });
-  window.addEventListener('pageshow', () => {
+  window.addEventListener('pageshow', event => {
+    if (!event.persisted || workspaceEntered) return;
+    scatterGL?.getExtension('WEBGL_lose_context')?.loseContext();
+    scatterGL = null;
     scatterCanvas?.remove();
     scatterCanvas = null;
     destination = null;
@@ -362,10 +390,11 @@
       } catch {
         continue;
       }
+      if (workspaceEntered) return;
       photo = candidate;
       paint();
       return;
     }
   }
-  loadPhoto();
+  if (sampler && context) loadPhoto();
 })();
