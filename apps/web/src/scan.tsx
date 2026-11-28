@@ -32,6 +32,17 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
   const [notice, setNotice] = useState('');
   const [runtime, setRuntime] = useState<RuntimeControls | null>(null);
   useEffect(() => {
+    if (!runtime) return;
+    const recorder = runtime.recorder;
+    recorder.manifest.anchors = anchors.map(anchor => ({ id: anchor.id, position: anchor.position, sourceIds: anchor.sourceIds }));
+    if (recorder.manifest.revision !== revision) {
+      recorder.interrupt();
+      recorder.path = null;
+      recorder.manifest.revision = revision;
+      recorder.message = 'Memory updated. Record a new path for this revision.';
+    }
+  }, [runtime, revision, anchors]);
+  useEffect(() => {
     appliedPosition.current = '';
     const element = host.current!;
     const previousFocus = document.activeElement as HTMLElement | null;
@@ -279,7 +290,7 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
       document.body.style.overflow = overflow;
       previousFocus?.focus();
     };
-  }, [url, revision]);
+  }, [url]);
   useEffect(() => {
     const key = JSON.stringify(position);
     if (position && actions.current && key !== appliedPosition.current) {
