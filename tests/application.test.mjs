@@ -43,6 +43,27 @@ async function setup(t) {
   return { dir, root, ...first, p, browser, request, snap: () => request(p + '/snapshot') };
 }
 
+test('scene generation requires a browser session before provider readiness checks', async t => {
+  const { p, request } = await setup(t);
+  const { token } = await request(p + '/pairing', { confirm: true });
+  const originalFetch = globalThis.fetch;
+  let readinessChecks = 0;
+  globalThis.fetch = (...args) => {
+    if (String(args[0]) === 'http://127.0.0.1:11434/api/tags') readinessChecks++;
+    return originalFetch(...args);
+  };
+  try {
+    const headers = { Authorization: 'Bearer ' + token };
+    const create = await request(p + '/scene-jobs', {}, { cookie: '', headers, status: 403 });
+    assert.equal(create.code, 'BROWSER_REQUIRED');
+    const resume = await request(p + '/scene-jobs/not-a-job/resume', {}, { cookie: '', headers, status: 403 });
+    assert.equal(resume.code, 'BROWSER_REQUIRED');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(readinessChecks, 0);
+});
+
 async function makeImage(color = '#557764') {
   return sharp({ create: { width: 48, height: 32, channels: 3, background: color } }).jpeg().toBuffer();
 }
@@ -212,6 +233,26 @@ test('MCP stdio uses the real API, applies a correction and recollection, and pu
       return data;
     }
     assert.equal((await voice('get_context')).data.event, 'Lago di Braies');
+    assert.ok(tools.tools.find(tool => tool.name === 'switch_view').inputSchema.properties.view.enum.includes('universe'));
+    await voice('switch_view', { view: 'universe' });
+    assert.equal((await snap()).session.view, 'universe');
+    assert.equal((await voice('get_context')).data.view, 'universe');
+    await voice('navigate_anchor', { anchorId: 'a-boats' });
+    const navigation = (await snap()).session;
+    assert.equal(navigation.view, 'explore');
+    assert.equal(navigation.anchorId, 'a-boats');
+    assert.ok(navigation.anchorNavigationId);
+    await voice('navigate_anchor', { anchorId: 'a-boats' });
+    const repeatedNavigationId = (await snap()).session.anchorNavigationId;
+    assert.notEqual(repeatedNavigationId, navigation.anchorNavigationId);
+    await voice('select_event', { query: 'Lago di Braies' });
+    assert.equal((await snap()).session.anchorNavigationId, repeatedNavigationId);
+    await voice('switch_view', { view: 'explore' });
+    assert.equal((await snap()).session.view, 'explore');
+    assert.equal((await snap()).session.anchorNavigationId, repeatedNavigationId);
+    await voice('switch_view', { view: 'universe' });
+    assert.equal((await snap()).session.anchorNavigationId, null);
+    await voice('switch_view', { view: 'explore' });
     assert.ok((await request(p + '/pairing')).lastSeen > 0);
     const sse = await fetch(root + p + '/events', { headers: { Cookie: cookie }, signal: stream.signal });
     assert.equal(sse.status, 200);
@@ -352,6 +393,54 @@ test('imported SPZ delivery requires its approval, current lens, and linked orig
   assert.equal((await fetch(root + asset, { headers })).status, 404);
   await request(p + '/commands', await propose(ctx, 'artifact.approve', 'e-lake', { artifactId: world.id, dependencyHash: world.inputHash }));
   assert.deepEqual(Buffer.from(await (await fetch(root + asset, { headers })).arrayBuffer()), bytes);
+  await request(p + '/session', { lens: 'originals' });
+  assert.equal((await fetch(root + asset, { headers })).status, 404);
+  await request(p + '/session', { lens: 'all' });
+  await request(p + '/capture/grants/' + session.grantId + '/revoke', {});
+  assert.equal((await fetch(root + asset, { headers })).status, 404);
+  assert.equal((await snap()).worlds.length, 0);
+});
+
+test('GLB scans keep private source approval and revocation gates and reject external assets', async t => {
+  const ctx = await setup(t);
+  const { root, p, request, snap, cookie } = ctx;
+  const session = await request(p + '/capture/sessions', { consent: true, source: 'selected_file' });
+  const upload = await request(p + '/capture/sessions/' + session.id + '/files', asUpload(await makeImage(), 'Scan source.jpg'));
+  const preview = await request(p + '/capture/observations/' + upload.observationId + '/preview', { eventId: 'e-lake', expectedRevision: 0 });
+  await request(p + '/commands', { ...preview.command, requestId: randomUUID(), previewToken: preview.previewToken });
+  function glb(external = false) {
+    const positions = Buffer.from(new Float32Array([-5, 0, -5, 0, 0, 5, 5, 0, -5]).buffer);
+    const description = { asset: { version: '2.0' }, scene: 0, scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+      buffers: [{ byteLength: positions.length, ...(external ? { uri: 'https://example.com/private-scan.bin' } : {}) }],
+      bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: positions.length }],
+      accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: 'VEC3', min: [-5, 0, -5], max: [5, 0, 5] }] };
+    const json = Buffer.from(JSON.stringify(description));
+    const padded = Buffer.alloc(Math.ceil(json.length / 4) * 4, 32);
+    json.copy(padded);
+    const header = Buffer.alloc(20);
+    header.write('glTF'); header.writeUInt32LE(2, 4); header.writeUInt32LE(28 + padded.length + positions.length, 8);
+    header.writeUInt32LE(padded.length, 12); header.writeUInt32LE(0x4e4f534a, 16);
+    const binaryHeader = Buffer.alloc(8);
+    binaryHeader.writeUInt32LE(positions.length); binaryHeader.writeUInt32LE(0x004e4942, 4);
+    return Buffer.concat([header, padded, binaryHeader, positions]);
+  }
+  const endpoint = p + '/memories/e-lake/worlds?consent=1&expectedRevision=1&sourceId=' + upload.media.id;
+  await request(endpoint, asUpload(glb(true), 'External.glb'), { status: 400 });
+  await request(endpoint, asUpload(glb().subarray(0, -1), 'Truncated.glb'), { status: 400 });
+  const saved = await request(endpoint, asUpload(glb(), 'Room.glb'));
+  const world = (await snap()).worlds.find(item => item.id === saved.id);
+  assert.equal(world.format, 'glb');
+  const asset = p + '/worlds/' + world.id + '/scene.glb';
+  const headers = { Cookie: cookie };
+  assert.equal((await fetch(root + asset, { headers })).status, 404);
+  await request(p + '/commands', await propose(ctx, 'artifact.approve', 'e-lake', { artifactId: world.id, dependencyHash: world.inputHash }));
+  const response = await fetch(root + asset, { headers });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /model\/gltf-binary/);
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), glb());
+  assert.equal((await fetch(root + asset.replace('scene.glb', 'scene.spz'), { headers })).status, 404);
+  assert.equal((await fetch(root + asset)).status, 401);
   await request(p + '/session', { lens: 'originals' });
   assert.equal((await fetch(root + asset, { headers })).status, 404);
   await request(p + '/session', { lens: 'all' });

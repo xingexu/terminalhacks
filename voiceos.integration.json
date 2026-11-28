@@ -131,6 +131,7 @@
         "properties": {
           "view": {
             "enum": [
+              "universe",
               "remember",
               "explore",
               "watch",

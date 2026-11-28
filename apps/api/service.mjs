@@ -43,6 +43,7 @@ export function getSnapshot(projectId, state) {
     media: state.media.filter(item => !item.revoked && !item.pending).map(cleanMedia),
     recollections: state.recollections.map(({ actor, ...item }) => ({ ...item, contributor: 'You' })),
     jobs: state.jobs.map(cleanJob), history: state.history,
+    sceneJobs: (state.sceneJobs ?? []).map(({ id, eventId, sourceId, status, error, worldId }) => ({ id, eventId, sourceId, status, error, worldId })),
     worlds: (state.worlds || []).filter(item => !item.revoked).map(({ storage, contentHash, ...item }) => item),
     undo: state.changes[0] ? { revision: state.changes[0].revision, targetId: state.changes[0].targetId } : null,
     capture: { sessions: state.capture.sessions.map(session => ({ ...session, status: session.status === 'active' && session.expires <= Date.now() ? 'expired' : session.status })) }
@@ -60,13 +61,14 @@ export function createEvent(state, input) {
     startAt: input.startAt || null, gps: input.gps ?? null, sourceIds: [], version: 0, story: ''
   };
   state.events.push(event);
-  state.session = { ...state.session, eventId: event.id, anchorId: null };
+  state.session = { ...state.session, eventId: event.id, anchorId: null, anchorNavigationId: null };
   appendChange(state, 'Created ' + event.title, event.id);
   return event;
 }
 
 export function updateSession(state, input) {
   const { eventId, view, lens, anchorId } = input;
+  const previous = { ...state.session };
   if (eventId !== undefined) {
     check(eventById(state, eventId), 404, 'EVENT_NOT_FOUND', 'That memory is unavailable.');
     if (eventId !== state.session.eventId) state.session.anchorId = state.anchors.find(item => item.eventId === eventId)?.id ?? null;
@@ -82,8 +84,22 @@ export function updateSession(state, input) {
   }
   if (anchorId !== undefined) {
     const anchor = state.anchors.find(item => item.id === anchorId);
-    check(anchor, 404, 'ANCHOR_NOT_FOUND', 'That waypoint is unavailable.');
+    const event = anchor && eventById(state, anchor.eventId);
+    check(anchor && event && anchor.sourceIds.length > 0 && anchor.sourceIds.every(id => {
+      const source = mediaById(state, id);
+      return source && !source.pending && event.sourceIds.includes(id) && lensAllows(source, state.session.lens);
+    }), 404, 'ANCHOR_NOT_FOUND', 'That waypoint is unavailable.');
+    if (anchor.worldId !== 'trail-' + event.id) {
+      const world = state.worlds?.find(item => item.id === anchor.worldId && item.eventId === event.id);
+      check(world?.approved && !world.revoked && state.session.lens === 'all' &&
+        world.sourceIds.every(id => mediaById(state, id) && event.sourceIds.includes(id)),
+      404, 'ANCHOR_NOT_FOUND', 'That waypoint is unavailable.');
+    }
     Object.assign(state.session, { anchorId, eventId: anchor.eventId });
+  }
+  if (anchorId !== undefined) state.session.anchorNavigationId = uid();
+  else if (state.session.eventId !== previous.eventId || state.session.view !== previous.view || state.session.lens !== previous.lens) {
+    state.session.anchorNavigationId = null;
   }
   return state.session;
 }

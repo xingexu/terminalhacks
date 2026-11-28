@@ -1,0 +1,42 @@
+[
+  {
+    "filename": "sky.hdr",
+    "asset": "kloofendal_48d_partly_cloudy_puresky",
+    "page": "https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky",
+    "license": "CC0-1.0",
+    "size": 1435119,
+    "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/kloofendal_48d_partly_cloudy_puresky_1k.hdr",
+    "md5": "c69498687e876bf68d2a8b8a62234eb9",
+    "sha256": "fd94c84997b8a3c353b62c2125a9b44e19509956986a126e472684432a02d798"
+  },
+  {
+    "filename": "concrete-color.jpg",
+    "asset": "concrete_floor_01",
+    "page": "https://polyhaven.com/a/concrete_floor_01",
+    "license": "CC0-1.0",
+    "size": 755740,
+    "md5": "187065cfc20a35eb421eac6d4f38c58f",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete_floor_01/concrete_floor_01_diff_1k.jpg",
+    "sha256": "db7c800f1464359b5f359fc743e82ac51b34e014fdfd53844f4af34bb1949229"
+  },
+  {
+    "filename": "concrete-normal.jpg",
+    "asset": "concrete_floor_01",
+    "page": "https://polyhaven.com/a/concrete_floor_01",
+    "license": "CC0-1.0",
+    "size": 909898,
+    "md5": "3862d48eb9495b302652cac825738876",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete_floor_01/concrete_floor_01_nor_gl_1k.jpg",
+    "sha256": "28be1f6fa82eeab137c84954bf7ea0f5d8a4434352d01c29f15e20926eb7227e"
+  },
+  {
+    "filename": "concrete-roughness.jpg",
+    "asset": "concrete_floor_01",
+    "page": "https://polyhaven.com/a/concrete_floor_01",
+    "license": "CC0-1.0",
+    "size": 354529,
+    "md5": "3d374d86d7a43b93eed95d0d8957759c",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete_floor_01/concrete_floor_01_rough_1k.jpg",
+    "sha256": "f5239e1c6db5f0ddb4c2397e881a5938ab511386aab19a23c20d40f4ab2c181b"
+  }
+]

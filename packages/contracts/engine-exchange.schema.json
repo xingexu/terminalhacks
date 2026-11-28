@@ -1,0 +1,649 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Everwhere proposed internal engine exchange 3.1",
+  "description": "Adapter proposal, not an existing API; server must additionally enforce permissions, approval, dependencies and semantics.",
+  "$defs": {
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "policyVersion": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "inputHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "projectId",
+        "eventId",
+        "revision",
+        "policyVersion",
+        "sourceIds",
+        "inputHash"
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "photo",
+            "video",
+            "audio",
+            "text",
+            "geo"
+          ]
+        },
+        "provenance": {
+          "enum": [
+            "original",
+            "recollected",
+            "inferred",
+            "enhanced",
+            "reconstructed",
+            "imagined"
+          ]
+        },
+        "observedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "placeLabel": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "sourceId",
+        "kind",
+        "provenance",
+        "observedAt",
+        "placeLabel",
+        "summary",
+        "confidence"
+      ]
+    },
+    "scenePlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "placeLabel": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "eventTime": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "routeStatus": {
+          "enum": [
+            "confirmed",
+            "approximate",
+            "unknown"
+          ]
+        },
+        "unknowns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0
+        },
+        "gapSummary": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provenance": {
+          "enum": [
+            "original",
+            "recollected",
+            "inferred",
+            "enhanced",
+            "reconstructed",
+            "imagined"
+          ]
+        },
+        "reviewStatus": {
+          "enum": [
+            "proposed",
+            "approved",
+            "rejected"
+          ]
+        },
+        "method": {
+          "enum": [
+            "photogrammetry",
+            "generative",
+            "imported",
+            "original_trail"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "eventId",
+        "revision",
+        "evidenceIds",
+        "placeLabel",
+        "eventTime",
+        "routeStatus",
+        "unknowns",
+        "gapSummary",
+        "provenance",
+        "reviewStatus",
+        "method"
+      ]
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "position": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "sourceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "position",
+        "sourceIds"
+      ]
+    },
+    "sceneManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "planId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "format": {
+          "enum": [
+            "spz",
+            "glb",
+            "gltf",
+            "original_trail"
+          ]
+        },
+        "assetId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "collisionAssetId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "units": {
+          "enum": [
+            "m"
+          ]
+        },
+        "coordinateSystem": {
+          "enum": [
+            "right-handed-y-up"
+          ]
+        },
+        "scaleConfidence": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "boundsMin": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "boundsMax": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "spawn": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "anchors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/anchor"
+          },
+          "minItems": 0
+        },
+        "capability": {
+          "enum": [
+            "free_roam",
+            "guided",
+            "original_trail"
+          ]
+        },
+        "provenance": {
+          "enum": [
+            "original",
+            "recollected",
+            "inferred",
+            "enhanced",
+            "reconstructed",
+            "imagined"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "planId",
+        "revision",
+        "format",
+        "assetId",
+        "collisionAssetId",
+        "units",
+        "coordinateSystem",
+        "scaleConfidence",
+        "boundsMin",
+        "boundsMax",
+        "spawn",
+        "anchors",
+        "capability",
+        "provenance"
+      ]
+    },
+    "keyframe": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "t": {
+          "type": "number",
+          "minimum": 0
+        },
+        "position": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "quaternion": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "fov": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 180
+        }
+      },
+      "required": [
+        "t",
+        "position",
+        "quaternion",
+        "fov"
+      ]
+    },
+    "cameraPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sceneId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "enum": [
+            "reconstructed",
+            "imagined"
+          ]
+        },
+        "keyframes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/keyframe"
+          },
+          "minItems": 2
+        }
+      },
+      "required": [
+        "id",
+        "sceneId",
+        "revision",
+        "provenance",
+        "keyframes"
+      ]
+    },
+    "segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "photo",
+            "original_clip",
+            "reconstructed_clip",
+            "story_card",
+            "audio",
+            "chapter"
+          ]
+        },
+        "sourceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "provenance": {
+          "enum": [
+            "original",
+            "recollected",
+            "inferred",
+            "enhanced",
+            "reconstructed",
+            "imagined"
+          ]
+        },
+        "durationSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "sourceIds",
+        "provenance",
+        "durationSeconds",
+        "label"
+      ]
+    },
+    "edition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "kind": {
+          "enum": [
+            "album",
+            "vlog",
+            "blog",
+            "documentary",
+            "reel",
+            "audio"
+          ]
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/segment"
+          },
+          "minItems": 1
+        },
+        "dependencyIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "originalsOnly": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "kind",
+        "segments",
+        "dependencyIds",
+        "originalsOnly"
+      ]
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "3.1-proposal"
+    },
+    "context": {
+      "$ref": "#/$defs/context"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence"
+      },
+      "minItems": 1
+    },
+    "scenePlan": {
+      "$ref": "#/$defs/scenePlan"
+    },
+    "sceneManifest": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/sceneManifest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "cameraPath": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/cameraPath"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "editions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edition"
+      },
+      "minItems": 0
+    }
+  },
+  "required": [
+    "version",
+    "context",
+    "evidence",
+    "scenePlan",
+    "sceneManifest",
+    "cameraPath",
+    "editions"
+  ]
+}
