@@ -1,4 +1,4 @@
-export type View = 'explore' | 'watch' | 'create' | 'remember' | 'archive';
+export type View = 'universe' | 'explore' | 'watch' | 'create' | 'remember' | 'archive';
 export type Lens = 'all' | 'originals';
 export type Profile = 'natural' | 'nostalgic' | 'documentary' | 'vivid';
 export type Project = { id: string; title: string; demo: boolean };

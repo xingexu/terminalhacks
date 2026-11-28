@@ -8,6 +8,8 @@ import {
   type Anchor, type Job, type Memory, type Profile, type SearchResult, type Snapshot, type Source, type View, type World
 } from './model';
 
+import { updateScenePointer, useScenePalette } from './scene';
+
 const Spatial = lazy(() => import('./spatial'));
 const Scan = lazy(() => import('./scan'));
 const WalkableAlbum = lazy(() => import('./album'));
@@ -26,6 +28,7 @@ export type ViewActions = {
   approve: (job: Job | World) => void;
   setGrade: (profile: Profile) => void;
   openSettings: () => void;
+  openVoice: () => void;
   openWorld: () => void;
   undo: () => void;
 };
@@ -47,10 +50,19 @@ function Thumb({ project, source, className = '' }: { project: string; source?: 
     <span className={'thumb-empty ' + className}><Image size={21} /></span>;
 }
 
+function MediaPicture({ project, source, className }: { project: string; source?: Source; className: string }) {
+  return <span className={className} onPointerMove={updateScenePointer}>
+    <Thumb project={project} source={source} className="media-base" />
+    {source && <Thumb project={project} source={source} className="media-reveal" />}
+  </span>;
+}
+
 function MediaGrid({ state, sources, open }: { state: Snapshot; sources: Source[]; open: ViewActions['openSource'] }) {
   return <div className="media-grid">{sources.map(source =>
     <button className="media-card" key={source.id} onClick={() => open(source)}>
-      <div className="media-image"><Thumb project={state.projectId} source={source} />
+      <div className="media-image" onPointerMove={updateScenePointer}>
+        <Thumb project={state.projectId} source={source} className="media-base" />
+        <Thumb project={state.projectId} source={source} className="media-reveal" />
         {source.mime.startsWith('video/') && <span className="media-play"><Play size={17} fill="currentColor" /></span>}
       </div>
       <div className="media-meta"><strong>{source.caption}</strong><span>{source.provenance === 'imagined' ? 'Imagined demo' : 'Original'}</span></div>
@@ -59,18 +71,18 @@ function MediaGrid({ state, sources, open }: { state: Snapshot; sources: Source[
 
 export function Timeline({ state, event, actions }: { state: Snapshot; event?: Memory; actions: ViewActions }) {
   return <section className="timeline">
-    <div className="section-heading"><h2>Memories</h2><div className="button-row">
-      <button className="btn compact subtle" onClick={actions.openMap}><Map size={15} /> Map</button>
+    <div className="section-heading"><h2>Journey timeline</h2><div className="button-row">
+      <button className="btn compact subtle" onClick={actions.openMap}><Map size={15} /> View map</button>
       <button className="btn compact" onClick={actions.openMemory}><Plus size={15} /> New memory</button></div></div>
     {state.events.length ? <div className="timeline-grid">
       {state.events.map(memory => {
         const source = sourcesFor(state, memory.sourceIds).find(isVisual);
         const active = memory.id === event?.id;
         return <button key={memory.id} className={'timeline-card' + (active ? ' active' : '')} onClick={() => actions.select({ eventId: memory.id })} aria-current={active ? 'step' : undefined}>
-          <Thumb project={state.projectId} source={source} />
+          <MediaPicture project={state.projectId} source={source} className="timeline-picture" />
           <span className="timeline-copy"><span className="timeline-date">{displayDate(memory.startAt, true)}</span><strong>{memory.title}</strong>
             <span className="timeline-place">{memory.placeLabel}</span></span>
-          {active && <span className="active-dot" />}
+          {active && <span className="active-dot" aria-hidden="true" />}
         </button>;
       })}
     </div> : <button className="btn" onClick={actions.openMemory}><Plus size={16} /> Add your first memory</button>}
@@ -119,7 +131,8 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
   }
   const pendingWorld = state.worlds.find(item => item.eventId === event.id && !item.approved &&
     item.sourceIds.every(id => event.sourceIds.includes(id)));
-  return <>
+  return <section className="view-explore">
+    <div className="explore-stage">
     {entered && photos.length > 0 && <Suspense fallback={<div className="notice" role="status">Opening immersive album…</div>}>
       <WalkableAlbum key={state.projectId + event.id + state.session.lens + photos.map(photo => photo.id).join(',')}
         state={state} photos={photos} title={event.title} onClose={() => setEntered(false)}
@@ -143,8 +156,11 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
           <button className="btn compact" key={item.id} onClick={() => actions.select({ anchorId: item.id })}><MapPin size={14} />{item.title}</button>)}
         {selectedAnchor?.worldId === spatial && <button className="btn compact" onClick={actions.openRecollection}><BookOpen size={15} /> Add a recollection here</button>}
       </div>
-    </div> : <div className={'hero grade-' + state.visualProfile + (active ? '' : ' hero-empty')}>
-      {active && <img className="hero-img" key={active.id} src={sourceURL(state.projectId, active.id, '?variant=thumb')} alt={active.caption} />}
+    </div> : <div className={'hero grade-' + state.visualProfile + (active ? '' : ' hero-empty')} onPointerMove={updateScenePointer}>
+      {active && <>
+        <img className="hero-img" key={active.id} src={sourceURL(state.projectId, active.id, '?variant=thumb')} alt={active.caption} />
+        <img className="hero-img hero-reveal" src={sourceURL(state.projectId, active.id, '?variant=thumb')} alt="" aria-hidden="true" />
+      </>}
       <div className="hero-shade" />
       <div className="hero-top"><div className="hero-badges"><span className="glass-pill"><Compass size={14} /> {photos.length} {photos.length === 1 ? 'photo' : 'photos'} to explore</span>
         {active?.provenance === 'imagined' && <span className="scene-sample">Imagined demo</span>}</div>
@@ -165,7 +181,7 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
           <h2>{event.title}</h2>
           <div className="hero-location"><MapPin size={15} /> {event.placeLabel}{anchor && <><span className="dot-separator" /> {anchor.title}</>}</div>
           <div className="button-row">
-            {photos.length > 0 ? <button className="btn hero-cta" onClick={openAlbum}><Compass size={17} /> Enter memory <ArrowRight size={16} /></button> :
+            {photos.length > 0 ? <button className="btn hero-cta" onClick={openAlbum}><Compass size={17} /> Enter photo album <ArrowRight size={16} /></button> :
               <button className="btn hero-cta" onClick={actions.openCapture}><Camera size={16} /> Add photos</button>}
             {active && <button className="glass-icon" aria-label="Waypoint story" onClick={() => setShowStory(!showStory)}><BookOpen size={17} /></button>}
           </div>
@@ -184,8 +200,9 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
       {pendingWorld && <button className="btn compact" onClick={() => actions.approve(pendingWorld)}><Check size={15} /> Approve reconstruction</button>}
       {media.some(item => item.provenance === 'original' && item.mime.startsWith('image/')) && <button className="btn compact subtle" onClick={actions.openWorld}><Plus size={15} /> Import 3D scene</button>}
     </div>}
+    </div>
     <Timeline state={state} event={event} actions={actions} />
-  </>;
+  </section>;
 }
 
 export function Watch({ state, event, actions }: { state: Snapshot; event?: Memory; actions: ViewActions }) {
@@ -201,26 +218,38 @@ export function Watch({ state, event, actions }: { state: Snapshot; event?: Memo
   }, [playing, media.length]);
   const jobs = state.jobs.filter(item => item.eventId === event?.id && item.lens === state.session.lens);
   const current = jobs.find(item => ['queued', 'running', 'ready'].includes(item.status));
-  const showVideo = current?.status === 'ready' && current.approved;
-  return <div className={'view-stack grade-' + state.visualProfile}>
+  const filmReady = current?.status === 'ready';
+  const showVideo = filmReady && current.approved;
+  const rendering = current?.status === 'queued' || current?.status === 'running';
+  const image = source && sourceURL(state.projectId, source.id, '?variant=thumb');
+  const palette = useScenePalette(image, filmReady || rendering || playing);
+  const status = filmReady ? (showVideo ? 'Your film is ready to watch' : 'Film ready for approval') :
+    current?.status === 'queued' ? 'Film queued' : 'Rendering your film';
+  return <div className={'view-stack view-watch grade-' + state.visualProfile + (filmReady ? ' is-film-ready' : '') +
+    (rendering ? ' is-film-rendering' : '') + (playing ? ' is-storyboard-playing' : '')} style={palette}>
     <div className="section-heading page-section"><h2>Films from your memories</h2>
-      <button className="btn primary" onClick={actions.render} disabled={!media.length || ['queued', 'running', 'ready'].includes(current?.status || '')}><Clapperboard size={17} /> Render MP4</button></div>
+      {!current && !!media.length && <button className="btn primary" onClick={actions.render}><Clapperboard size={17} />
+        {jobs[0]?.status === 'stale' ? 'Render updated film' : jobs[0] ? 'Try rendering again' : 'Create film'}</button>}</div>
     {showVideo && current ? <div className="film-stage"><video controls playsInline preload="metadata" src={artifactURL(state.projectId, current.id)} poster={source && sourceURL(state.projectId, source.id, '?variant=thumb')}>
       <track default kind="captions" label="English captions" srcLang="en" src={artifactURL(state.projectId, current.id, 'captions')} />
-    </video></div> : source ? <div className="film-stage film-preview">
-      <Thumb project={state.projectId} source={source} />
+    </video></div> : source ? <div className="film-stage film-preview" onPointerMove={updateScenePointer}>
+      <Thumb project={state.projectId} source={source} className="film-preview-img" />
+      <Thumb project={state.projectId} source={source} className="film-preview-img film-reveal" />
       <span className="glass-pill film-tag"><Film size={14} /> Storyboard preview</span>
       <button className="film-play" aria-label={playing ? 'Pause storyboard' : 'Play storyboard'} onClick={() => setPlaying(!playing)}>{playing ? <Pause size={29} fill="currentColor" /> : <Play size={29} fill="currentColor" />}</button>
       <div className="film-caption"><strong>{event?.title}</strong><span>{source.caption} · {source.provenance === 'imagined' ? 'Imagined demo' : 'Original source'}</span></div>
     </div> : <Empty icon={<Film size={30} />} title="Your film starts with a source"><p>Link a photo or video to this memory.</p><button className="btn" onClick={actions.openCapture}>Add sources</button></Empty>}
-    {current && <div className="notice render-notice"><Film size={19} /><div><strong>{current.status === 'ready' ? current.approved ? '1080p film ready' : 'Film rendered and awaiting approval' : 'Rendering the 1080p film'}</strong>
-      <p>{current.status === 'ready' ? 'Saved from memory revision ' + current.revision + '.' : 'You can keep exploring while FFmpeg renders.'}</p></div>
-      {current.status === 'ready' && (current.approved ? <a className="btn compact" href={artifactURL(state.projectId, current.id) + '?download=1'}><ArrowDownToLine size={16} /> Download</a> :
-        <button className="btn compact primary" onClick={() => actions.approve(current)}><Check size={16} /> Approve film</button>)}</div>}
-    {!current && jobs[0] && <div className="notice"><CircleHelp size={18} /><p>{jobs[0].status === 'stale' ? 'The previous film is out of date because this memory changed. Render a new cut to use the current evidence.' : jobs[0].error || 'This film is unavailable.'}</p></div>}
+    <div className="film-status" role="status">
+      {current && <div className="notice render-notice"><Film size={19} /><div><strong>{status}</strong>
+        <p>{filmReady ? 'Saved from memory revision ' + current.revision + '.' : 'You can keep exploring while the film is prepared.'}</p></div>
+        {filmReady && (showVideo ? <a className="btn compact" href={artifactURL(state.projectId, current.id) + '?download=1'}><ArrowDownToLine size={16} /> Download MP4</a> :
+          <button className="btn compact primary" onClick={() => actions.approve(current)}><Check size={16} /> Approve film</button>)}</div>}
+      {!current && jobs[0] && <div className="notice"><CircleHelp size={18} /><p>{jobs[0].status === 'stale' ? 'This memory changed. Render an updated film to use the current sources.' : jobs[0].error || 'This film is unavailable.'}</p></div>}
+    </div>
     {media.length > 0 && <><div className="section-heading"><h2>Storyboard</h2><span className="muted">{media.length} {media.length === 1 ? 'source' : 'sources'}</span></div>
       <div className="storyboard">{media.map((item, index) => <button className={'storyboard-card' + (source?.id === item.id ? ' selected' : '')}
-        key={item.id} onClick={() => showVideo ? actions.openSource(item) : setFrame(index)}><Thumb project={state.projectId} source={item} /><span>{item.caption}</span></button>)}</div></>}
+        key={item.id} aria-pressed={showVideo ? undefined : source?.id === item.id}
+        onClick={() => showVideo ? actions.openSource(item) : setFrame(index)}><Thumb project={state.projectId} source={item} /><span>{item.caption}</span></button>)}</div></>}
   </div>;
 }
 
@@ -256,7 +285,7 @@ function PhotoAlbum({ state, event, actions }: { state: Snapshot; event?: Memory
       <p className="album-instruction">Choose photos for your walk. Open a photo to view its original source.</p>
       <div className="media-grid">{photos.map(photo => <div className={'media-card album-card' + (excluded.includes(photo.id) ? ' excluded' : '')} key={photo.id}>
         <button className="album-source" onClick={() => actions.openSource(photo)} aria-label={'View ' + photo.caption}>
-          <div className="media-image"><Thumb project={state.projectId} source={photo} /></div>
+          <MediaPicture project={state.projectId} source={photo} className="media-image" />
           <div className="media-meta"><strong>{photo.caption}</strong><span>{photo.provenance === 'imagined' ? 'Imagined demo' : 'Original'} · {displayDate(photo.capturedAt, true)}</span></div>
         </button>
         <button className="album-check" aria-label={'Include ' + photo.caption} aria-pressed={!excluded.includes(photo.id)}
@@ -274,18 +303,33 @@ function PhotoAlbum({ state, event, actions }: { state: Snapshot; event?: Memory
 export function Create({ state, event, actions }: { state: Snapshot; event?: Memory; actions: ViewActions }) {
   const [tab, setTab] = useState<'photos' | 'clips' | 'journal'>('photos');
   const [compare, setCompare] = useState(false);
+  const [openAlbum, setOpenAlbum] = useState<string | null>(null);
   const items = event ? sourcesFor(state, event.sourceIds) : [];
   const media = items.filter(source => source.mime.startsWith(tab === 'photos' ? 'image/' : 'video/'));
   const first = items.find(source => source.mime.startsWith('image/'));
   const rec = state.recollections.filter(item => item.eventId === event?.id);
-  return <div className={'view-stack grade-' + (compare ? 'natural' : state.visualProfile)}>
-    <div className="section-heading page-section"><h2>Make it yours</h2>
+  const albumKey = event?.id + ':' + tab;
+  const albumAvailable = tab !== 'journal' && media.length > 0;
+  const albumOpen = albumAvailable && openAlbum === albumKey;
+  const albumCover = media[0] && sourceURL(state.projectId, media[0].id, '?variant=thumb');
+  const palette = useScenePalette(albumCover, albumOpen);
+  const chooseTab = (next: typeof tab) => {
+    if (next !== tab) setOpenAlbum(null);
+    setTab(next);
+  };
+  return <div className={'view-stack view-create grade-' + (compare ? 'natural' : state.visualProfile) + (albumOpen ? ' is-album-open' : '')} style={palette}>
+    <div className="section-heading page-section"><h2>Memory studio</h2>
       <button className="btn" onClick={actions.openCapture}><Plus size={17} /> Add media</button></div>
     <div className="studio-toolbar"><div className="tab-set" aria-label="Studio views">
-      <button className={tab === 'photos' ? 'selected' : ''} aria-pressed={tab === 'photos'} onClick={() => setTab('photos')}><Image size={16} /> Photo album</button>
-      <button className={tab === 'clips' ? 'selected' : ''} aria-pressed={tab === 'clips'} onClick={() => setTab('clips')}><Film size={16} /> Video album</button>
-      <button className={tab === 'journal' ? 'selected' : ''} aria-pressed={tab === 'journal'} onClick={() => setTab('journal')}><BookOpen size={16} /> Journal</button></div>
-      <button className="btn compact" aria-pressed={compare} onClick={() => setCompare(!compare)}><Eye size={15} /> {compare ? 'Show grade' : 'Compare ungraded'}</button>
+      <button className={tab === 'photos' ? 'selected' : ''} aria-pressed={tab === 'photos'} onClick={() => chooseTab('photos')}><Image size={16} /> Photo album</button>
+      <button className={tab === 'clips' ? 'selected' : ''} aria-pressed={tab === 'clips'} onClick={() => chooseTab('clips')}><Film size={16} /> Video album</button>
+      <button className={tab === 'journal' ? 'selected' : ''} aria-pressed={tab === 'journal'} onClick={() => chooseTab('journal')}><BookOpen size={16} /> Journal</button></div>
+      {albumAvailable && <div className="studio-actions button-row">
+        <button className={'btn compact' + (albumOpen ? '' : ' primary')} onClick={() => setOpenAlbum(albumOpen ? null : albumKey)}>
+          {albumOpen ? 'Close album' : 'Open album'}
+        </button>
+        <button className="btn compact" aria-pressed={compare} onClick={() => setCompare(!compare)}><Eye size={15} /> {compare ? 'Show grade' : 'Compare ungraded'}</button>
+      </div>}
     </div>
     {tab === 'photos' ? <PhotoAlbum key={state.projectId + event?.id + state.session.lens} state={state} event={event} actions={actions} /> : tab === 'journal' ? event ? <article className="journal">
       <span className="eyebrow">{displayDate(event.startAt)} · {event.placeLabel}</span><h2>{event.title}</h2>
@@ -298,7 +342,7 @@ export function Create({ state, event, actions }: { state: Snapshot; event?: Mem
         <Empty icon={<Film size={29} />} title="No videos in this view">
           <p>Select an item from your camera roll and review it in Capture.</p><button className="btn" onClick={actions.openCapture}>Add a source</button>
         </Empty>}
-    <div className="section-heading"><h2>Appearance</h2></div>
+    <div className="section-heading"><h2>Visual DNA</h2><span className="muted">One grade across your experience</span></div>
     <div className="grade-grid">{profiles.map(profile => <button className={'grade-card grade-' + profile.id + (state.visualProfile === profile.id ? ' selected' : '')}
       key={profile.id} onClick={() => state.visualProfile !== profile.id && actions.setGrade(profile.id)} aria-pressed={state.visualProfile === profile.id} disabled={!event}>
       <Thumb project={state.projectId} source={first} /><span><strong>{profile.name}</strong><small>{profile.description}</small></span>
@@ -311,7 +355,9 @@ export function Remember({ state, event, actions }: { state: Snapshot; event?: M
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [error, setError] = useState('');
+  const [searching, setSearching] = useState(false);
   const [question, setQuestion] = useState<{ question: string; sourceIds: string[] } | null>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
   const accounts = state.recollections.filter(item => item.eventId === event?.id);
   useEffect(() => {
     let ignore = false;
@@ -322,16 +368,20 @@ export function Remember({ state, event, actions }: { state: Snapshot; event?: M
   }, [event?.id, state.projectId, state.revision, state.session.lens]);
   const search = async (e: React.FormEvent) => {
     e.preventDefault();
+    const value = query.trim();
+    if (!value || searching) return;
     setError('');
-    try { setResults(await api('/projects/' + state.projectId + '/search?q=' + encodeURIComponent(query))); }
+    setSearching(true);
+    try { setResults(await api('/projects/' + state.projectId + '/search?q=' + encodeURIComponent(value))); }
     catch (err) { setError(String((err as Error).message)); }
+    finally { setSearching(false); }
   };
-  return <div className="view-stack">
-    <div className="section-heading page-section"><h2>Stories</h2>
+  return <div className="view-stack view-remember">
+    <div className="section-heading page-section"><h2>What do you remember?</h2>
       <button className="btn primary" onClick={actions.openRecollection} disabled={!event}><Plus size={16} /> Add a recollection</button></div>
-    <form className="search-bar" onSubmit={search}><Search size={19} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search places, captions, and linked memories" aria-label="Search your memories" required /><button className="btn compact" type="submit">Search</button></form>
+    <form className="search-bar" onSubmit={search}><Search size={19} /><input ref={searchInput} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search places, captions, and memories" aria-label="Search your memories" required /><button className="btn compact" type="submit" disabled={searching || !query.trim()}>{searching ? 'Searching…' : 'Search'}</button></form>
     {error && <div className="notice" role="alert">{error}</div>}
-    {results && <section className="surface"><div className="section-heading"><h3>Matching sources</h3><button className="icon-btn" onClick={() => setResults(null)} aria-label="Clear search"><X size={18} /></button></div>
+    {results && <section className="surface"><div className="section-heading"><h3>Matching sources</h3><button className="icon-btn" onClick={() => { setResults(null); setQuery(''); searchInput.current?.focus(); }} aria-label="Clear search"><X size={18} /></button></div>
       {!results.length && <p className="muted">No matching sources. Try a location or a word from the caption.</p>}
       {results.map(result => {
         const item = state.media.find(value => value.id === result.mediaId);
@@ -350,6 +400,10 @@ export function Remember({ state, event, actions }: { state: Snapshot; event?: M
         <div className="prompt-sources">{sourcesFor(state, question.sourceIds).map(item => <button key={item.id} onClick={() => actions.openSource(item)} aria-label={item.caption}><Thumb project={state.projectId} source={item} /></button>)}</div>
         <button className="btn" onClick={actions.openRecollection}><AudioLines size={16} /> Add your account</button></section>}
     </div>}
+    <section className="remember-voice surface">
+      <div><h3>Remember through conversation</h3><p>Use VoiceOS to find a memory or review a change.</p></div>
+      <button className="btn" onClick={actions.openVoice}><AudioLines size={17} /> Connect VoiceOS</button>
+    </section>
     <Timeline state={state} event={event} actions={actions} />
   </div>;
 }
@@ -367,7 +421,7 @@ export function MemoryMap({ state, actions }: { state: Snapshot; actions: ViewAc
     <div className="map-canvas" aria-label="Schematic map of confirmed memory locations">
       <div className="map-north"><LocateFixed size={15} /> N</div>
       <svg className="map-route" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline points={points.map(point => point.x + ',' + point.y).join(' ')}
-        stroke="#bd9b73" strokeDasharray="2 2" fill="none" vectorEffect="non-scaling-stroke" strokeWidth="1.5" /></svg>
+        stroke="#b7b5ae" strokeDasharray="2 2" fill="none" vectorEffect="non-scaling-stroke" strokeWidth="1.5" /></svg>
       {points.map(({ memory, x, y }, i) => <button key={memory.id} className={'map-point' + (memory.id === state.session.eventId ? ' selected' : '')}
         style={{ left: x + '%', top: y + '%' }} title={memory.title} aria-label={'Explore ' + memory.title}
         onClick={() => actions.select({ eventId: memory.id, view: 'explore' })}>{i + 1}</button>)}
@@ -383,7 +437,7 @@ export function Archive({ state, event, actions, initialMap = false }: { state: 
   useEffect(() => { if (initialMap) setTab('map'); }, [initialMap]);
   const sources = state.media.filter(item => allowed(item, state.session.lens) && isVisual(item));
   return <div className="view-stack">
-    <div className="section-heading page-section"><h2>Library</h2>
+    <div className="section-heading page-section"><h2>Memory archive</h2>
       <button className="btn" onClick={actions.openSettings}>Project settings</button></div>
     <div className="tab-set" aria-label="Archive views">{[['revisions', 'Revisions'], ['map', 'Map'], ['sources', 'Sources']].map(([key, label]) =>
       <button key={key} className={key === tab ? 'selected' : ''} aria-pressed={key === tab} onClick={() => setTab(key)}>{label}</button>)}</div>
