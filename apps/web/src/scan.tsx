@@ -142,7 +142,7 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
         if (!active) { disposeModel(gltf.scene); materials.forEach(item => item.dispose()); textures.forEach(item => item.dispose()); return; }
         scene.add(gltf.scene);
         const bounds = new Box3().setFromObject(gltf.scene);
-        sceneBounds.copy(bounds); sceneBounds.max.y += 2;
+        sceneBounds.copy(bounds); sceneBounds.max.y += 3;
         const center = bounds.getCenter(new Vector3());
         const size = bounds.getSize(new Vector3());
         if (!Number.isFinite(size.length()) || size.length() <= 0) throw new Error('This scene has no usable geometry.');
