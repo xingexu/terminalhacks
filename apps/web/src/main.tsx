@@ -9,11 +9,13 @@ import '@fontsource/instrument-serif/400.css';
 import '@fontsource/instrument-serif/400-italic.css';
 import './style.css';
 import './experience.css';
+import './ascii.css';
 import { Tutorial } from './onboarding';
 import { VoicePanel } from './voice';
 import { Capture } from './capture';
 import { GenerationForm } from './generation';
-import { Archive, AtlasMark, Create, Empty, Explore, Remember, Timeline, Watch, type ViewActions } from './views';
+import { Archive, Create, Empty, Explore, Remember, Timeline, Watch, type ViewActions } from './views';
+import { art, AsciiArt, AsciiImage, AsciiSpinner } from './ascii';
 import { updateScenePointer } from './scene';
 import {
   api, displayDate, isVisual, localDateTime, sourcesFor, sourceURL, type Command, type Lens, type Memory, type Observation, type Project, type Proposal,
@@ -59,7 +61,7 @@ function Modal({ title, onClose, children, wide = false }: { title: string; onCl
 }
 
 function Universe({ state, event, actions }: { state: Snapshot; event?: Memory; actions: ViewActions }) {
-  if (!event) return <Empty icon={<LayoutGrid size={32} />} title="Start with one memory">
+  if (!event) return <Empty icon={<AsciiArt art={art.universe} />} title="Start with one memory">
     <p>Give a moment a name, then collect the photos, clips, or stories that bring it back.</p>
     <button className="btn primary" onClick={actions.openMemory}><Plus size={17} /> Create a memory</button>
   </Empty>;
@@ -69,6 +71,7 @@ function Universe({ state, event, actions }: { state: Snapshot; event?: Memory; 
     <section className="universe-feature" aria-labelledby="featured-memory">
       <div className="universe-feature-media" onPointerMove={cover ? updateScenePointer : undefined}>
         {cover ? <>
+          <AsciiImage key={cover} src={cover} />
           <img className="universe-cover-img" src={cover} alt={source?.caption ?? ''} />
           <img className="hero-reveal" src={cover} alt="" aria-hidden="true" />
         </> : <Images size={38} aria-hidden="true" />}
@@ -221,9 +224,9 @@ function SettingsPanel({ base, state, reload, deleteProject }: { base: string; s
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const perform = async (task: () => Promise<unknown>) => {
+  const perform = async (task: () => Promise<unknown>, after = reload) => {
     setBusy(true); setError('');
-    try { await task(); reload(); setConfirm(''); } catch (err) { setError((err as Error).message); }
+    try { await task(); after(); setConfirm(''); } catch (err) { setError((err as Error).message); }
     finally { setBusy(false); }
   };
   return <div className="form-stack"><div className="notice"><LockKeyhole size={20} /><div><strong>Private project</strong><p>Project access is tied to this browser session. Capture processing stays on the Everwhere server.</p></div></div>
@@ -237,7 +240,7 @@ function SettingsPanel({ base, state, reload, deleteProject }: { base: string; s
     </div>)}
     <hr />
     {confirm === 'delete' ? <div className="form-stack"><p>Delete this project, its private sources, and all hosted exports?</p>
-      <button className="btn danger self-start" disabled={busy} onClick={() => perform(deleteProject)}>Permanently delete project</button></div> :
+      <button className="btn danger self-start" disabled={busy} onClick={() => perform(deleteProject, () => {})}>Permanently delete project</button></div> :
       <button className="btn danger self-start" onClick={() => setConfirm('delete')}>Delete project</button>}
     {error && <p className="form-error" role="alert">{error}</p>}
   </div>;
@@ -383,7 +386,7 @@ function App() {
   return <div className="app-frame">
     <a className="skip-link" href="#experience">Skip to experience</a>
     <aside className="sidebar" aria-label="Workspace">
-      <a className="brand" href="/" aria-label="Everwhere home"><span className="brand-mark"><AtlasMark size={25} /></span><span>everwhere<span className="brand-period">.</span></span></a>
+      <a className="brand" href="/" aria-label="Everwhere home"><span className="brand-mark"><AsciiArt art={art.mark} /></span><span>everwhere<span className="brand-period">.</span></span></a>
       <button className="workspace-project" onClick={() => show('library')} aria-label={'Switch project, current project ' + (state?.title || 'Projects')}><span className="project-icon"><Images size={17} /></span><span><strong>{state?.title || 'Memory projects'}</strong><small>{state?.demo ? 'Illustrated sample' : 'Private project'}</small></span><ChevronDown size={15} /></button>
       <div className="nav-groups">
         <nav aria-label="Experience">
@@ -408,8 +411,8 @@ function App() {
           <button className="btn top-capture" onClick={() => state ? show('capture') : show('library')}><Camera size={17} /> <span>{state ? 'Capture memory' : 'Projects'}</span>{items.length > 0 && <span className="pending-count" aria-label={items.length + ' pending sources'}>{items.length}</span>}</button></div>
       </header>
       {startupError && <div className="notice main-notice" role="alert">{startupError}<button className="btn compact" onClick={() => location.reload()}>Retry</button></div>}
-      {!startupError && (loading || (!state && project)) && <div className="load-state" role="status"><AtlasMark size={38} /> Opening your universe…</div>}
-      {!loading && !state && !project && <div className="load-state"><AtlasMark size={42} /><h1>Every life is a world.</h1><button className="btn primary" onClick={() => show('library')}><Plus size={17} /> Create a project</button></div>}
+      {!startupError && (loading || (!state && project)) && <div className="load-state" role="status"><AsciiSpinner /> Opening your universe…</div>}
+      {!loading && !state && !project && <div className="load-state"><AsciiArt art={art.universe} /><h1>Every life is a world.</h1><button className="btn primary" onClick={() => show('library')}><Plus size={17} /> Create a project</button></div>}
       {state && <div className="main-content">
         <div className="project-head"><div>
           {state.demo && <p className="eyebrow project-kicker">Illustrated sample</p>}

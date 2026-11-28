@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowDownToLine, ArrowLeft, ArrowRight, AudioLines, BookOpen, Box, Camera, Check, ChevronLeft, ChevronRight, CircleHelp,
-  Clapperboard, Compass, Eye, Film, Image, LocateFixed, Map, MapPin, Maximize, Pause, Play, Plus, Search, Sparkles, X
+  Clapperboard, Compass, Eye, Film, Image, Map, MapPin, Maximize, Pause, Play, Plus, Search, Sparkles, X
 } from 'lucide-react';
 import {
   allowed, api, artifactURL, displayDate, isVisual, sourceURL, sourcesFor,
@@ -9,6 +9,7 @@ import {
 } from './model';
 
 import { updateScenePointer, useScenePalette } from './scene';
+import { art, AsciiArt, AsciiImage, AsciiMap } from './ascii';
 
 const Spatial = lazy(() => import('./spatial'));
 const Scan = lazy(() => import('./scan'));
@@ -34,21 +35,13 @@ export type ViewActions = {
   undo: () => void;
 };
 
-export function AtlasMark({ size = 24 }: { size?: number }) {
-  return <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true">
-    <circle cx="16" cy="16" r="11.5" stroke="currentColor" strokeWidth=".8" opacity=".55" />
-    <path d="M16 1.5 18.4 13.6 30.5 16 18.4 18.4 16 30.5 13.6 18.4 1.5 16 13.6 13.6 16 1.5Z" fill="currentColor" />
-    <path d="M16 4v24M4 16h24" stroke="#192018" opacity=".65" strokeWidth=".65" />
-  </svg>;
-}
-
 export function Empty({ icon, title, children }: { icon: ReactNode; title: string; children?: ReactNode }) {
   return <div className="empty">{icon}<h3>{title}</h3>{children}</div>;
 }
 
 function Thumb({ project, source, className = '' }: { project: string; source?: Source; className?: string }) {
   return source ? <img className={className} src={sourceURL(project, source.id, '?variant=thumb')} alt="" loading="lazy" /> :
-    <span className={'thumb-empty ' + className}><Image size={21} /></span>;
+    <span className={'thumb-empty ' + className}><AsciiArt art={art.frame} /></span>;
 }
 
 function MediaPicture({ project, source, className }: { project: string; source?: Source; className: string }) {
@@ -105,7 +98,7 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
   const world = worlds.find(item => item.id === spatial) ?? worlds.at(-1);
   useEffect(() => { setSpatial(worlds.some(item => item.id === selectedAnchor?.worldId) ? selectedAnchor!.worldId : null); },
     [activeEvent, selectedAnchor?.worldId, state.session.lens]);
-  if (!event) return <Empty icon={<Compass size={33} />} title="Start with a place you remember">
+  if (!event) return <Empty icon={<AsciiArt art={art.compass} />} title="Start with a place you remember">
     <p>Give a moment a name, then add the photos and stories you want to keep.</p>
     <button className="btn primary" onClick={actions.openMemory}><Plus size={17} /> Add a memory</button>
   </Empty>;
@@ -157,6 +150,7 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
       </div>
     </div> : <div className={'hero grade-' + state.visualProfile + (active ? '' : ' hero-empty')} onPointerMove={updateScenePointer}>
       {active && <>
+        <AsciiImage key={'ascii-' + active.id} src={sourceURL(state.projectId, active.id, '?variant=thumb')} focusY={0.55} />
         <img className="hero-img" key={active.id} src={sourceURL(state.projectId, active.id, '?variant=thumb')} alt={active.caption} />
         <img className="hero-img hero-reveal" src={sourceURL(state.projectId, active.id, '?variant=thumb')} alt="" aria-hidden="true" />
       </>}
@@ -236,12 +230,13 @@ export function Watch({ state, event, actions }: { state: Snapshot; event?: Memo
     {showVideo && current ? <div className="film-stage"><video controls playsInline preload="metadata" src={artifactURL(state.projectId, current.id)} poster={source && sourceURL(state.projectId, source.id, '?variant=thumb')}>
       <track default kind="captions" label="English captions" srcLang="en" src={artifactURL(state.projectId, current.id, 'captions')} />
     </video></div> : source ? <div className="film-stage film-preview" onPointerMove={updateScenePointer}>
+      {image && <AsciiImage key={image} src={image} />}
       <Thumb project={state.projectId} source={source} className="film-preview-img" />
       <Thumb project={state.projectId} source={source} className="film-preview-img film-reveal" />
       <span className="glass-pill film-tag"><Film size={14} /> Storyboard preview</span>
       <button className="film-play" aria-label={playing ? 'Pause storyboard' : 'Play storyboard'} onClick={() => setPlaying(!playing)}>{playing ? <Pause size={29} fill="currentColor" /> : <Play size={29} fill="currentColor" />}</button>
       <div className="film-caption"><strong>{event?.title}</strong><span>{source.caption} · {source.provenance === 'imagined' ? 'Imagined demo' : 'Original source'}</span></div>
-    </div> : <Empty icon={<Film size={30} />} title="Your film starts with a source"><p>Link a photo or video to this memory.</p><button className="btn" onClick={actions.openCapture}>Add sources</button></Empty>}
+    </div> : <Empty icon={<AsciiArt art={art.film} />} title="Your film starts with a source"><p>Link a photo or video to this memory.</p><button className="btn" onClick={actions.openCapture}>Add sources</button></Empty>}
     <div className="film-status" role="status">
       {current && <div className="notice render-notice"><Film size={19} /><div><strong>{status}</strong>
         <p>{filmReady ? 'Saved from memory revision ' + current.revision + '.' : 'You can keep exploring while the film is prepared.'}</p></div>
@@ -296,7 +291,7 @@ function PhotoAlbum({ state, event, actions }: { state: Snapshot; event?: Memory
           {!excluded.includes(photo.id) && <Check size={16} />}
         </button>
       </div>)}</div>
-    </> : <Empty icon={<Image size={29} />} title="Your album starts with a photo"><p>Add photos in Capture, then review and confirm their memory links.</p><button className="btn" onClick={actions.openCapture}>Add photos</button></Empty>}
+    </> : <Empty icon={<AsciiArt art={art.photo} />} title="Your album starts with a photo"><p>Add photos in Capture, then review and confirm their memory links.</p><button className="btn" onClick={actions.openCapture}>Add photos</button></Empty>}
     {entered && selected.length > 0 && <Suspense fallback={<div className="notice" role="status">Opening immersive album…</div>}>
       <WalkableAlbum key={state.projectId + state.session.lens + selected.map(photo => photo.id).join(',')} state={state} photos={selected} title={title} onClose={() => setEntered(false)} />
     </Suspense>}
@@ -340,9 +335,9 @@ export function Create({ state, event, actions }: { state: Snapshot; event?: Mem
       {rec.map(item => <blockquote key={item.id}>{item.text}<cite>{item.contributor} · Recollection</cite></blockquote>)}
       <div className="journal-sources">{items.map(item => <button className="btn compact" key={item.id} onClick={() => actions.openSource(item)}><Image size={14} /> {item.caption}</button>)}</div>
       <div className="button-row"><button className="btn" onClick={actions.openRecollection}><Plus size={16} /> Add recollection</button><button className="btn" onClick={actions.openCorrection}>Correct memory</button></div>
-    </article> : <Empty icon={<BookOpen size={30} />} title="No journal entries yet" /> :
+    </article> : <Empty icon={<AsciiArt art={art.book} />} title="No journal entries yet" /> :
       media.length ? <MediaGrid state={state} sources={media} open={actions.openSource} /> :
-        <Empty icon={<Film size={29} />} title="No videos in this view">
+        <Empty icon={<AsciiArt art={art.film} />} title="No videos in this view">
           <p>Select an item from your camera roll and review it in Capture.</p><button className="btn" onClick={actions.openCapture}>Add a source</button>
         </Empty>}
     <div className="section-heading"><h2>Visual DNA</h2><span className="muted">One grade across your experience</span></div>
@@ -411,9 +406,11 @@ export function Remember({ state, event, actions }: { state: Snapshot; event?: M
   </div>;
 }
 
+const degrees = (value: number, positive: string, negative: string) => Math.abs(value).toFixed(2) + '° ' + (value < 0 ? negative : positive);
+
 export function MemoryMap({ state, actions }: { state: Snapshot; actions: ViewActions }) {
   const located = state.events.filter(memory => memory.gps);
-  if (!located.length) return <Empty icon={<Map size={29} />} title="No confirmed map locations"><p>Add coordinates when you create a memory to place it on the map.</p></Empty>;
+  if (!located.length) return <Empty icon={<AsciiArt art={art.map} />} title="No confirmed map locations"><p>Add coordinates when you create a memory to place it on the map.</p></Empty>;
   const lats = located.map(item => item.gps![0]);
   const lons = located.map(item => item.gps![1]);
   const dist = Math.max(0.05, Math.max(...lats) - Math.min(...lats), Math.max(...lons) - Math.min(...lons));
@@ -422,14 +419,14 @@ export function MemoryMap({ state, actions }: { state: Snapshot; actions: ViewAc
   const points = located.map(memory => ({ memory, x: 50 + (memory.gps![1] - lonCenter) * 76 / dist, y: 50 - (memory.gps![0] - latCenter) * 74 / dist }));
   return <div className="map-view">
     <div className="map-canvas" aria-label="Schematic map of confirmed memory locations">
-      <div className="map-north"><LocateFixed size={15} /> N</div>
-      <svg className="map-route" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline points={points.map(point => point.x + ',' + point.y).join(' ')}
-        stroke="#b7b5ae" strokeDasharray="2 2" fill="none" vectorEffect="non-scaling-stroke" strokeWidth="1.5" /></svg>
+      <AsciiMap points={points} />
+      <div className="map-north" aria-hidden="true">^ N</div>
       {points.map(({ memory, x, y }, i) => <button key={memory.id} className={'map-point' + (memory.id === state.session.eventId ? ' selected' : '')}
         style={{ left: x + '%', top: y + '%' }} title={memory.title} aria-label={'Explore ' + memory.title}
-        onClick={() => actions.select({ eventId: memory.id, view: 'explore' })}>{i + 1}</button>)}
+        onClick={() => actions.select({ eventId: memory.id, view: 'explore' })}><span>{i + 1}</span></button>)}
     </div>
-    <p className="muted">Schematic map · Dashed lines show memory order.</p>
+    <p className="map-caption"><span>Schematic map · The line follows memory order.</span>
+      <span>{degrees(Math.min(...lats), 'N', 'S')} to {degrees(Math.max(...lats), 'N', 'S')} · {degrees(Math.min(...lons), 'E', 'W')} to {degrees(Math.max(...lons), 'E', 'W')}</span></p>
     <div className="map-legend">{points.map(({ memory }, i) => <button className="btn compact" key={memory.id} onClick={() => actions.select({ eventId: memory.id, view: 'explore' })}>
       <span>{i + 1}.</span>{memory.title}</button>)}</div>
   </div>;
@@ -445,7 +442,7 @@ export function Archive({ state, event, actions, initialMap = false }: { state: 
     <div className="tab-set" aria-label="Archive views">{[['revisions', 'Revisions'], ['map', 'Map'], ['sources', 'Sources']].map(([key, label]) =>
       <button key={key} className={key === tab ? 'selected' : ''} aria-pressed={key === tab} onClick={() => setTab(key)}>{label}</button>)}</div>
     {tab === 'map' && <MemoryMap state={state} actions={actions} />}
-    {tab === 'sources' && (sources.length ? <MediaGrid state={state} sources={sources} open={actions.openSource} /> : <Empty icon={<Image size={29} />} title="No sources in this view" />)}
+    {tab === 'sources' && (sources.length ? <MediaGrid state={state} sources={sources} open={actions.openSource} /> : <Empty icon={<AsciiArt art={art.photo} />} title="No sources in this view" />)}
     {tab === 'revisions' && <section className="surface"><div className="section-heading"><h3>Revision {state.revision}</h3>
       <button className="btn compact" disabled={!state.undo} onClick={actions.undo}><ArrowLeft size={15} /> Undo last change</button></div>
       {state.history.map(item => <div className="result-row" key={item.revision}><strong>{item.label}</strong><span>{displayDate(item.at, true)} · Rev {item.revision}</span></div>)}

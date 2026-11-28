@@ -12,12 +12,12 @@
 .album-source { padding:0; border:0; background:none; color:inherit; width:100%; text-align:left; cursor:pointer; }
 .album-card.excluded .media-image { opacity:.45; }
 .album-card .album-check { position:absolute; right:10px; top:10px; display:grid; place-items:center; padding:0; width:32px; height:32px; color:var(--accent-fg); background:var(--primary-action); border:1px solid #ffffff7a; border-radius:6px; cursor:pointer; box-shadow:0 2px 12px #0005; }
-.album-card .album-check[aria-pressed=false] { background:#172532a8; color:white; }
+.album-card .album-check[aria-pressed=false] { background:#151515c4; color:white; }
 @media (max-width:600px) { .album-launch { align-items:flex-start; flex-direction:column; padding:20px; gap:18px; }.album-launch h3 { font-size:30px; }.album-launch .btn { width:100%; }.album-toolbar { flex-wrap:wrap; } }
 
 .tutorial-image { height: 184px; position: relative; overflow: hidden; border-radius: 9px; }
 .tutorial-image img { width: 100%; height: 100%; object-fit: cover; }
-.tutorial-image::after { content: ''; position: absolute; inset: 0; background: linear-gradient(transparent 30%, #07111bce); }
+.tutorial-image::after { content: ''; position: absolute; inset: 0; background: linear-gradient(transparent 30%, #0a0a0ae6); }
 .tutorial-image > span { position: absolute; z-index: 1; bottom: 18px; left: 20px; display: flex; align-items: center; gap: 10px; font-size: 12px; color: #fff; }
 .tutorial-copy { padding-top: 23px; min-height: 178px; }
 .tutorial-step { color: var(--quiet); font-size: 11px; letter-spacing: .025em; }
