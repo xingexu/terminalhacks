@@ -12,6 +12,7 @@ import './experience.css';
 import { Tutorial } from './onboarding';
 import { VoicePanel } from './voice';
 import { Capture } from './capture';
+import { GenerationForm } from './generation';
 import { Archive, AtlasMark, Create, Empty, Explore, Remember, Timeline, Watch, type ViewActions } from './views';
 import { updateScenePointer } from './scene';
 import {
@@ -30,6 +31,7 @@ const nav = [
 
 type Dialog =
   { kind: 'library' | 'settings' | 'voice' | 'capture' | 'memory' | 'recollection' | 'correction' | 'help' | 'world' } |
+  { kind: 'generate'; eventId: string } |
   { kind: 'source'; source: Source } |
   { kind: 'confirm'; proposal: Proposal; revision: number; command?: Command; film?: boolean; fromCapture?: boolean };
 
@@ -280,7 +282,9 @@ function App() {
       if (requested && nav.some(item => item.id === view)) earlyRoute.current = view as View;
       const last = localStorage.getItem('everwhere-project');
       chooseProject(requested || list.find(item => item.id === last)?.id || list[0]?.id || '');
-      setDialog({ kind: 'help' });
+      const returnEvent = new URLSearchParams(location.search).get('generate');
+      setDialog(returnEvent ? { kind: 'generate', eventId: returnEvent } : { kind: 'help' });
+      if (returnEvent) history.replaceState(null, '', location.pathname);
     }).catch(err => setStartupError((err as Error).message)).finally(() => setLoading(false));
   }, [chooseProject, loadProjects]);
 
@@ -360,6 +364,7 @@ function App() {
     setGrade: preset => guarded(() => preview('profile.set', { preset })),
     openSettings: () => show('settings'),
     openWorld: () => show('world'),
+    openGeneration: () => { if (current) setDialog({ kind: 'generate', eventId: current.id }); },
     undo: () => { if (state?.undo) guarded(() => preview('undo', { revisionToUndo: state.undo!.revision }, state.undo!.targetId)); }
   };
 
@@ -373,7 +378,7 @@ function App() {
   const sectionTitles: Record<Dialog['kind'], string> = {
     library: 'Projects', settings: 'Project settings', voice: 'Connect VoiceOS', capture: 'Capture memory',
     memory: 'New memory', recollection: 'Add a recollection', correction: 'Correct memory',
-    help: 'Welcome to Everwhere', source: 'Source evidence', confirm: 'Review change', world: 'Import 3D scene'
+    help: 'Welcome to Everwhere', source: 'Source evidence', confirm: 'Review change', world: 'Import 3D scene', generate: 'Step inside your photo'
   };
   return <div className="app-frame">
     <a className="skip-link" href="#experience">Skip to experience</a>
@@ -438,6 +443,8 @@ function App() {
         await api(base, { confirm: true }, 'DELETE'); const list = await loadProjects(); chooseProject(list[0]?.id || ''); dismiss();
       }} />}
       {hasMedia && state && dialog.kind === 'voice' && <VoicePanel base={base} state={state} />}
+      {state && dialog.kind === 'generate' && state.events.filter(event => event.id === dialog.eventId).map(event => <GenerationForm key={event.id} state={state} event={event}
+        done={async () => { await refresh(); dismiss(); setNotice('Scene generation started. Progress appears in Explore.'); }} />)}
       {state && current && dialog.kind === 'world' && <WorldForm state={state} event={current} base={base}
         done={async () => { await refresh(); dismiss(); setNotice('Reconstruction uploaded for approval.'); }} />}
       {hasMedia && state && captureOpen && <div hidden={dialog.kind === 'confirm'}><Capture state={state} base={base} items={items} visible={dialog.kind === 'capture'} reload={refresh}

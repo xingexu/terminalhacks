@@ -9,6 +9,9 @@ import { readFileSync } from 'node:fs';
 import Ajv from 'ajv';
 import formats from 'ajv-formats';
 import { createStore } from './store.mjs';
+import { createHiggsfield } from './higgsfield.mjs';
+import { createSceneWorker, queueScene, sceneInputHash } from './scene-jobs.mjs';
+import { visionReady } from './scene-plan.mjs';
 import { integrationManifest } from '../mcp/manifest.mjs';
 import {
   assertCapture, capturePreview, cleanMedia, commitCommand, createEvent, createFilmWorker, gapQuestion, getSnapshot,
@@ -59,8 +62,11 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 });
   const store = createStore(dataDir);
   const film = createFilmWorker(store, dataDir, demoDir);
+  const higgsfield = createHiggsfield(dataDir);
+  const scenes = createSceneWorker(store, dataDir, higgsfield);
   await app.register(multipart, { limits: { fileSize: 48 * 1024 ** 2, files: 1, fields: 0, parts: 1 } });
-  app.addHook('onClose', async () => { await film.stop(); store.close(); });
+  app.addHook('onReady', async () => { scenes.kick(); });
+  app.addHook('onClose', async () => { await Promise.all([film.stop(), scenes.stop()]); store.close(); });
   app.addHook('onRequest', async (req, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff').header('Referrer-Policy', 'same-origin')
       .header('X-Frame-Options', 'SAMEORIGIN');
@@ -129,6 +135,56 @@ export async function createApp({ dataDir = resolve(process.env.EVERWHERE_DATA |
     return { ok: true, data: { deleted: true } };
   });
   app.get(projectPath + '/snapshot', async req => read(req, (state, actor, id) => getSnapshot(id, state)));
+  app.get(projectPath + '/higgsfield', async req => {
+    const { actor, project } = scope(req);
+    store.read(actor, project);
+    return { ok: true, data: { ...higgsfield.status(actor), visionReady: await visionReady() } };
+  });
+  app.post(projectPath + '/higgsfield/connect', async req => {
+    check(!req.headers.authorization, 403, 'BROWSER_REQUIRED', 'Connect Higgsfield from the Everwhere browser.');
+    const { actor, project } = scope(req);
+    const state = store.read(actor, project);
+    check(eventById(state, req.body?.eventId), 404, 'EVENT_NOT_FOUND', 'Choose an available memory.');
+    const origin = new URL(req.headers.origin || req.protocol + '://' + req.headers.host).origin;
+    const returnPath = '/p/' + project + '/explore?generate=' + encodeURIComponent(req.body.eventId);
+    return { ok: true, data: { url: await higgsfield.begin(actor, origin, returnPath) } };
+  });
+  app.get('/v1/higgsfield/callback', async (req, reply) => {
+    const { actor } = auth(req);
+    const returnPath = await higgsfield.finish(actor, req.query.code, req.query.state);
+    return reply.redirect(returnPath);
+  });
+  app.delete(projectPath + '/higgsfield', async req => {
+    check(!req.headers.authorization, 403, 'BROWSER_REQUIRED', 'Disconnect Higgsfield from the Everwhere browser.');
+    const { actor, project } = scope(req);
+    store.read(actor, project);
+    check(!store.all().some(entry => entry.actor === actor && (entry.state.sceneJobs ?? []).some(job => ['queued', 'interpreting', 'building'].includes(job.status))),
+      409, 'SCENE_BUSY', 'Let active scene jobs finish before disconnecting.');
+    higgsfield.disconnect(actor);
+    return { ok: true, data: { connected: false } };
+  });
+  app.post(projectPath + '/scene-jobs', async req => {
+    const { actor } = scope(req);
+    check(higgsfield.status(actor).connected, 401, 'HIGGSFIELD_AUTH', 'Connect Higgsfield before generating.');
+    check(await visionReady(), 503, 'VISION_UNAVAILABLE', 'Start Ollama and install qwen3-vl:4b on the Everwhere server.');
+    const result = update(req, 'scene.changed', state => {
+      const job = queueScene(state, req.body ?? {});
+      return { id: job.id, status: job.status };
+    });
+    scenes.kick();
+    return result;
+  });
+  app.post(projectPath + '/scene-jobs/:id/resume', async req => {
+    const result = update(req, 'scene.changed', state => {
+      const job = state.sceneJobs?.find(item => item.id === req.params.id);
+      check(job?.status === 'failed' && job.inputHash === sceneInputHash(state, job.eventId, job.sourceId), 409, 'SCENE_STALE', 'Create a new scene from the current memory.');
+      check(!state.sceneJobs.some(item => ['queued', 'interpreting', 'building'].includes(item.status)), 409, 'SCENE_BUSY', 'Wait for the active scene job to finish.');
+      Object.assign(job, { status: 'queued', error: undefined });
+      return { id: job.id, status: job.status };
+    });
+    scenes.kick();
+    return result;
+  });
   app.post(projectPath + '/memories', async req => update(req, 'revision.committed', state => {
     check(req.body?.expectedRevision === state.revision, 409, 'REVISION_CONFLICT', 'Refresh the project before adding a memory.', { revision: state.revision });
     return createEvent(state, req.body);

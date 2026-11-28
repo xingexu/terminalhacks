@@ -5,7 +5,7 @@ import { VoiceShortcut } from './voice';
 const steps = [
   { title: 'Keep the moment.', text: 'Start a private project, then use Capture to add selected photos, clips, or a voice note.', icon: Camera, image: 'lake', caption: 'Photos · clips · voice notes' },
   { title: 'Give it a place.', text: 'Create a memory with a title, place, and date. In the capture inbox, choose the memory, preview the link, and confirm it.', icon: Check, image: 'desert', caption: 'Capture → review → confirm' },
-  { title: 'Come back to it.', text: 'In Studio, choose photos and select Enter album. Walk with WASD or the on-screen arrows, drag to look, and open nearby photos with E. Keep recollections in Stories or render a film in Films.', icon: Compass, image: 'ocean', caption: 'Your memories, connected' },
+  { title: 'Come back to it.', text: 'In Explore, choose Step inside this photo. Add remembered details, connect Higgsfield, and generate a scene. Review the reconstruction, then enter and walk with WASD. Create also holds your photo albums, and Watch holds your films.', icon: Compass, image: 'ocean', caption: 'Your memories, connected' },
   { title: 'Your memories, by voice.', text: 'Open the VoiceOS app from Applications on your Mac. Go to Apps → Custom → Everwhere to check your connection.', icon: AudioLines, image: 'stars', caption: '“What memory is open in Everwhere?”' }
 ];
 
@@ -26,6 +26,7 @@ export function Tutorial({ finish, create, connectVoice, canConnectVoice }: {
     </div>
     {step === 0 && <button className="text-button tutorial-create" onClick={create}>Create a private project <ArrowRight size={15} /></button>}
     {step === steps.length - 1 && <div className="tutorial-voice">
+      <p>To describe a scene, focus its memory-description field, hold <kbd>Fn</kbd>, speak, then release. VoiceOS inserts the words for you to review. Set Fn to dictation in VoiceOS Settings.</p>
       <VoiceShortcut />
       <p>{canConnectVoice ? <>Choose <strong>Set up VoiceOS</strong> below to pair this project.</> : <>Create a project first, then open <strong>VoiceOS</strong> to pair it.</>} You can reopen setup from the <strong>VoiceOS</strong> button in Everwhere’s sidebar or mobile header.</p>
     </div>}

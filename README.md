@@ -23,6 +23,18 @@ Open `http://localhost:4173`. Set `PORT` to change the port and `EVERWHERE_DATA`
 5. **Memories → Import 3D scene** accepts prebuilt `.spz` reconstructions or self-contained `.glb` meshes from LiDAR/photogrammetry. Link an original photo documenting the place, import the scene, and approve it. Turn off **Originals only** to open the reconstruction. For GLB, choose **Choose floor to walk**, then click an open floor surface. WASD, mouse/touch look, Shift sprint and Space jump use capsule collisions, gravity and fixed physics steps against the actual mesh. Scans need meter units, Y-up orientation, embedded textures, at most 250,000 triangles, and a file size below 48 MB. The walkable album lays out photos in a designed environment. Reconstruction of the photographed place requires a separately produced scene.
 6. Use **Project settings** to revoke a capture grant or delete a project.
 
+## Generate a scene from a photo and memory
+
+Install [Ollama](https://ollama.com/download), start its server on `127.0.0.1:11434`, and run `ollama pull qwen3-vl:4b` on the machine running Everwhere. The model download is approximately 3.3 GB.
+
+In **Explore → Step inside this photo**, select a confirmed original photo. Type remembered details or focus the description field and hold **Fn** with VoiceOS running and configured for dictation. Release Fn, review the inserted words, and connect the desired Higgsfield account. This OAuth connection belongs to Everwhere and requires its own authorization. Confirm permission and select **Generate immersive scene**.
+
+The local vision model interprets the photo into a bounded scene plan. Higgsfield 3D Jutsu builds that plan as editable geometry and exports a GLB. This version uses estimated geometry and simple materials. Scale and hidden areas are inferred. The photo remains local, while the interpreted layout and remembered details are sent to Higgsfield and retained in its account. Everwhere stores OAuth credentials server-side in owner-only files under the private data directory.
+
+Progress appears in Explore. Approve the completed reconstruction, turn off **Originals only**, and choose **Walk in** the scene. The viewer tries the generated standing position and uses the mesh for collision. If that position is obstructed, choose a clear floor surface. WASD moves, dragging turns, Shift sprints, and Space jumps. Imported scans and the designed photo album remain available alongside generated scenes.
+
+Jobs retain source identity, request identity, provider project and operation IDs. A changed or withdrawn source invalidates its generated scene. **Check and resume generation** reconciles saved operations after interruption. Removing a local source makes the Everwhere scene unavailable. Manage copies retained by Higgsfield in that account.
+
 ## Immersive runtime and V3.1 camera paths
 
 In a single-memory album or an approved GLB, open **Scene tools** to pause, reduce motion, change artistic lighting or lower rendering resolution. Walk to a safe position, select **Record camera path**, explore for at least ten seconds, then stop. **Replay path** uses timestamped position and quaternion interpolation. **Export path** downloads a V3.1 envelope containing `context`, `sceneManifest` and `cameraPath`, each matching its definition in `packages/contracts/engine-exchange.schema.json`. This is the camera-path subset of the exchange, ready for Arin's renderer. It contains virtual movement and source IDs. Imported-scene scale remains unverified. Whole-project albums require choosing one memory before path export.
@@ -69,4 +81,4 @@ python3 -m venv .venv
 
 `npm test` starts the real API with temporary SQLite data, exercises the MCP process, compiles a film with FFmpeg, and checks SPZ file authorization. See [the release evidence](docs/release-evidence.csv) for measured results and open gates. The handoff's reference tests were run separately from its original ZIP.
 
-Live VoiceOS Agent Mode, browser microphone and WebGL performance remain unverified. Reconstruction generation through a hosted provider and V3 shared universes are outside this build. The app is served as a session preview.
+Hardware microphone input, real-device graphics performance, and V3 shared universes need separate verification. Generated scenes require the local vision runtime and a live Higgsfield connection.

@@ -13,13 +13,14 @@ import { PathRecorder } from './gameplay/path';
 import { FrameMetrics } from './gameplay/performance';
 import { RuntimeTools, type RuntimeControls } from './gameplay/tools';
 import { Walker } from './walking';
-import type { Anchor, Recollection } from './model';
+import type { Anchor, Recollection, World } from './model';
 import './album.css';
 
 type Position = [number, number, number];
-export default function Scan({ url, projectId, eventId, worldId, revision, position, onClose, onWaypoint, anchors, selectedAnchor, recollections, onSelectAnchor, onRecollect }: {
+export default function Scan({ url, projectId, eventId, worldId, revision, position, generation, onClose, onWaypoint, anchors, selectedAnchor, recollections, onSelectAnchor, onRecollect }: {
   projectId: string; eventId: string; worldId: string; revision: number;
   url: string; position?: Position; onClose: () => void; onWaypoint: (position: Position) => void;
+  generation?: World['generation'];
   anchors: Anchor[]; selectedAnchor?: Anchor; recollections: Recollection[];
   onSelectAnchor: (id: string) => void; onRecollect: () => void;
 }) {
@@ -115,13 +116,13 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
       recorder?.interrupt();
       const floor = collision.rayIntersect(new Ray(point.clone().add(new Vector3(0, 0.3, 0)), new Vector3(0, -1, 0)));
       if (!floor || floor.distance > 0.5 || floor.triangle.getNormal(normal).y < 0.55) {
-        setNotice('This saved position has no safe floor. Choose a clear floor surface.'); return;
+        setNotice('This saved position has no safe floor. Choose a clear floor surface.'); return false;
       }
       const candidate = new Walker(collision, point.clone().add(new Vector3(0, 0.03, 0)));
       const overlap = collision.capsuleIntersect(candidate.capsule);
       if (overlap && overlap.depth > 0.05) {
         setNotice('There is not enough standing room here. Choose an open floor area.');
-        return;
+        return false;
       }
       walker = candidate;
       yaw = camera.rotation.y;
@@ -130,6 +131,7 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
       setMode('walk');
       setNotice('WASD to walk · Drag to look · Shift to sprint · Space to jump');
       element.focus();
+      return true;
     }
     function selectFloor(point: Vector2) {
       pick.setFromCamera(point, camera);
@@ -200,6 +202,14 @@ export default function Scan({ url, projectId, eventId, worldId, revision, posit
         };
         setPhase('overview');
         setNotice('Scale is unverified. Inspect the scan, then choose a clear floor to begin walking.');
+        if (generation) {
+          camera.position.fromArray(generation.spawn).add(new Vector3(0, 1.6, 0));
+          camera.lookAt(new Vector3().fromArray(generation.lookAt));
+          if (place(new Vector3().fromArray(generation.spawn))) {
+            recorder.manifest.spawn = camera.position.toArray();
+            setNotice('Reconstructed from your photo and memory. Scale and unseen areas are inferred. WASD to walk · Drag to look');
+          }
+        }
       } catch (error) {
         if (active) { setNotice((error as Error).message); setPhase('error'); }
       }

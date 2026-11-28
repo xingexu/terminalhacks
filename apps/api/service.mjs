@@ -43,6 +43,7 @@ export function getSnapshot(projectId, state) {
     media: state.media.filter(item => !item.revoked && !item.pending).map(cleanMedia),
     recollections: state.recollections.map(({ actor, ...item }) => ({ ...item, contributor: 'You' })),
     jobs: state.jobs.map(cleanJob), history: state.history,
+    sceneJobs: (state.sceneJobs ?? []).map(({ id, eventId, sourceId, status, error, worldId }) => ({ id, eventId, sourceId, status, error, worldId })),
     worlds: (state.worlds || []).filter(item => !item.revoked).map(({ storage, contentHash, ...item }) => item),
     undo: state.changes[0] ? { revision: state.changes[0].revision, targetId: state.changes[0].targetId } : null,
     capture: { sessions: state.capture.sessions.map(session => ({ ...session, status: session.status === 'active' && session.expires <= Date.now() ? 'expired' : session.status })) }

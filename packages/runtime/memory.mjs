@@ -85,7 +85,25 @@ export function eventDependencies(state, eventId, lens) {
   };
 }
 
+export function sceneDependencies(state, eventId, sourceId) {
+  const event = eventById(state, eventId);
+  const source = event?.sourceIds.includes(sourceId) ? mediaById(state, sourceId) : undefined;
+  return { eventId, sourceId, hash: source?.hash ?? null, provenance: source?.provenance ?? null };
+}
+
 export function invalidateJobs(state) {
+  for (const job of state.sceneJobs ?? []) {
+    if (['queued', 'interpreting', 'building', 'ready'].includes(job.status) && job.inputHash !== digest(sceneDependencies(state, job.eventId, job.sourceId))) {
+      job.status = 'stale';
+      job.error = 'The source memory changed. Generate a scene from its current version.';
+    }
+  }
+  for (const world of state.worlds ?? []) {
+    if (world.generation && world.generation.dependenciesHash !== digest(sceneDependencies(state, world.eventId, world.sourceIds[0]))) {
+      world.status = 'stale';
+      world.approved = false;
+    }
+  }
   for (const job of state.jobs) {
     if (!['queued', 'running', 'ready'].includes(job.status)) continue;
     if (job.inputHash !== digest(eventDependencies(state, job.eventId, job.lens))) {

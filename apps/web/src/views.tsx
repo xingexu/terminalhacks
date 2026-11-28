@@ -30,6 +30,7 @@ export type ViewActions = {
   openSettings: () => void;
   openVoice: () => void;
   openWorld: () => void;
+  openGeneration: () => void;
   undo: () => void;
 };
 
@@ -99,7 +100,7 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
     setEntered(Boolean(state.session.anchorNavigationId && selectedAnchor?.worldId === 'trail-' + activeEvent));
     setShowStory(false);
   }, [state.session.anchorNavigationId, activeEvent, state.session.lens]);
-  const worlds = state.worlds.filter(item => item.eventId === activeEvent && item.approved && state.session.lens === 'all' &&
+  const worlds = state.worlds.filter(item => item.eventId === activeEvent && item.approved && item.status !== 'stale' && state.session.lens === 'all' &&
     item.sourceIds.every(id => event?.sourceIds.includes(id)));
   const world = worlds.find(item => item.id === spatial) ?? worlds.at(-1);
   useEffect(() => { setSpatial(worlds.some(item => item.id === selectedAnchor?.worldId) ? selectedAnchor!.worldId : null); },
@@ -127,7 +128,7 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
     setEntered(true);
     setShowStory(false);
   }
-  const pendingWorld = state.worlds.find(item => item.eventId === event.id && !item.approved &&
+  const pendingWorld = state.worlds.find(item => item.eventId === event.id && !item.approved && item.status !== 'stale' &&
     item.sourceIds.every(id => event.sourceIds.includes(id)));
   return <section className="view-explore">
     <div className="explore-stage">
@@ -140,7 +141,7 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
       <Suspense fallback={<div className="spatial-state">Loading 3D viewer…</div>}>
         {world.format === 'glb' ? <Scan url={'/v1/projects/' + state.projectId + '/worlds/' + spatial + '/scene.glb'}
           projectId={state.projectId} eventId={event.id} worldId={world.id} revision={state.revision}
-          position={selectedAnchor?.worldId === spatial ? selectedAnchor.position : undefined}
+          generation={world.generation} position={selectedAnchor?.worldId === spatial ? selectedAnchor.position : undefined}
           anchors={state.anchors.filter(item => item.worldId === spatial)}
           selectedAnchor={selectedAnchor?.worldId === spatial ? selectedAnchor : undefined}
           recollections={state.recollections} onSelectAnchor={anchorId => actions.select({ anchorId })} onRecollect={actions.openRecollection}
@@ -179,6 +180,7 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
           <h2>{event.title}</h2>
           <div className="hero-location"><MapPin size={15} /> {event.placeLabel}{anchor && <><span className="dot-separator" /> {anchor.title}</>}</div>
           <div className="button-row">
+            <button className="btn hero-cta" onClick={actions.openGeneration}><Box size={17} /> Step inside this photo <ArrowRight size={16} /></button>
             {photos.length > 0 ? <button className="btn hero-cta" onClick={openAlbum}><Compass size={17} /> Enter photo album <ArrowRight size={16} /></button> :
               <button className="btn hero-cta" onClick={actions.openCapture}><Camera size={16} /> Add photos</button>}
             {active && <button className="glass-icon" aria-label="Waypoint story" onClick={() => setShowStory(!showStory)}><BookOpen size={17} /></button>}
@@ -193,6 +195,9 @@ export function Explore({ state, event, actions }: { state: Snapshot; event?: Me
         </div>
       </div>
     </div>}
+    {(state.sceneJobs ?? []).filter(job => job.eventId === event.id && job.status !== 'ready').slice(0, 1).map(job =>
+      <div className="notice" role="status" key={job.id}><Box size={18} /><div><strong>{job.status === 'interpreting' ? 'Interpreting your photo' : job.status === 'building' ? 'Building your scene in Higgsfield' : job.status === 'queued' ? 'Scene generation queued' : 'Scene needs attention'}</strong>
+        <p>{job.error || 'You can continue browsing while the scene is prepared.'}</p><button className="btn compact" onClick={actions.openGeneration}>Scene details</button></div></div>)}
     {(pendingWorld || world || media.some(item => item.provenance === 'original' && item.mime.startsWith('image/'))) && <div className="world-actions button-row">
       {worlds.map(item => item.id !== spatial && <button key={item.id} className="btn compact" onClick={() => setSpatial(item.id)}><Box size={15} /> {item.format === 'glb' ? 'Walk in ' : 'Explore '}{item.title}</button>)}
       {pendingWorld && <button className="btn compact" onClick={() => actions.approve(pendingWorld)}><Check size={15} /> Approve reconstruction</button>}
