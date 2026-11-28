@@ -67,6 +67,7 @@ export function createEvent(state, input) {
 
 export function updateSession(state, input) {
   const { eventId, view, lens, anchorId } = input;
+  const previous = { ...state.session };
   if (eventId !== undefined) {
     check(eventById(state, eventId), 404, 'EVENT_NOT_FOUND', 'That memory is unavailable.');
     if (eventId !== state.session.eventId) state.session.anchorId = state.anchors.find(item => item.eventId === eventId)?.id ?? null;
@@ -95,7 +96,10 @@ export function updateSession(state, input) {
     }
     Object.assign(state.session, { anchorId, eventId: anchor.eventId });
   }
-  state.session.anchorNavigationId = anchorId !== undefined ? uid() : null;
+  if (anchorId !== undefined) state.session.anchorNavigationId = uid();
+  else if (state.session.eventId !== previous.eventId || state.session.view !== previous.view || state.session.lens !== previous.lens) {
+    state.session.anchorNavigationId = null;
+  }
   return state.session;
 }
 
